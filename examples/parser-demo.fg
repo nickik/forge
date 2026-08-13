@@ -1,0 +1,23 @@
+module examples.parser_demo;
+
+import std.io;
+
+struct Point {
+    x: f32;
+    y: f32;
+}
+
+tagged MaybePoint {
+    Some { value: Point; },
+    None,
+}
+
+fn length2(p: &Point) -> f32 {
+    return p.x * p.x + p.y * p.y;
+}
+
+fn main() -> i32 {
+    val p: Point = Point{x: 3.0, y: 4.0};
+    io.println("length squared = {}", length2(&p));
+    return 0;
+}

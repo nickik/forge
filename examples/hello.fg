@@ -1,0 +1,9 @@
+module examples.hello;
+
+import std.io;
+
+fn main() -> i32 {
+    val name: str = "Forge";
+    io.println("Hello, {}", name);
+    return 0;
+}

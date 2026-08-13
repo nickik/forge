@@ -1,0 +1,13 @@
+{
+    :package {
+        :name examples.hello
+        :version #version "0.1.0"
+        :id #uuid "550e8400-e29b-41d4-a716-446655440000"
+    }
+
+    :sources [#path "."]
+    :build {
+        :bounds-check true
+        :overflow :checked
+    }
+}

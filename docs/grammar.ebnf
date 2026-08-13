@@ -1,0 +1,83 @@
+(* Forge v1 parser-oriented grammar sketch. Semantic restrictions are in the spec. *)
+
+file            = module_decl, { import_decl }, { declaration } ;
+module_decl     = "module", qualified_name, ";" ;
+import_decl     = "import", qualified_name, { ",", qualified_name }, ";" ;
+
+declaration     = metadata*, ( value_decl | function_decl | struct_decl | enum_decl
+                | tagged_decl | bitstruct_decl | distinct_decl | type_decl ) ;
+
+metadata        = "@", identifier, [ "(", argument_tokens, ")" ]
+                | "@", fdn_map ;
+
+value_decl      = ("val" | "var" | "const"), pattern, [ ":", type ], "=", expression, ";" ;
+
+function_decl   = ("fn" | "nfn"), identifier, "(", [ parameter_list ], ")",
+                  [ "->", type ], function_qualifier*, block ;
+parameter_list  = parameter, { ",", parameter } ;
+parameter       = identifier, ":", type, [ "=", expression ] ;
+
+struct_decl     = "struct", identifier, "{", { field_decl }, "}" ;
+field_decl      = metadata*, identifier, ":", type, [ "=", expression ], ";" ;
+
+enum_decl       = "enum", identifier, "{", enum_item, { ",", enum_item }, [","], "}" ;
+enum_item       = identifier, [ "=", constant_expression ] ;
+
+tagged_decl     = "tagged", identifier, "{", variant, { ",", variant }, [","], "}" ;
+variant         = identifier, [ "{", { field_decl }, "}" ] ;
+
+bitstruct_decl  = "bitstruct", identifier, ":", integer_type, "{", { bit_field }, "}" ;
+bit_field       = identifier, ":", integer, ";" ;
+
+distinct_decl   = "distinct", identifier, ":", type, ";" ;
+type_decl       = "type", identifier, "=", type, ";" ;
+
+type            = primary_type, [ "?" ] ;
+primary_type    = qualified_name
+                | "*", type
+                | "&", [ "mut" ], type
+                | type, "[]"
+                | type, "[]", "mut"
+                | "[", type, ";", constant_expression, "]"
+                | "fn", "(", [ type_list ], ")", "->", type
+                | "closure", "(", [ type_list ], ")", "->", type
+                | "Result", "[", type, ",", type, "]" ;
+
+statement       = value_decl | expression, ";" | block | if_stmt | while_stmt | for_stmt
+                | match_stmt | switch_stmt | defer_stmt | return_stmt | break_stmt
+                | continue_stmt | unsafe_stmt | with_context_stmt | select_stmt ;
+
+block           = "{", { statement }, "}" ;
+if_stmt         = "if", "(", expression, ")", block, [ "else", (block | if_stmt) ] ;
+while_stmt      = "while", "(", expression, ")", block ;
+for_stmt        = "for", "(", ( c_for_header | pattern, "in", expression ), ")", block ;
+match_stmt      = "match", "(", expression, ")", "{", { match_arm }, "}" ;
+match_arm       = pattern, [ "when", expression ], "=>", ( block | expression ), ["," | ";"] ;
+
+defer_stmt      = "defer", ( block | expression, ";" ) ;
+return_stmt     = "return", [ "tail" ], [ expression ], ";" ;
+unsafe_stmt     = "unsafe", block ;
+with_context_stmt = "with", "context", fdn_map, block ;
+
+pattern         = or_pattern ;
+or_pattern      = and_pattern, { "|", and_pattern } ;
+and_pattern     = unary_pattern, { "&", unary_pattern } ;
+unary_pattern   = [ "!" ], base_pattern ;
+base_pattern    = "_" | literal | identifier
+                | identifier, "@", base_pattern
+                | qualified_name, [ "{", [ pattern_fields ], "}" ]
+                | "[", [ pattern_items ], "]"
+                | "{", [ map_pattern_items ], "}"
+                | range_pattern ;
+
+expression      = (* parsed using Pratt precedence table *) ;
+
+reader_form     = "#", qualified_name, fdn_value ;
+
+(* FDN *)
+fdn_value       = fdn_scalar | fdn_vector | fdn_list | fdn_map | fdn_set | fdn_tagged ;
+fdn_vector      = "[", { fdn_value, [","] }, "]" ;
+fdn_list        = "(", { fdn_value, [","] }, ")" ;
+fdn_map         = "{", { fdn_value, fdn_value, [","] }, "}" ;
+fdn_set         = "#{", { fdn_value, [","] }, "}" ;
+fdn_tagged      = "#", qualified_name, fdn_value ;
