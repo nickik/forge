@@ -8,6 +8,6 @@ tagged Token {
 }
 
 fn main() -> i32 {
-    val token: Token = Token.Integer{value: 42};
+    val token: Token = Token::Integer{value: 42};
     return 0;
 }
