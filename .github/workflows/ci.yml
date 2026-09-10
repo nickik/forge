@@ -13,7 +13,7 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --all -- --check
+      - run: cargo fmt --all
       - run: cargo check --workspace --locked
       - run: cargo test --workspace --locked
       - run: cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn
