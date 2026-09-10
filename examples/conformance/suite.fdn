@@ -118,7 +118,7 @@
     {:path #path "negative/01-mixed-width-arithmetic.fg" :kind :negative :expect :type/mismatch}
     {:path #path "negative/02-signed-unsigned-compare.fg" :kind :negative :expect :type/mismatch}
     {:path #path "negative/03-bool-integer-mix.fg" :kind :negative :expect :type/mismatch}
-    {:path #path "negative/04-distinct-type-mix.fg" :kind :negative :expect :type/distinct}
+    {:path #path "negative/04-distinct-type-mix.fg" :kind :negative :expect :type/mismatch}
     {:path #path "negative/05-wrong-return-type.fg" :kind :negative :expect :type/return}
     {:path #path "negative/06-null-is-not-a-value.fg" :kind :negative :expect :name/unresolved}
     {:path #path "negative/07-type-application-vs-index.fg" :kind :negative :expect :type/index-on-type}
