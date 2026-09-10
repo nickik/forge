@@ -4,9 +4,6 @@ on:
   push:
   pull_request:
 
-permissions:
-  contents: write
-
 jobs:
   rust:
     runs-on: ubuntu-latest
@@ -15,27 +12,26 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Format branch
-        run: |
-          cargo fmt --all
-          if ! git diff --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add '*.rs'
-            git commit -m "Format Rust workspace"
-            git push origin HEAD:agent/conformance-runner
-          fi
-      - name: Check workspace
+      - run: cargo fmt --all -- --check
+      - run: cargo check --workspace
+      - name: Test workspace
         run: |
           set -o pipefail
-          cargo check --workspace 2>&1 | tee cargo-check.log
-      - name: Upload check diagnostics
+          timeout 120s cargo test --workspace -- --nocapture 2>&1 | tee cargo-test.log
+      - name: Upload test diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cargo-check-log
-          path: cargo-check.log
-      - run: cargo test --workspace
-      - run: cargo run -p forge-conformance -- examples/conformance/suite.fdn
+          name: cargo-test-log
+          path: cargo-test.log
+      - name: Run Forge conformance suite
+        run: |
+          set -o pipefail
+          timeout 60s cargo run -p forge-conformance -- examples/conformance/suite.fdn 2>&1 | tee conformance.log
+      - name: Upload conformance diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-log
+          path: conformance.log
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo fmt --all -- --check
