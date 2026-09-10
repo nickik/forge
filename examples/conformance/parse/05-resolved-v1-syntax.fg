@@ -1,0 +1,79 @@
+module examples.conformance.resolved_v1;
+
+import std.io, std.mem;
+
+type Percentage = u8 @range(0..=100);
+
+struct Point {
+    x: i32;
+    y: i32;
+}
+
+tagged Shape {
+    Circle { radius: i32; },
+    Point,
+}
+
+enum Color {
+    Red,
+    Green,
+}
+
+fn exercise(ptr: *volatile u32, point: Point, shape: Shape) -> i32 {
+    var x: i32 = 0;
+    x = x + 1;
+
+    if (x > 0) {
+        x = x + point.x;
+    } else if (x == 0) {
+        x = 1;
+    } else {
+        x = 2;
+    }
+
+    while (x < 3) {
+        x = x + 1;
+    }
+
+    for (var i: usize = 0; i < 3; i = i + 1) {
+        if (i == 1) {
+            continue;
+        }
+    }
+
+    for (val item in [1, 2, 3]) {
+        use(item);
+    }
+
+    val inc = (value: i32) -> i32 {
+        return value + 1;
+    };
+
+    val add_x = [x](value: i32) -> i32 {
+        return value + x;
+    };
+
+    val result: i32 = match (shape) {
+        Shape::Circle{radius} => radius,
+        Shape::Point => 0,
+    };
+
+    match (shape) {
+        Shape::Point{} => consume(None{}),
+        _ => consume(None),
+    };
+
+    with context(
+        :scratch = &test_scratch,
+        :logger = &test_logger
+    ) {
+        point.length();
+    }
+
+    val unchecked = point.x @unchecked;
+    val red = Color::Red;
+    val unit_a = Shape::Point;
+    val unit_b = Shape::Point{};
+
+    return inc(add_x(result + unchecked));
+}
