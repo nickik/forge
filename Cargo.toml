@@ -6,3 +6,9 @@ resolver = "2"
 edition = "2021"
 license = "MIT"
 version = "0.1.0"
+
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0
