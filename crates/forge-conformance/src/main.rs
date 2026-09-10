@@ -169,10 +169,7 @@ fn validate_suite(suite: &Suite) -> Result<(), String> {
             }
             TestKind::Run => {
                 if test.exit.is_none() {
-                    return Err(format!(
-                        ":run test {} requires :exit",
-                        test.path.display()
-                    ));
+                    return Err(format!(":run test {} requires :exit", test.path.display()));
                 }
                 if test.expected.is_some() {
                     return Err(format!(
