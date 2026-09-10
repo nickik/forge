@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   validate:
-    if: github.event.head_commit.message == 'Classify distinct type errors'
+    if: github.event.head_commit.message == 'Finish typed HIR lint cleanup'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,9 +23,13 @@ jobs:
           s = p.read_text().replace('let mut env = ModuleTypeEnv::build(source, module);', 'let env = ModuleTypeEnv::build(source, module);')
           old = '''    fn require_assignable(&mut self, span: Span, expected: &Ty, actual: &Ty, code: &str) {\n        if !self.is_assignable(expected,actual) { self.diagnostic(span,code,format!("expected {expected:?}, found {actual:?}")); }\n    }'''
           new = '''    fn require_assignable(&mut self, span: Span, expected: &Ty, actual: &Ty, code: &str) {\n        if !self.is_assignable(expected, actual) {\n            let code = if matches!((expected, actual), (Ty::Nominal(a), Ty::Nominal(b)) if a != b) {\n                "type/distinct"\n            } else {\n                code\n            };\n            self.diagnostic(span, code, format!("expected {expected:?}, found {actual:?}"));\n        }\n    }'''
-          if old not in s:
-              raise SystemExit('require_assignable marker not found')
-          p.write_text(s.replace(old, new, 1))
+          if old in s:
+              s = s.replace(old, new, 1)
+          old_call = '''            Ty::Int { .. } | Ty::Float { .. } | Ty::Byte | Ty::Char => {\n                if !self.is_explicitly_convertible(&target_ty,&source) {\n                    self.diagnostic(span,"type/mismatch",format!("invalid explicit conversion from {source:?} to {target_ty:?}"));\n                }\n            }'''
+          new_call = '''            Ty::Int { .. } | Ty::Float { .. } | Ty::Byte | Ty::Char\n                if !self.is_explicitly_convertible(&target_ty, &source) =>\n            {\n                self.diagnostic(\n                    span,\n                    "type/mismatch",\n                    format!("invalid explicit conversion from {source:?} to {target_ty:?}"),\n                );\n            }\n            Ty::Int { .. } | Ty::Float { .. } | Ty::Byte | Ty::Char => {}'''
+          if old_call not in s:
+              raise SystemExit('check_type_call marker not found')
+          p.write_text(s.replace(old_call, new_call, 1))
           PY
           cargo fmt --all
       - name: Validate compiler
