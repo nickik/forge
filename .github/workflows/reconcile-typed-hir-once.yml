@@ -1,0 +1,297 @@
+name: reconcile-typed-hir-once
+on:
+  push:
+    branches: [agent/conformance-runner]
+permissions:
+  contents: write
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/conformance-runner
+      - name: Reconcile HIR and type checker
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('crates/forge-frontend/src/body_hir_v1.rs')
+          s = p.read_text()
+          s = s.replace('    Builtin,\n    Error,', '    Builtin { name: String },\n    Error,', 1)
+          s = s.replace('return HirTypeRef::Builtin;', 'return HirTypeRef::Builtin { name: name.clone() };', 1)
+          s = s.replace('        ResolvedName::Import(u32::MAX)', '        ResolvedName::Error')
+
+          call_marker = '''    Call {
+        callee: Box<HirExpr>,
+        args: Vec<HirCallArg>,
+    },
+'''
+          if '    TypeCall {' not in s:
+              s = s.replace(call_marker, call_marker + '''    TypeCall {
+        target: HirTypeRef,
+        args: Vec<HirCallArg>,
+    },
+''', 1)
+
+          old_call = '''            ExprKind::Call { callee, args } => HirExprKind::Call {
+                callee: Box::new(self.lower_expr(callee)),
+                args: args
+                    .iter()
+                    .map(|a| match a {
+                        ast::CallArg::Positional { value } => HirCallArg::Positional {
+                            value: self.lower_expr(value),
+                        },
+                        ast::CallArg::Named { name, value } => HirCallArg::Named {
+                            name: name.clone(),
+                            value: self.lower_expr(value),
+                        },
+                    })
+                    .collect(),
+            },
+'''
+          new_call = '''            ExprKind::Call { callee, args } => {
+                let lowered_args = args
+                    .iter()
+                    .map(|a| match a {
+                        ast::CallArg::Positional { value } => HirCallArg::Positional {
+                            value: self.lower_expr(value),
+                        },
+                        ast::CallArg::Named { name, value } => HirCallArg::Named {
+                            name: name.clone(),
+                            value: self.lower_expr(value),
+                        },
+                    })
+                    .collect();
+                if let ExprKind::Path { path } = &callee.kind {
+                    if path.segments.len() == 1 {
+                        let name = &path.segments[0];
+                        let has_value = self.scopes.iter().rev().any(|scope| scope.contains_key(name))
+                            || self.module.symbols.get(name).and_then(|set| set.value_def).is_some();
+                        let is_type = is_builtin_type(name)
+                            || self.module.symbols.get(name).and_then(|set| set.type_def).is_some();
+                        if is_type && !has_value {
+                            HirExprKind::TypeCall {
+                                target: self.lower_type_ref(path, callee.span),
+                                args: lowered_args,
+                            }
+                        } else {
+                            HirExprKind::Call {
+                                callee: Box::new(self.lower_expr(callee)),
+                                args: lowered_args,
+                            }
+                        }
+                    } else {
+                        HirExprKind::Call {
+                            callee: Box::new(self.lower_expr(callee)),
+                            args: lowered_args,
+                        }
+                    }
+                } else {
+                    HirExprKind::Call {
+                        callee: Box::new(self.lower_expr(callee)),
+                        args: lowered_args,
+                    }
+                }
+            },
+'''
+          if old_call in s:
+              s = s.replace(old_call, new_call, 1)
+
+          start = s.index('    fn lower_binding_pattern(&mut self, pattern: &ast::Pattern, mutable: bool) -> HirPattern {')
+          end = s.index('    fn lower_pattern_field(', start)
+          replacement = r'''    fn lower_binding_pattern(&mut self, pattern: &ast::Pattern, mutable: bool) -> HirPattern {
+        self.lower_binding_pattern_with(pattern, mutable, None)
+    }
+
+    fn lower_binding_pattern_with(
+        &mut self,
+        pattern: &ast::Pattern,
+        mutable: bool,
+        canonical: Option<&BTreeMap<String, LocalId>>,
+    ) -> HirPattern {
+        let binding_id = |this: &mut Self, name: &str, span: Span| {
+            canonical
+                .and_then(|bindings| bindings.get(name).copied())
+                .unwrap_or_else(|| this.define_local(span, mutable, false, name))
+        };
+        let kind = match &pattern.kind {
+            PatternKind::Wildcard => HirPatternKind::Wildcard,
+            PatternKind::Binding { name, optional } => HirPatternKind::Binding {
+                local: binding_id(self, name, pattern.span),
+                optional: *optional,
+            },
+            PatternKind::Literal { value } => HirPatternKind::Literal { value: value.clone() },
+            PatternKind::Range { start, end, inclusive } => HirPatternKind::Range {
+                start: start.clone(), end: end.clone(), inclusive: *inclusive,
+            },
+            PatternKind::Variant { namespace, name, fields, explicit_braces } => HirPatternKind::Variant {
+                namespace: self.lower_type_ref(namespace, pattern.span),
+                name: name.clone(),
+                fields: fields.iter().map(|field| self.lower_pattern_field_with(field, mutable, pattern.span, canonical)).collect(),
+                explicit_braces: *explicit_braces,
+            },
+            PatternKind::None { explicit_braces } => HirPatternKind::None { explicit_braces: *explicit_braces },
+            PatternKind::Some { value } => HirPatternKind::Some {
+                value: Box::new(self.lower_binding_pattern_with(value, mutable, canonical)),
+            },
+            PatternKind::Struct { path, fields } => HirPatternKind::Struct {
+                path: self.lower_type_ref(path, pattern.span),
+                fields: fields.iter().map(|field| self.lower_pattern_field_with(field, mutable, pattern.span, canonical)).collect(),
+            },
+            PatternKind::Sequence { items, rest } => HirPatternKind::Sequence {
+                items: items.iter().map(|item| self.lower_binding_pattern_with(item, mutable, canonical)).collect(),
+                rest: rest.as_ref().map(|name| binding_id(self, name, pattern.span)),
+            },
+            PatternKind::Map { entries, ignore_rest } => HirPatternKind::Map {
+                entries: entries.iter().map(|entry| HirMapPatternEntry {
+                    keyword: entry.keyword.clone(),
+                    local: binding_id(self, &entry.binding, pattern.span),
+                    optional: entry.optional,
+                }).collect(),
+                ignore_rest: *ignore_rest,
+            },
+            PatternKind::Or { patterns } => {
+                let expected = patterns.first().map(pattern_binding_names).unwrap_or_default();
+                for alternative in patterns.iter().skip(1) {
+                    if pattern_binding_names(alternative) != expected {
+                        self.diagnostics.push(HirDiagnostic {
+                            span: alternative.span,
+                            message: "OR-pattern alternatives must bind the same names".into(),
+                        });
+                    }
+                }
+                let owned;
+                let canonical = if let Some(existing) = canonical {
+                    existing
+                } else {
+                    owned = expected
+                        .iter()
+                        .map(|name| (name.clone(), self.define_local(pattern.span, mutable, false, name)))
+                        .collect::<BTreeMap<_, _>>();
+                    &owned
+                };
+                HirPatternKind::Or {
+                    patterns: patterns.iter().map(|alternative| {
+                        self.lower_binding_pattern_with(alternative, mutable, Some(canonical))
+                    }).collect(),
+                }
+            }
+            PatternKind::As { name, pattern: inner } => HirPatternKind::As {
+                local: binding_id(self, name, pattern.span),
+                pattern: Box::new(self.lower_binding_pattern_with(inner, mutable, canonical)),
+            },
+        };
+        HirNode::new(pattern.span, kind)
+    }
+
+    fn lower_pattern_field_with(
+        &mut self,
+        field: &ast::PatternField,
+        mutable: bool,
+        span: Span,
+        canonical: Option<&BTreeMap<String, LocalId>>,
+    ) -> HirPatternField {
+        if let Some(pattern) = &field.pattern {
+            HirPatternField {
+                name: field.name.clone(),
+                pattern: Some(self.lower_binding_pattern_with(pattern, mutable, canonical)),
+                shorthand_local: None,
+            }
+        } else {
+            let local = canonical
+                .and_then(|bindings| bindings.get(&field.name).copied())
+                .unwrap_or_else(|| self.define_local(span, mutable, false, &field.name));
+            HirPatternField {
+                name: field.name.clone(),
+                pattern: None,
+                shorthand_local: Some(local),
+            }
+        }
+    }
+
+'''
+          s = s[:start] + replacement + s[end:]
+
+          helper = r'''
+fn pattern_binding_names(pattern: &ast::Pattern) -> std::collections::BTreeSet<String> {
+    let mut names = std::collections::BTreeSet::new();
+    collect_pattern_binding_names(pattern, &mut names);
+    names
+}
+
+fn collect_pattern_binding_names(pattern: &ast::Pattern, names: &mut std::collections::BTreeSet<String>) {
+    match &pattern.kind {
+        PatternKind::Binding { name, .. } => { names.insert(name.clone()); }
+        PatternKind::Variant { fields, .. } | PatternKind::Struct { fields, .. } => {
+            for field in fields {
+                if let Some(pattern) = &field.pattern {
+                    collect_pattern_binding_names(pattern, names);
+                } else {
+                    names.insert(field.name.clone());
+                }
+            }
+        }
+        PatternKind::Sequence { items, rest } => {
+            for item in items { collect_pattern_binding_names(item, names); }
+            if let Some(rest) = rest { names.insert(rest.clone()); }
+        }
+        PatternKind::Map { entries, .. } => {
+            for entry in entries { names.insert(entry.binding.clone()); }
+        }
+        PatternKind::Some { value } => collect_pattern_binding_names(value, names),
+        PatternKind::Or { patterns } => {
+            if let Some(first) = patterns.first() { collect_pattern_binding_names(first, names); }
+        }
+        PatternKind::As { name, pattern } => {
+            names.insert(name.clone());
+            collect_pattern_binding_names(pattern, names);
+        }
+        PatternKind::Wildcard | PatternKind::Literal { .. } | PatternKind::Range { .. } | PatternKind::None { .. } => {}
+    }
+}
+
+'''
+          insert_at = s.index('\nfn is_builtin_type(')
+          s = s[:insert_at] + '\n' + helper + s[insert_at:]
+          p.write_text(s)
+
+          tc = Path('crates/forge-frontend/src/typecheck_v1.rs')
+          s = tc.read_text().replace('let mut env = ModuleTypeEnv::build(source, module);', 'let env = ModuleTypeEnv::build(source, module);', 1)
+          tc.write_text(s)
+
+          t = Path('crates/forge-frontend/tests/body_hir.rs')
+          s = t.read_text()
+          old = '''    let HirExprKind::Name { reference } = &match &arms[0].body {
+        forge_frontend::body_hir::HirMatchBody::Expr(expr) => &expr.kind,
+        _ => panic!("expected expression arm"),
+    } else {
+        panic!("expected name use");
+    };
+'''
+          if old in s:
+              new = '''    let arm_expr = match &arms[0].body {
+        forge_frontend::body_hir::HirMatchBody::Expr(expr) => expr,
+        _ => panic!("expected expression arm"),
+    };
+    let HirExprKind::Name { reference } = &arm_expr.kind else {
+        panic!("expected name use");
+    };
+'''
+              s = s.replace(old, new, 1)
+          t.write_text(s)
+          PY
+      - name: Validate
+        run: |
+          cargo fmt --all
+          cargo check --workspace --locked
+          cargo test --workspace --locked
+          cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn
+          cargo clippy --workspace --all-targets --locked -- -D warnings -A clippy::large-enum-variant -A clippy::only-used-in-recursion
+      - name: Commit
+        run: |
+          git config user.name forge-ci
+          git config user.email forge-ci@users.noreply.github.com
+          git add crates/forge-frontend/src/body_hir_v1.rs crates/forge-frontend/src/typecheck_v1.rs crates/forge-frontend/tests/body_hir.rs
+          git commit -m 'Reconcile resolved and typed HIR'
+          git push origin HEAD:agent/conformance-runner
