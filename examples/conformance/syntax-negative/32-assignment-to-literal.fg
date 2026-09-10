@@ -1,0 +1,5 @@
+module examples.conformance.bad_assignment_target;
+fn main() -> i32 {
+    1 = 2;
+    return 0;
+}

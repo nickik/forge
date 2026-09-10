@@ -1,0 +1,5 @@
+module examples.conformance.bad_context_name;
+fn main() -> i32 {
+    with context(scratch = &scratch) { run(); }
+    return 0;
+}

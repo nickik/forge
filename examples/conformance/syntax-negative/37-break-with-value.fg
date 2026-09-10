@@ -1,0 +1,5 @@
+module examples.conformance.bad_break_value;
+fn main() -> i32 {
+    while (true) { break 1; }
+    return 0;
+}

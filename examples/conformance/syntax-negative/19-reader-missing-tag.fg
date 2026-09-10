@@ -1,0 +1,5 @@
+module examples.conformance.bad_reader_tag;
+fn main() -> i32 {
+    val x = # "u32";
+    return 0;
+}

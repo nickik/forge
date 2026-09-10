@@ -1,0 +1,4 @@
+module examples.conformance.bad_sequence_rest;
+fn f(x: Value) -> i32 {
+    return match (x) { [head, ..rest, tail] => 1, _ => 0, };
+}

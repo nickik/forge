@@ -1,0 +1,5 @@
+module examples.conformance.bad_for_header;
+fn main() -> i32 {
+    for var i: i32 = 0; i < 2; i = i + 1 { }
+    return 0;
+}

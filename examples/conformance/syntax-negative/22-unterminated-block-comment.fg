@@ -1,0 +1,5 @@
+module examples.conformance.bad_comment;
+fn main() -> i32 {
+    /* comment never closes
+    return 0;
+}

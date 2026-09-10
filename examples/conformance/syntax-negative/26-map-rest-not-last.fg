@@ -1,0 +1,4 @@
+module examples.conformance.bad_map_rest;
+fn f(x: Value) -> i32 {
+    return match (x) { {:a a, .., :b b} => 1, _ => 0, };
+}

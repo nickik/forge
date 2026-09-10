@@ -1,0 +1,13 @@
+module examples.conformance.closure_captures;
+
+fn main() -> i32 {
+    val factor: i32 = 2;
+    var count: i32 = 0;
+    val pure = (x: i32) -> i32 { return x + 1; };
+    val scaled = [factor](x: i32) -> i32 { return x * factor; };
+    val counted = [&mut count, factor,]() -> i32 {
+        count = count + factor;
+        return count;
+    };
+    return pure(scaled(counted()));
+}

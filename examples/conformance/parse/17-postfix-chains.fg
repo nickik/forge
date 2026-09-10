@@ -1,0 +1,10 @@
+module examples.conformance.postfix_chains;
+
+fn main() -> i32 {
+    val first = matrix[0][1];
+    val member = object.child.value;
+    val called = object.method(1, 2).next().value;
+    val tried = operation(1)?;
+    val unchecked = values[index] @unchecked;
+    return first;
+}

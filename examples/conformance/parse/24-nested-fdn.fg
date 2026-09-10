@@ -1,0 +1,15 @@
+module examples.conformance.nested_fdn;
+
+@{
+    :config {
+        :vector [1, 2, 3]
+        :list (alpha beta gamma)
+        :set #{:a :b :c}
+        :tagged #forge/type "u32"
+        :nested {:enabled true :none nil}
+    }
+}
+fn main() -> i32 {
+    val x = #forge/data {:items [#type "u8" #type "u16"]};
+    return 0;
+}

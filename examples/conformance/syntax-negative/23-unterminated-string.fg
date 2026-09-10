@@ -1,0 +1,5 @@
+module examples.conformance.bad_string;
+fn main() -> i32 {
+    val x = "unterminated;
+    return 0;
+}

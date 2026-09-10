@@ -1,0 +1,5 @@
+module examples.conformance.bad_context_positional;
+fn main() -> i32 {
+    with context(&scratch) { run(); }
+    return 0;
+}

@@ -1,0 +1,3 @@
+module examples.conformance.bad_module_one;
+module examples.conformance.bad_module_two;
+fn main() -> i32 { return 0; }

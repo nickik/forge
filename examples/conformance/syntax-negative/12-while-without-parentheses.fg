@@ -1,0 +1,4 @@
+module examples.conformance.bad_while_header;
+fn main() -> i32 {
+    while true { return 0; }
+}

@@ -1,0 +1,5 @@
+module examples.conformance.bad_foreach_binding;
+fn main() -> i32 {
+    for (item in items) { use(item); }
+    return 0;
+}

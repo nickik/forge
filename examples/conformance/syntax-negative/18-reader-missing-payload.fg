@@ -1,0 +1,5 @@
+module examples.conformance.bad_reader_payload;
+fn main() -> i32 {
+    val x = #type;
+    return 0;
+}

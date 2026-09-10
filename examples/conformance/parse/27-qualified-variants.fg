@@ -1,0 +1,14 @@
+module examples.conformance.qualified_variants;
+
+enum Color { Red, Green, Blue, }
+tagged Shape { Point, Circle { radius: i32; }, }
+
+fn main() -> i32 {
+    val red = Color::Red;
+    val point = Shape::Point;
+    val point2 = Shape::Point{};
+    val circle = Shape::Circle{radius: 4};
+    val absent = None{};
+    val present = Some(1);
+    return 0;
+}

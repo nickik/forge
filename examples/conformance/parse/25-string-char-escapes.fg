@@ -1,0 +1,10 @@
+module examples.conformance.string_char_escapes;
+
+fn main() -> i32 {
+    val newline = '\n';
+    val quote = '\'';
+    val slash = '\\';
+    val text = "line1\nline2\t\"quoted\"\\end";
+    val ctext = c"native\nstring";
+    return 0;
+}

@@ -1,0 +1,5 @@
+module examples.conformance.bad_ternary;
+fn main() -> i32 {
+    val x = true ? 1 : 0;
+    return x;
+}

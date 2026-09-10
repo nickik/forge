@@ -1,0 +1,10 @@
+module examples.conformance.defer_expression;
+
+fn main() -> i32 {
+    defer cleanup();
+    defer {
+        flush();
+        close();
+    }
+    return 0;
+}

@@ -1,0 +1,5 @@
+module examples.conformance.bad_mixed_call;
+fn main() -> i32 {
+    val x = configure(1, :height = 20);
+    return 0;
+}

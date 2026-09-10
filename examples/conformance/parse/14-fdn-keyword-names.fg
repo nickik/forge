@@ -1,0 +1,16 @@
+module examples.conformance.fdn_keyword_names;
+
+@{
+    :type #type "u32"
+    :fn #forge/fn {:match 1 :switch 2}
+    :context :context
+}
+fn main() -> i32 {
+    val a = #type "u32";
+    val b = #forge/type {
+        :fn [1 2 3]
+        :match #{:left :right}
+        :context (with context)
+    };
+    return 0;
+}

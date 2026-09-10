@@ -1,0 +1,16 @@
+module examples.conformance.call_forms;
+
+fn add(a: i32, b: i32) -> i32 {
+    return a + b;
+}
+
+nfn layout(width: u32 = 80u32, height: u32 = 25u32) -> u32 {
+    return width * height;
+}
+
+fn main() -> i32 {
+    val a = add(1, 2,);
+    val b = layout(:width = 100u32, :height = 30u32,);
+    val c = layout();
+    return a;
+}

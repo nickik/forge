@@ -1,0 +1,13 @@
+module examples.conformance.metadata_forms;
+
+@inline()
+@{
+    :owner "compiler"
+    :since #version "1.0"
+}
+fn checked(value: u32) -> u32 {
+    val raw = value @unchecked;
+    return @wrap(raw + 1u32);
+}
+
+type Percent = u8 @range(0..=100);

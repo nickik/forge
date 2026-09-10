@@ -1,0 +1,13 @@
+module examples.conformance.type_nesting;
+
+type ReadOnly = u32[];
+type Writable = u32[] mut;
+type Device = *volatile u32;
+type MaybeDevice = *volatile u32?;
+type Callback = fn(u32, &str) -> Result[u32, IOError];
+type Handler = closure(Result[u32, IOError]) -> u32;
+type Table = [fn(u32) -> u32; 4];
+
+fn main() -> i32 {
+    return 0;
+}

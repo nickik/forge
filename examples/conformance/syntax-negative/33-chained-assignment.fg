@@ -1,0 +1,7 @@
+module examples.conformance.bad_chained_assignment;
+fn main() -> i32 {
+    var a: i32 = 0;
+    var b: i32 = 0;
+    a = b = 1;
+    return a;
+}

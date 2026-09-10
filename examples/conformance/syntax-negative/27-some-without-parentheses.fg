@@ -1,0 +1,4 @@
+module examples.conformance.bad_some_pattern;
+fn f(x: Value) -> i32 {
+    return match (x) { Some value => 1, _ => 0, };
+}
