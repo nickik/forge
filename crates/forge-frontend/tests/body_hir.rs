@@ -1,5 +1,5 @@
 use forge_frontend::{
-    body_hir::{HirExprKind, HirStmtKind, HirTypeKind, HirTypeRef},
+    body_hir::{HirExprKind, HirPatternKind, HirStmtKind, HirTypeKind, HirTypeRef},
     lower_module, lower_resolved_bodies, parse_source, DefId, LocalId, ResolvedName,
 };
 
@@ -174,4 +174,49 @@ fn unresolved_names_become_explicit_error_references() {
         panic!("expected name");
     };
     assert_eq!(reference.root, ResolvedName::Error);
+}
+
+#[test]
+fn or_pattern_alternatives_share_canonical_local_ids() {
+    let output = lower(
+        r#"
+        module test.hir_or_pattern;
+        tagged Choice {
+            Left { value: i32; },
+            Right { value: i32; }
+        }
+        fn read(choice: Choice) -> i32 {
+            return match (choice) {
+                Choice::Left{value} | Choice::Right{value} => value,
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let body = &output.functions[&DefId(1)];
+    let HirStmtKind::Return { value: Some(value), .. } = &body.block.statements[0].kind else {
+        panic!("expected return");
+    };
+    let HirExprKind::Match { arms, .. } = &value.kind else {
+        panic!("expected match");
+    };
+    let HirPatternKind::Or { patterns } = &arms[0].pattern.kind else {
+        panic!("expected OR pattern");
+    };
+    let variant_local = |pattern: &forge_frontend::HirPattern| {
+        let HirPatternKind::Variant { fields, .. } = &pattern.kind else {
+            panic!("expected variant");
+        };
+        fields[0].shorthand_local.expect("value binding")
+    };
+    let left = variant_local(&patterns[0]);
+    let right = variant_local(&patterns[1]);
+    assert_eq!(left, right, "OR alternatives must reuse one logical LocalId");
+    let HirExprKind::Name { reference } = &match &arms[0].body {
+        forge_frontend::body_hir::HirMatchBody::Expr(expr) => &expr.kind,
+        _ => panic!("expected expression arm"),
+    } else {
+        panic!("expected name use");
+    };
+    assert_eq!(reference.root, ResolvedName::Local(left));
 }
