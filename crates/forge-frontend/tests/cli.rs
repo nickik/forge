@@ -31,12 +31,13 @@ fn forge_parse_cli_accepts_conformance_fixture() {
 
 #[test]
 fn forge_parse_cli_rejects_malformed_source() {
-    let malformed = std::env::temp_dir().join(format!(
-        "forge-cli-invalid-{}.fg",
-        std::process::id()
-    ));
-    std::fs::write(&malformed, "module test.invalid; fn main( -> i32 { return 0; }")
-        .expect("write malformed source");
+    let malformed =
+        std::env::temp_dir().join(format!("forge-cli-invalid-{}.fg", std::process::id()));
+    std::fs::write(
+        &malformed,
+        "module test.invalid; fn main( -> i32 { return 0; }",
+    )
+    .expect("write malformed source");
 
     let output = Command::new(env!("CARGO_BIN_EXE_forge-parse"))
         .arg("--json")
