@@ -1,0 +1,39 @@
+module examples.conformance.functions_calls;
+
+fn square(x: u32) -> u32 {
+    return x * x;
+}
+
+nfn connect(
+    host: str,
+    port: u16 = 443u16,
+    encrypted: bool = true
+) -> Result[Connection, NetError] {
+    return open_connection(host, port, encrypted);
+}
+
+fn apply(value: u32, f: closure(u32) -> u32) -> u32 {
+    return f(value);
+}
+
+fn main() -> i32 {
+    val operation: fn(u32) -> u32 = square;
+    val factor: u32 = 2u32;
+    val captured = [factor](x: u32) -> u32 {
+        return x * factor;
+    };
+    val plain = (x: u32) -> u32 {
+        return x + 1u32;
+    };
+
+    val connection = connect(
+        :encrypted = false,
+        :host = "localhost",
+        :port = 8080u16
+    )?;
+
+    use(operation(3u32));
+    use(apply(3u32, captured));
+    use(apply(3u32, plain));
+    return 0;
+}
