@@ -1,0 +1,10 @@
+module examples.conformance.bad_pattern_not;
+
+fn main() -> i32 {
+    val x: i32 = 1;
+    match (x) {
+        !0 => 1,
+        _ => 0,
+    };
+    return 0;
+}
