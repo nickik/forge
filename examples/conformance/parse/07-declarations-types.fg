@@ -1,0 +1,53 @@
+module examples.conformance.declarations_types;
+
+import std.io, std.mem;
+
+@repr(c)
+pub struct Pair {
+    first: i32;
+    second: i32;
+}
+
+@repr(u8)
+enum Color {
+    Red,
+    Green,
+    Blue,
+}
+
+tagged MaybePair {
+    SomePair { value: Pair; },
+    Empty,
+}
+
+bitstruct Status: u16 {
+    ready: 1;
+    error: 1;
+    mode: 3;
+    code: 5;
+    reserved: 6;
+}
+
+distinct UserId: u32;
+type ByteCount = usize;
+type Percentage = u8 @range(0..=100);
+
+const PAGE_SIZE: usize = 4096;
+val GLOBAL_NAME: str = "Forge";
+var GLOBAL_COUNT: u32 = 0u32;
+
+fn types(
+    fixed: [u32; 4],
+    read: u32[],
+    write: u32[] mut,
+    reference: &Pair,
+    mutable_reference: &mut Pair,
+    pointer: *Pair,
+    device: *volatile u32,
+    optional: &Pair?,
+    result: Result[Pair, IOError],
+    callback: fn(u32) -> u32,
+    operation: closure(u32) -> u32
+) -> void {
+    return;
+}
