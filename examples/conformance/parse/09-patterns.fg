@@ -1,0 +1,42 @@
+module examples.conformance.patterns;
+
+struct Point {
+    x: i32;
+    y: i32;
+}
+
+tagged Token {
+    Number { value: i32; },
+    Plus,
+    Minus,
+}
+
+fn inspect(token: Token, point: Point, values: i32[], record: Config) -> i32 {
+    val Point{x, y} = point;
+
+    val result: i32 = match (token) {
+        Token::Plus | Token::Minus => 1,
+        whole @ Token::Number{value} when value > 0 => use_number(whole, value),
+        Token::Number{value: 0} => 0,
+        _ => -1,
+    };
+
+    match (values) {
+        [first, second, ..rest] => consume(first, second, rest),
+        [only] => consume_one(only),
+        _ => consume_none(),
+    };
+
+    match (record) {
+        {:name name, :email email?, ..} => consume_record(name, email),
+        _ => consume_none(),
+    };
+
+    match (result) {
+        0 => zero(),
+        1..=9 => small(),
+        _ => other(),
+    };
+
+    return x + y + result;
+}
