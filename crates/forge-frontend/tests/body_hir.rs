@@ -194,7 +194,10 @@ fn or_pattern_alternatives_share_canonical_local_ids() {
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
     let body = &output.functions[&DefId(1)];
-    let HirStmtKind::Return { value: Some(value), .. } = &body.block.statements[0].kind else {
+    let HirStmtKind::Return {
+        value: Some(value), ..
+    } = &body.block.statements[0].kind
+    else {
         panic!("expected return");
     };
     let HirExprKind::Match { arms, .. } = &value.kind else {
@@ -211,7 +214,10 @@ fn or_pattern_alternatives_share_canonical_local_ids() {
     };
     let left = variant_local(&patterns[0]);
     let right = variant_local(&patterns[1]);
-    assert_eq!(left, right, "OR alternatives must reuse one logical LocalId");
+    assert_eq!(
+        left, right,
+        "OR alternatives must reuse one logical LocalId"
+    );
 
     let arm_expr = match &arms[0].body {
         HirMatchBody::Expr(expr) => expr,
