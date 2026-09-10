@@ -1,0 +1,7 @@
+module examples.conformance.bad_compound_assignment;
+
+fn main() -> i32 {
+    var x: i32 = 1;
+    x += 1;
+    return x;
+}
