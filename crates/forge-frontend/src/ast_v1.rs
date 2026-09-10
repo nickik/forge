@@ -186,15 +186,26 @@ pub struct Block {
 #[serde(tag = "stmt", rename_all = "snake_case")]
 pub enum StmtKind {
     Value(ValueDecl),
-    Assignment { target: Expr, value: Expr },
-    Expr { expr: Expr },
-    Return { tail: bool, value: Option<Expr> },
+    Assignment {
+        target: Expr,
+        value: Expr,
+    },
+    Expr {
+        expr: Expr,
+    },
+    Return {
+        tail: bool,
+        value: Option<Expr>,
+    },
     If {
         condition: Expr,
         then_block: Block,
         else_branch: Option<Box<Stmt>>,
     },
-    While { condition: Expr, body: Block },
+    While {
+        condition: Expr,
+        body: Block,
+    },
     ForC {
         init: Option<ForInit>,
         condition: Option<Expr>,
@@ -209,14 +220,22 @@ pub enum StmtKind {
     },
     Break,
     Continue,
-    Defer { body: DeferBody },
-    Unsafe { body: Block },
+    Defer {
+        body: DeferBody,
+    },
+    Unsafe {
+        body: Block,
+    },
     WithContext {
         overrides: Vec<ContextOverride>,
         body: Block,
     },
-    Select { arms: Vec<SelectArm> },
-    Block { block: Block },
+    Select {
+        arms: Vec<SelectArm>,
+    },
+    Block {
+        block: Block,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -269,48 +288,95 @@ pub enum SelectArm {
         pattern: Pattern,
         body: Block,
     },
-    Timeout { duration: Expr, body: Block },
+    Timeout {
+        duration: Expr,
+        body: Block,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "expr", rename_all = "snake_case")]
 pub enum ExprKind {
-    Integer { text: String },
-    Float { text: String },
-    Character { value: char },
-    String { value: String },
-    CString { value: String },
-    Bool { value: bool },
+    Integer {
+        text: String,
+    },
+    Float {
+        text: String,
+    },
+    Character {
+        value: char,
+    },
+    String {
+        value: String,
+    },
+    CString {
+        value: String,
+    },
+    Bool {
+        value: bool,
+    },
     None,
-    Keyword { name: String },
-    Path { path: Path },
-    Qualified { namespace: Path, name: String },
-    Array { items: Vec<Expr> },
+    Keyword {
+        name: String,
+    },
+    Path {
+        path: Path,
+    },
+    Qualified {
+        namespace: Path,
+        name: String,
+    },
+    Array {
+        items: Vec<Expr>,
+    },
     StructInit {
         namespace: Path,
         variant: Option<String>,
         fields: Vec<InitField>,
         explicit_braces: bool,
     },
-    Unary { op: UnaryOp, value: Box<Expr> },
+    Unary {
+        op: UnaryOp,
+        value: Box<Expr>,
+    },
     Binary {
         op: BinaryOp,
         left: Box<Expr>,
         right: Box<Expr>,
     },
-    Call { callee: Box<Expr>, args: Vec<CallArg> },
-    Index { base: Box<Expr>, index: Box<Expr> },
-    Member { base: Box<Expr>, name: String },
-    Try { value: Box<Expr> },
+    Call {
+        callee: Box<Expr>,
+        args: Vec<CallArg>,
+    },
+    Index {
+        base: Box<Expr>,
+        index: Box<Expr>,
+    },
+    Member {
+        base: Box<Expr>,
+        name: String,
+    },
+    Try {
+        value: Box<Expr>,
+    },
     Closure {
         captures: Vec<Capture>,
         params: Vec<Param>,
         return_type: Option<TypeNode>,
         body: Block,
     },
-    Match { value: Box<Expr>, arms: Vec<MatchArm> },
-    ReaderForm { tag: String, value: FdnValue },
-    Annotated { value: Box<Expr>, metadata: Vec<Metadata> },
+    Match {
+        value: Box<Expr>,
+        arms: Vec<MatchArm>,
+    },
+    ReaderForm {
+        tag: String,
+        value: FdnValue,
+    },
+    Annotated {
+        value: Box<Expr>,
+        metadata: Vec<Metadata>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -340,6 +406,7 @@ pub enum UnaryOp {
     Not,
     BitNot,
     AddressOf,
+    AddressOfMut,
     Deref,
 }
 
@@ -370,16 +437,44 @@ pub enum BinaryOp {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TypeKind {
-    Named { path: Path },
-    Pointer { volatile: bool, inner: Box<TypeNode> },
-    Reference { mutable: bool, inner: Box<TypeNode> },
-    Optional { inner: Box<TypeNode> },
-    Slice { mutable: bool, element: Box<TypeNode> },
-    Array { element: Box<TypeNode>, length: Box<Expr> },
-    Result { ok: Box<TypeNode>, error: Box<TypeNode> },
-    Function { params: Vec<TypeNode>, result: Box<TypeNode> },
-    Closure { params: Vec<TypeNode>, result: Box<TypeNode> },
-    Annotated { inner: Box<TypeNode>, metadata: Vec<Metadata> },
+    Named {
+        path: Path,
+    },
+    Pointer {
+        volatile: bool,
+        inner: Box<TypeNode>,
+    },
+    Reference {
+        mutable: bool,
+        inner: Box<TypeNode>,
+    },
+    Optional {
+        inner: Box<TypeNode>,
+    },
+    Slice {
+        mutable: bool,
+        element: Box<TypeNode>,
+    },
+    Array {
+        element: Box<TypeNode>,
+        length: Box<Expr>,
+    },
+    Result {
+        ok: Box<TypeNode>,
+        error: Box<TypeNode>,
+    },
+    Function {
+        params: Vec<TypeNode>,
+        result: Box<TypeNode>,
+    },
+    Closure {
+        params: Vec<TypeNode>,
+        result: Box<TypeNode>,
+    },
+    Annotated {
+        inner: Box<TypeNode>,
+        metadata: Vec<Metadata>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -393,7 +488,10 @@ pub struct Metadata {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum MetadataArg {
     Value(FdnValue),
-    Named { name: String, value: FdnValue },
+    Named {
+        name: String,
+        value: FdnValue,
+    },
     Range {
         start: Box<FdnValue>,
         end: Box<FdnValue>,
@@ -405,8 +503,13 @@ pub enum MetadataArg {
 #[serde(tag = "pattern_kind", rename_all = "snake_case")]
 pub enum PatternKind {
     Wildcard,
-    Binding { name: String, optional: bool },
-    Literal { value: PatternLiteral },
+    Binding {
+        name: String,
+        optional: bool,
+    },
+    Literal {
+        value: PatternLiteral,
+    },
     Range {
         start: PatternLiteral,
         end: PatternLiteral,
@@ -418,13 +521,31 @@ pub enum PatternKind {
         fields: Vec<PatternField>,
         explicit_braces: bool,
     },
-    None { explicit_braces: bool },
-    Some { value: Box<Pattern> },
-    Struct { path: Path, fields: Vec<PatternField> },
-    Sequence { items: Vec<Pattern>, rest: Option<String> },
-    Map { entries: Vec<MapPatternEntry>, ignore_rest: bool },
-    Or { patterns: Vec<Pattern> },
-    As { name: String, pattern: Box<Pattern> },
+    None {
+        explicit_braces: bool,
+    },
+    Some {
+        value: Box<Pattern>,
+    },
+    Struct {
+        path: Path,
+        fields: Vec<PatternField>,
+    },
+    Sequence {
+        items: Vec<Pattern>,
+        rest: Option<String>,
+    },
+    Map {
+        entries: Vec<MapPatternEntry>,
+        ignore_rest: bool,
+    },
+    Or {
+        patterns: Vec<Pattern>,
+    },
+    As {
+        name: String,
+        pattern: Box<Pattern>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

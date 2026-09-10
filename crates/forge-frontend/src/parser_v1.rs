@@ -187,9 +187,11 @@ where
             value: Box::new(value),
         });
     fdn.define(
-        choice((fdn_set, fdn_tagged, fdn_vector, fdn_list, fdn_map, fdn_scalar))
-            .labelled("FDN value")
-            .boxed(),
+        choice((
+            fdn_set, fdn_tagged, fdn_vector, fdn_list, fdn_map, fdn_scalar,
+        ))
+        .labelled("FDN value")
+        .boxed(),
     );
 
     // Metadata.
@@ -320,7 +322,14 @@ where
             .ignore_then(just(Token::Mut).or_not())
             .map(|value| TypePrefix::Reference(value.is_some())),
     ));
-    let type_base = choice((result_type, array_type, function_type, closure_type, named_type)).boxed();
+    let type_base = choice((
+        result_type,
+        array_type,
+        function_type,
+        closure_type,
+        named_type,
+    ))
+    .boxed();
     let prefixed_type = type_prefix
         .repeated()
         .foldr_with(type_base, |prefix, inner, e| {
@@ -449,7 +458,11 @@ where
             )
         });
     let some_pattern = just(Token::Some)
-        .ignore_then(pattern.clone().delimited_by(just(Token::LParen), just(Token::RParen)))
+        .ignore_then(
+            pattern
+                .clone()
+                .delimited_by(just(Token::LParen), just(Token::RParen)),
+        )
         .map_with(|value, e| {
             Node::new(
                 PatternKind::Some {
@@ -465,7 +478,12 @@ where
         .clone()
         .separated_by(just(Token::Comma))
         .collect::<Vec<_>>()
-        .then(just(Token::Comma).or_not().ignore_then(sequence_rest).or_not())
+        .then(
+            just(Token::Comma)
+                .or_not()
+                .ignore_then(sequence_rest)
+                .or_not(),
+        )
         .delimited_by(just(Token::LBracket), just(Token::RBracket))
         .map_with(|(items, rest), e| {
             Node::new(PatternKind::Sequence { items, rest }, span(e.span()))
@@ -498,8 +516,8 @@ where
                 span(e.span()),
             )
         });
-    let wildcard = just(Token::Underscore)
-        .map_with(|_, e| Node::new(PatternKind::Wildcard, span(e.span())));
+    let wildcard =
+        just(Token::Underscore).map_with(|_, e| Node::new(PatternKind::Wildcard, span(e.span())));
     let binding = ident().map_with(|name, e| {
         Node::new(
             PatternKind::Binding {
@@ -596,12 +614,13 @@ where
     let reader_expr = just(Token::Hash)
         .ignore_then(fdn_name())
         .then(fdn.clone())
-        .map_with(|(tag, value), e| {
-            Node::new(ExprKind::ReaderForm { tag, value }, span(e.span()))
-        });
+        .map_with(|(tag, value), e| Node::new(ExprKind::ReaderForm { tag, value }, span(e.span())));
     let wrap_expr = just(Token::At)
         .ignore_then(select! { Token::Ident(name) if name == "wrap" => name })
-        .then(expr.clone().delimited_by(just(Token::LParen), just(Token::RParen)))
+        .then(
+            expr.clone()
+                .delimited_by(just(Token::LParen), just(Token::RParen)),
+        )
         .map_with(|(name, value), e| {
             Node::new(
                 ExprKind::Annotated {
@@ -698,9 +717,8 @@ where
     let closure_tail = closure_params
         .then(just(Token::Arrow).ignore_then(ty.clone()).or_not())
         .then(block.clone());
-    let captured_closure = capture_list
-        .then(closure_tail.clone())
-        .map_with(|(captures, ((params, return_type), body)), e| {
+    let captured_closure = capture_list.then(closure_tail.clone()).map_with(
+        |(captures, ((params, return_type), body)), e| {
             Node::new(
                 ExprKind::Closure {
                     captures,
@@ -710,7 +728,8 @@ where
                 },
                 span(e.span()),
             )
-        });
+        },
+    );
     let capture_free_closure = closure_tail.map_with(|((params, return_type), body), e| {
         Node::new(
             ExprKind::Closure {
@@ -739,7 +758,10 @@ where
             body,
         });
     let match_expr = just(Token::Match)
-        .ignore_then(expr.clone().delimited_by(just(Token::LParen), just(Token::RParen)))
+        .ignore_then(
+            expr.clone()
+                .delimited_by(just(Token::LParen), just(Token::RParen)),
+        )
         .then(
             match_arm
                 .repeated()
@@ -795,8 +817,12 @@ where
         .at_least(1)
         .allow_trailing()
         .collect::<Vec<_>>();
-    let call_args = choice((named_args, positional_args, empty().to(Vec::<CallArg>::new())))
-        .delimited_by(just(Token::LParen), just(Token::RParen));
+    let call_args = choice((
+        named_args,
+        positional_args,
+        empty().to(Vec::<CallArg>::new()),
+    ))
+    .delimited_by(just(Token::LParen), just(Token::RParen));
 
     #[derive(Clone)]
     enum Postfix {
@@ -843,6 +869,9 @@ where
         just(Token::Minus).to(UnaryOp::Neg),
         just(Token::Bang).to(UnaryOp::Not),
         just(Token::Tilde).to(UnaryOp::BitNot),
+        just(Token::Amp)
+            .then_ignore(just(Token::Mut))
+            .to(UnaryOp::AddressOfMut),
         just(Token::Amp).to(UnaryOp::AddressOf),
         just(Token::Star).to(UnaryOp::Deref),
     ));
@@ -973,21 +1002,28 @@ where
         .map_with(|(target, value), e| {
             Node::new(StmtKind::Assignment { target, value }, span(e.span()))
         });
-    let return_stmt = just(Token::Return)
-        .ignore_then(just(Token::Tail).or_not())
-        .then(expr.clone().or_not())
+    let tail_return_stmt = just(Token::Return)
+        .ignore_then(just(Token::Tail))
+        .ignore_then(expr.clone())
         .then_ignore(just(Token::Semicolon))
-        .map_with(|(tail, value), e| {
+        .map_with(|value, e| {
             Node::new(
                 StmtKind::Return {
-                    tail: tail.is_some(),
-                    value,
+                    tail: true,
+                    value: Some(value),
                 },
                 span(e.span()),
             )
         });
+    let return_stmt = just(Token::Return)
+        .ignore_then(expr.clone().or_not())
+        .then_ignore(just(Token::Semicolon))
+        .map_with(|value, e| Node::new(StmtKind::Return { tail: false, value }, span(e.span())));
     let if_stmt = just(Token::If)
-        .ignore_then(expr.clone().delimited_by(just(Token::LParen), just(Token::RParen)))
+        .ignore_then(
+            expr.clone()
+                .delimited_by(just(Token::LParen), just(Token::RParen)),
+        )
         .then(block.clone())
         .then(just(Token::Else).ignore_then(stmt.clone()).or_not())
         .map_with(|((condition, then_block), else_branch), e| {
@@ -1001,7 +1037,10 @@ where
             )
         });
     let while_stmt = just(Token::While)
-        .ignore_then(expr.clone().delimited_by(just(Token::LParen), just(Token::RParen)))
+        .ignore_then(
+            expr.clone()
+                .delimited_by(just(Token::LParen), just(Token::RParen)),
+        )
         .then(block.clone())
         .map_with(|(condition, body), e| {
             Node::new(StmtKind::While { condition, body }, span(e.span()))
@@ -1098,10 +1137,7 @@ where
         )
         .then(block.clone())
         .map_with(|(overrides, body), e| {
-            Node::new(
-                StmtKind::WithContext { overrides, body },
-                span(e.span()),
-            )
+            Node::new(StmtKind::WithContext { overrides, body }, span(e.span()))
         });
     let receive_arm = just(Token::Recv)
         .ignore_then(expr.clone())
@@ -1137,6 +1173,7 @@ where
     stmt.define(
         choice((
             value_stmt,
+            tail_return_stmt,
             return_stmt,
             if_stmt,
             while_stmt,
@@ -1420,26 +1457,26 @@ fn validate_decl(declaration: &Decl, diagnostics: &mut Vec<Diagnostic>) {
             }
         }
         DeclKind::Enum(value) => {
-  if value.variants.is_empty() {
-      diagnostics.push(Diagnostic {
-          span: declaration.span,
-          message: "enum declarations require at least one variant".into(),
-      });
-  }
-  for variant in &value.variants {
+            if value.variants.is_empty() {
+                diagnostics.push(Diagnostic {
+                    span: declaration.span,
+                    message: "enum declarations require at least one variant".into(),
+                });
+            }
+            for variant in &value.variants {
                 if let Some(value) = &variant.value {
                     validate_expr(value, diagnostics);
                 }
             }
         }
         DeclKind::Tagged(value) => {
-  if value.variants.is_empty() {
-      diagnostics.push(Diagnostic {
-          span: declaration.span,
-          message: "tagged declarations require at least one variant".into(),
-      });
-  }
-  for variant in &value.variants {
+            if value.variants.is_empty() {
+                diagnostics.push(Diagnostic {
+                    span: declaration.span,
+                    message: "tagged declarations require at least one variant".into(),
+                });
+            }
+            for variant in &value.variants {
                 for field in &variant.fields {
                     if let Some(default) = &field.default {
                         validate_expr(default, diagnostics);
@@ -1718,7 +1755,9 @@ pub fn parse_source(source: &str) -> ParseOutput {
         })
         .collect::<Vec<_>>();
     let stream = Stream::from_iter(tokens)
-        .map((0..source.len()).into(), |(token, span): (_, _)| (token, span));
+        .map((0..source.len()).into(), |(token, span): (_, _)| {
+            (token, span)
+        });
     let (ast, parse_errors) = source_parser().parse(stream).into_output_errors();
     diagnostics.extend(parse_errors.into_iter().map(|error| Diagnostic {
         span: span(*error.span()),
