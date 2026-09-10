@@ -1,0 +1,25 @@
+module examples.conformance.impl_methods;
+
+struct Point {
+    x: f32;
+    y: f32;
+}
+
+impl Point {
+    @inline
+    fn length2(self: &Point) -> f32 {
+        return self.x * self.x + self.y * self.y;
+    }
+
+    fn translate(self: &mut Point, dx: f32, dy: f32) -> void {
+        self.x = self.x + dx;
+        self.y = self.y + dy;
+    }
+}
+
+fn main() -> i32 {
+    var p: Point = Point{x: 1.0, y: 2.0};
+    p.translate(3.0, 4.0);
+    use(p.length2());
+    return 0;
+}
