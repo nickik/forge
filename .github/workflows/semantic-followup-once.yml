@@ -14,7 +14,9 @@ jobs:
           ref: agent/conformance-runner
           fetch-depth: 0
       - name: Apply semantic follow-up
-        run: python scripts/semantic_followup_patch.py
+        run: |
+          python scripts/semantic_followup_patch.py
+          python scripts/body_type_value_patch.py
       - name: Format
         run: cargo fmt --all
       - name: Validate
@@ -27,6 +29,7 @@ jobs:
       - name: Commit
         run: |
           rm -f scripts/semantic_followup_patch.py
+          rm -f scripts/body_type_value_patch.py
           rm -f .github/workflows/semantic-followup-once.yml
           rm -f .github/workflows/reconcile-typed-hir-once.yml
           git config user.name forge-ci
