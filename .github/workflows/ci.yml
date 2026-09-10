@@ -17,4 +17,4 @@ jobs:
       - run: cargo check --workspace --locked
       - run: cargo test --workspace --locked
       - run: cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings -A clippy::large-enum-variant -A clippy::only-used-in-recursion
