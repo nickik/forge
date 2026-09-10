@@ -402,7 +402,7 @@ pub enum MetadataArg {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(tag = "pattern", rename_all = "snake_case")]
+#[serde(tag = "pattern_kind", rename_all = "snake_case")]
 pub enum PatternKind {
     Wildcard,
     Binding { name: String, optional: bool },
