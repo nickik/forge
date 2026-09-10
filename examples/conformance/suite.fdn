@@ -2,9 +2,9 @@
   :suite :forge/conformance
   :version 1
 
-  ; Only kinds listed here are required to execute successfully. A kind is
-  ; activated when the corresponding compiler stage exists.
-  :active-kinds [:parse]
+  ; Parse and syntax-negative cases are executable today. Semantic-negative and
+  ; run cases become active when HIR/type checking and code generation exist.
+  :active-kinds [:parse :syntax-negative]
 
   :tests [
     {:path #path "run/01-arithmetic-precedence.fg" :kind :run :exit 0}
@@ -22,6 +22,19 @@
     {:path #path "parse/02-option-result-types.fg" :kind :parse}
     {:path #path "parse/03-nfn-defaults.fg" :kind :parse}
     {:path #path "parse/04-defer-unsafe.fg" :kind :parse}
+    {:path #path "parse/05-resolved-v1-syntax.fg" :kind :parse}
+
+    {:path #path "syntax-negative/01-compound-assignment.fg" :kind :syntax-negative :expect :syntax/compound-assignment}
+    {:path #path "syntax-negative/02-uninitialized-binding.fg" :kind :syntax-negative :expect :syntax/initializer-required}
+    {:path #path "syntax-negative/03-assignment-expression.fg" :kind :syntax-negative :expect :syntax/assignment-expression}
+    {:path #path "syntax-negative/04-if-without-parentheses.fg" :kind :syntax-negative :expect :syntax/control-parentheses}
+    {:path #path "syntax-negative/05-switch.fg" :kind :syntax-negative :expect :syntax/switch-reserved}
+    {:path #path "syntax-negative/06-internal.fg" :kind :syntax-negative :expect :syntax/internal-reserved}
+    {:path #path "syntax-negative/07-empty-capture-list.fg" :kind :syntax-negative :expect :syntax/empty-capture-list}
+    {:path #path "syntax-negative/08-pattern-conjunction.fg" :kind :syntax-negative :expect :syntax/pattern-conjunction}
+    {:path #path "syntax-negative/09-pattern-negation.fg" :kind :syntax-negative :expect :syntax/pattern-negation}
+    {:path #path "syntax-negative/10-check-metadata.fg" :kind :syntax-negative :expect :syntax/check-removed}
+    {:path #path "syntax-negative/11-extern-c.fg" :kind :syntax-negative :expect :syntax/extern-deferred}
 
     {:path #path "negative/01-mixed-width-arithmetic.fg" :kind :negative :expect :type/mismatch}
     {:path #path "negative/02-signed-unsigned-compare.fg" :kind :negative :expect :type/mismatch}
