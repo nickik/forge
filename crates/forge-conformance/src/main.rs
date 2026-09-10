@@ -1,4 +1,9 @@
-use std::{env, fs, path::Path, process};
+use std::{
+    collections::HashSet,
+    env, fs,
+    path::{Component, Path},
+    process,
+};
 
 use forge_frontend::parse_source;
 
@@ -25,6 +30,13 @@ fn main() {
     });
 
     let suite = parse_suite(&manifest_text).unwrap_or_else(|error| {
+        eprintln!(
+            "forge-conformance: invalid {}: {error}",
+            manifest_path.display()
+        );
+        process::exit(2);
+    });
+    validate_suite(&suite).unwrap_or_else(|error| {
         eprintln!(
             "forge-conformance: invalid {}: {error}",
             manifest_path.display()
@@ -96,6 +108,83 @@ fn usage() -> ! {
     eprintln!("usage: forge-conformance [suite.fdn]");
     eprintln!("default: {DEFAULT_MANIFEST}");
     process::exit(2);
+}
+
+fn validate_suite(suite: &Suite) -> Result<(), String> {
+    if suite.name != "forge/conformance" {
+        return Err(format!(
+            "unsupported :suite :{}; expected :forge/conformance",
+            suite.name
+        ));
+    }
+    if suite.version != 1 {
+        return Err(format!(
+            "unsupported suite :version {}; expected 1",
+            suite.version
+        ));
+    }
+
+    let mut paths = HashSet::new();
+    for test in &suite.tests {
+        if test.path.as_os_str().is_empty() {
+            return Err("test :path must not be empty".into());
+        }
+        if test.path.is_absolute()
+            || test
+                .path
+                .components()
+                .any(|component| !matches!(component, Component::Normal(_)))
+        {
+            return Err(format!(
+                "test :path must stay within the suite directory: {}",
+                test.path.display()
+            ));
+        }
+        if !paths.insert(test.path.clone()) {
+            return Err(format!("duplicate test :path {}", test.path.display()));
+        }
+
+        match test.kind {
+            TestKind::Parse => {
+                if test.expected.is_some() || test.exit.is_some() {
+                    return Err(format!(
+                        ":parse test {} must not specify :expect or :exit",
+                        test.path.display()
+                    ));
+                }
+            }
+            TestKind::Negative => {
+                if test.expected.is_none() {
+                    return Err(format!(
+                        ":negative test {} requires :expect",
+                        test.path.display()
+                    ));
+                }
+                if test.exit.is_some() {
+                    return Err(format!(
+                        ":negative test {} must not specify :exit",
+                        test.path.display()
+                    ));
+                }
+            }
+            TestKind::Run => {
+                if test.exit.is_none() {
+                    return Err(format!(
+                        ":run test {} requires :exit",
+                        test.path.display()
+                    ));
+                }
+                if test.expected.is_some() {
+                    return Err(format!(
+                        ":run test {} must not specify :expect",
+                        test.path.display()
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn execute_case(suite: &Suite, test: &TestCase, path: &Path) -> Outcome {
