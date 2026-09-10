@@ -9,4 +9,6 @@ This suite is intentionally split into executable categories:
 
 The parser audit should grow by adding a positive fixture for every accepted grammar family and one or more negative fixtures for nearby reserved, malformed, or deliberately excluded forms. A parser change is not considered complete until the relevant fixtures are active in `suite.fdn` and CI passes.
 
-Current focus areas include FDN/metadata boundaries, declarations and defaults, call argument modes, control-flow headers, patterns, closures, postfix expressions, lexical errors, and reserved future syntax.
+Current active coverage includes 35 positive parse fixtures and 64 syntax-negative fixtures. Pending semantic-negative coverage also records parser/type-checker boundary cases such as type-looking index/call syntax, qualified enum requirements, named-argument validation, and `return tail` restrictions.
+
+Current focus areas include FDN/metadata boundaries, declarations and defaults, call argument modes, control-flow headers, patterns, closures, postfix expressions, lexical errors, `select`, `impl`, and reserved future syntax.
