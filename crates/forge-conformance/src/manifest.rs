@@ -1,8 +1,9 @@
-use std::{fmt, path::PathBuf};
+use std::{collections::HashSet, fmt, path::PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TestKind {
     Parse,
+    SyntaxNegative,
     Negative,
     Run,
 }
@@ -11,6 +12,7 @@ impl TestKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Parse => "parse",
+            Self::SyntaxNegative => "syntax-negative",
             Self::Negative => "negative",
             Self::Run => "run",
         }
@@ -19,6 +21,7 @@ impl TestKind {
     fn from_keyword(value: &str) -> Result<Self, ManifestError> {
         match value {
             "parse" => Ok(Self::Parse),
+            "syntax-negative" => Ok(Self::SyntaxNegative),
             "negative" => Ok(Self::Negative),
             "run" => Ok(Self::Run),
             other => Err(ManifestError::semantic(format!(
@@ -98,6 +101,7 @@ pub fn parse_suite(input: &str) -> Result<Suite, ManifestError> {
 
 fn suite_from_value(value: Value) -> Result<Suite, ManifestError> {
     let map = expect_map(&value, "suite root")?;
+    validate_keyword_map_keys(map, &["suite", "version", "active-kinds", "tests"], "suite root")?;
 
     let name = expect_keyword(required(map, "suite")?, ":suite")?.to_owned();
     let version = expect_integer(required(map, "version")?, ":version")?;
@@ -117,6 +121,8 @@ fn suite_from_value(value: Value) -> Result<Suite, ManifestError> {
 
     for value in test_values {
         let test = expect_map(value, "test entry")?;
+        validate_keyword_map_keys(test, &["path", "kind", "expect", "exit"], "test entry")?;
+
         let path = expect_path(required(test, "path")?, ":path")?;
         let kind = TestKind::from_keyword(expect_keyword(required(test, "kind")?, ":kind")?)?;
         let expected = optional(test, "expect")
@@ -149,6 +155,32 @@ fn suite_from_value(value: Value) -> Result<Suite, ManifestError> {
         active_kinds,
         tests,
     })
+}
+
+fn validate_keyword_map_keys(
+    map: &[(Value, Value)],
+    allowed: &[&str],
+    description: &str,
+) -> Result<(), ManifestError> {
+    let mut seen = HashSet::new();
+    for (key, _) in map {
+        let Value::Keyword(name) = key else {
+            return Err(ManifestError::semantic(format!(
+                "{description} keys must be FDN keywords"
+            )));
+        };
+        if !allowed.contains(&name.as_str()) {
+            return Err(ManifestError::semantic(format!(
+                "unknown {description} key :{name}"
+            )));
+        }
+        if !seen.insert(name.as_str()) {
+            return Err(ManifestError::semantic(format!(
+                "duplicate {description} key :{name}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn required<'a>(map: &'a [(Value, Value)], key: &str) -> Result<&'a Value, ManifestError> {
@@ -455,9 +487,10 @@ mod tests {
             r#"{
                 :suite :forge/conformance
                 :version 1
-                :active-kinds [:parse]
+                :active-kinds [:parse :syntax-negative]
                 :tests [
                     {:path #path "parse/a.fg" :kind :parse}
+                    {:path #path "syntax-negative/s.fg" :kind :syntax-negative :expect :syntax/rejected}
                     {:path #path "negative/b.fg" :kind :negative :expect :type/mismatch}
                     {:path #path "run/c.fg" :kind :run :exit 0}
                 ]
@@ -467,10 +500,14 @@ mod tests {
 
         assert_eq!(suite.name, "forge/conformance");
         assert_eq!(suite.version, 1);
-        assert_eq!(suite.active_kinds, vec![TestKind::Parse]);
-        assert_eq!(suite.tests.len(), 3);
-        assert_eq!(suite.tests[1].expected.as_deref(), Some("type/mismatch"));
-        assert_eq!(suite.tests[2].exit, Some(0));
+        assert_eq!(
+            suite.active_kinds,
+            vec![TestKind::Parse, TestKind::SyntaxNegative]
+        );
+        assert_eq!(suite.tests.len(), 4);
+        assert_eq!(suite.tests[1].expected.as_deref(), Some("syntax/rejected"));
+        assert_eq!(suite.tests[2].expected.as_deref(), Some("type/mismatch"));
+        assert_eq!(suite.tests[3].exit, Some(0));
     }
 
     #[test]
@@ -487,5 +524,17 @@ mod tests {
         .expect("manifest should parse");
 
         assert_eq!(suite.active_kinds, vec![TestKind::Parse]);
+    }
+
+    #[test]
+    fn rejects_unknown_and_duplicate_keys() {
+        assert!(parse_suite(
+            r#"{:suite :forge/conformance :version 1 :active-kinds [:parse] :tests [] :typo true}"#
+        )
+        .is_err());
+        assert!(parse_suite(
+            r#"{:suite :forge/conformance :version 1 :version 1 :active-kinds [:parse] :tests []}"#
+        )
+        .is_err());
     }
 }
