@@ -52,6 +52,7 @@ It intentionally does **not** yet implement the entire v1 grammar. Pattern match
 - `docs/memory-model.md` — allocators, arenas, pools, scratch memory, ownership conventions.
 - `docs/concurrency.md` — OS threads, CSP, agents, atomics.
 - `docs/compatibility.md` — v1 compatibility promises.
+- `examples/conformance/` — C-compiler-inspired run, parse, and negative Forge examples plus an FDN suite manifest.
 - `AGENTS.md` — repository instructions for Codex and coding agents.
 - `TASKS.md` — ordered implementation work.
 
