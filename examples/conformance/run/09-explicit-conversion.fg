@@ -1,0 +1,13 @@
+module examples.conformance.explicit_conversion;
+
+fn main() -> i32 {
+    val small: u8 = 12u8;
+    val wide: u32 = u32(small);
+    val result: u32 = wide + 30u32;
+
+    if (result == 42u32) {
+        return 0;
+    } else {
+        return 9;
+    }
+}

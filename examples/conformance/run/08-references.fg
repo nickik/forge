@@ -1,0 +1,16 @@
+module examples.conformance.references;
+
+fn read(value: &i32) -> i32 {
+    return *value;
+}
+
+fn main() -> i32 {
+    val source: i32 = 42;
+    val result: i32 = read(&source);
+
+    if (result == 42) {
+        return 0;
+    } else {
+        return 8;
+    }
+}

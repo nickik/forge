@@ -1,0 +1,9 @@
+// Expected semantic error: Forge performs no implicit integer widening.
+module examples.conformance.negative_mixed_width;
+
+fn main() -> i32 {
+    val small: u8 = 1u8;
+    val wide: u32 = 2u32;
+    val bad = small + wide;
+    return 0;
+}

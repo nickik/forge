@@ -1,0 +1,8 @@
+// Expected semantic error: bool is not an integer type.
+module examples.conformance.negative_bool_integer;
+
+fn main() -> i32 {
+    val enabled: bool = true;
+    val bad = enabled + 1;
+    return 0;
+}

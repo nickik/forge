@@ -1,0 +1,13 @@
+module examples.conformance.tagged_union;
+
+tagged Token {
+    Integer { value: i64; },
+    Name { text: str; },
+    Plus,
+    End,
+}
+
+fn main() -> i32 {
+    val token: Token = Token.Integer{value: 42};
+    return 0;
+}

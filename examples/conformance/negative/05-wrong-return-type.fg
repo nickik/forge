@@ -1,0 +1,10 @@
+// Expected semantic error: function result type is i32, not bool.
+module examples.conformance.negative_return;
+
+fn bad_result() -> i32 {
+    return true;
+}
+
+fn main() -> i32 {
+    return bad_result();
+}

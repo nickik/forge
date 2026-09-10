@@ -1,0 +1,19 @@
+module examples.conformance.function_calls;
+
+fn add(a: i32, b: i32) -> i32 {
+    return a + b;
+}
+
+fn twice(value: i32) -> i32 {
+    return add(value, value);
+}
+
+fn main() -> i32 {
+    val result: i32 = add(twice(7), add(2, 3));
+
+    if (result == 19) {
+        return 0;
+    } else {
+        return 4;
+    }
+}

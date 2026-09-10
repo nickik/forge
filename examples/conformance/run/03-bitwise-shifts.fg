@@ -1,0 +1,17 @@
+module examples.conformance.bitwise_shifts;
+
+fn main() -> i32 {
+    val a: u32 = 0x0fu32;
+    val b: u32 = 0x33u32;
+
+    val anded: u32 = a & b;
+    val ored: u32 = a | b;
+    val xored: u32 = a ^ b;
+    val shifted: u32 = 3u32 << 4u32;
+
+    if (anded == 3u32 && ored == 63u32 && xored == 60u32 && shifted == 48u32) {
+        return 0;
+    } else {
+        return 3;
+    }
+}

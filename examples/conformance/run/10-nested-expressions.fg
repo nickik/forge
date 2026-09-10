@@ -1,0 +1,19 @@
+module examples.conformance.nested_expressions;
+
+fn square(x: i32) -> i32 {
+    return x * x;
+}
+
+fn main() -> i32 {
+    val a: i32 = 2;
+    val b: i32 = 3;
+    val c: i32 = 4;
+
+    val result: i32 = square(a + b) - c * 3 + 7;
+
+    if (result == 20) {
+        return 0;
+    } else {
+        return 10;
+    }
+}

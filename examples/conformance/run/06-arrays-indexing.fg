@@ -1,0 +1,12 @@
+module examples.conformance.arrays_indexing;
+
+fn main() -> i32 {
+    val values: [i32; 5] = [3, 5, 8, 13, 21];
+    val result: i32 = values[0] + values[2] + values[4];
+
+    if (result == 32) {
+        return 0;
+    } else {
+        return 6;
+    }
+}

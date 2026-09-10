@@ -1,0 +1,12 @@
+module examples.conformance.defer_unsafe;
+
+fn inspect(ptr: *u32) -> u32 {
+    defer {
+        trace_done();
+    }
+
+    unsafe {
+        val value: u32 = *ptr;
+        return value;
+    }
+}

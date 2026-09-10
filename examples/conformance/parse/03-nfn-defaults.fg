@@ -1,0 +1,9 @@
+module examples.conformance.nfn_defaults;
+
+nfn connect(
+    host: str,
+    port: u16 = 443u16,
+    encrypted: bool = true
+) -> Result[Connection, NetError] {
+    return network_connect(host, port, encrypted);
+}

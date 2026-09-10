@@ -1,0 +1,9 @@
+// Expected semantic error: signed and unsigned integers are not implicitly mixed.
+module examples.conformance.negative_signed_unsigned;
+
+fn main() -> i32 {
+    val signed: i32 = -1;
+    val unsigned: u32 = 1u32;
+    val bad: bool = signed < unsigned;
+    return 0;
+}

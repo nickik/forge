@@ -1,0 +1,17 @@
+module examples.conformance.recursion;
+
+fn factorial(n: i32) -> i32 {
+    if (n <= 1) {
+        return 1;
+    } else {
+        return n * factorial(n - 1);
+    }
+}
+
+fn main() -> i32 {
+    if (factorial(6) == 720) {
+        return 0;
+    } else {
+        return 5;
+    }
+}

@@ -1,0 +1,29 @@
+{
+  :suite :forge/conformance
+  :version 1
+
+  :tests [
+    {:path #path "run/01-arithmetic-precedence.fg" :kind :run :exit 0}
+    {:path #path "run/02-comparisons-logic.fg" :kind :run :exit 0}
+    {:path #path "run/03-bitwise-shifts.fg" :kind :run :exit 0}
+    {:path #path "run/04-function-calls.fg" :kind :run :exit 0}
+    {:path #path "run/05-recursion.fg" :kind :run :exit 0}
+    {:path #path "run/06-arrays-indexing.fg" :kind :run :exit 0}
+    {:path #path "run/07-struct-values.fg" :kind :run :exit 0}
+    {:path #path "run/08-references.fg" :kind :run :exit 0}
+    {:path #path "run/09-explicit-conversion.fg" :kind :run :exit 0}
+    {:path #path "run/10-nested-expressions.fg" :kind :run :exit 0}
+
+    {:path #path "parse/01-tagged-union.fg" :kind :parse}
+    {:path #path "parse/02-option-result-types.fg" :kind :parse}
+    {:path #path "parse/03-nfn-defaults.fg" :kind :parse}
+    {:path #path "parse/04-defer-unsafe.fg" :kind :parse}
+
+    {:path #path "negative/01-mixed-width-arithmetic.fg" :kind :negative :expect :type/mismatch}
+    {:path #path "negative/02-signed-unsigned-compare.fg" :kind :negative :expect :type/mismatch}
+    {:path #path "negative/03-bool-integer-mix.fg" :kind :negative :expect :type/mismatch}
+    {:path #path "negative/04-distinct-type-mix.fg" :kind :negative :expect :type/distinct}
+    {:path #path "negative/05-wrong-return-type.fg" :kind :negative :expect :type/return}
+    {:path #path "negative/06-null-is-not-a-value.fg" :kind :negative :expect :name/unresolved}
+  ]
+}

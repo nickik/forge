@@ -1,0 +1,15 @@
+// Expected semantic error: distinct types do not implicitly convert through their representation.
+module examples.conformance.negative_distinct;
+
+distinct UserId: u32;
+distinct AccountId: u32;
+
+fn use_account(id: AccountId) -> u32 {
+    return u32(id);
+}
+
+fn main() -> i32 {
+    val user: UserId = UserId(7u32);
+    val bad: u32 = use_account(user);
+    return 0;
+}

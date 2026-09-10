@@ -1,0 +1,7 @@
+// Expected semantic error: Forge has no language-level null value.
+module examples.conformance.negative_null;
+
+fn main() -> i32 {
+    val ptr: *u32? = null;
+    return 0;
+}

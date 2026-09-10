@@ -1,0 +1,13 @@
+module examples.conformance.option_result_types;
+
+struct User {
+    id: u32;
+}
+
+fn maybe_user(id: u32) -> &User? {
+    return find_user(id);
+}
+
+fn load_user(id: u32) -> Result[User, IOError] {
+    return database_load(id);
+}
