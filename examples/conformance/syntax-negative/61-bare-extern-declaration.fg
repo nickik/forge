@@ -1,0 +1,2 @@
+module examples.conformance.bad_extern;
+extern fn native(x: i32) -> i32 { return x; }

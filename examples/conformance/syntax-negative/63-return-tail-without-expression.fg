@@ -1,0 +1,4 @@
+module examples.conformance.bad_tail_return;
+fn main() -> i32 {
+    return tail;
+}

@@ -1,0 +1,3 @@
+module examples.conformance.bad_distinct_semicolon;
+distinct UserId: u32
+fn main() -> i32 { return 0; }

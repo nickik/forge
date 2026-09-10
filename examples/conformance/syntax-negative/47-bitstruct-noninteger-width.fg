@@ -1,0 +1,2 @@
+module examples.conformance.bad_bit_width;
+bitstruct Header: u8 { kind: width; }

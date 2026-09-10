@@ -1,0 +1,4 @@
+module examples.conformance.bad_double_rest;
+fn f(x: Value) -> i32 {
+    return match (x) { [head, ..middle, ..tail_items] => 1, _ => 0, };
+}

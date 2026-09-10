@@ -1,0 +1,9 @@
+module examples.conformance.match_statement_expression;
+
+fn main() -> i32 {
+    match (value) {
+        0 => handle_zero(),
+        _ => handle_other(),
+    };
+    return 0;
+}

@@ -1,0 +1,11 @@
+module examples.conformance.nested_option_result;
+
+type MaybeResult = Result[u32?, IOError]?;
+type MaybeRef = &User?;
+type MaybePointer = *User?;
+
+fn main() -> i32 {
+    val a = Some(Some(1));
+    val b = Some(None{});
+    return 0;
+}

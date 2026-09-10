@@ -1,0 +1,5 @@
+module examples.conformance.bad_select_arm;
+fn main() -> i32 {
+    select { recv => { } }
+    return 0;
+}

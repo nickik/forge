@@ -1,0 +1,11 @@
+module examples.conformance.empty_allowed_constructs;
+
+struct Marker { }
+bitstruct EmptyBits: u8 { }
+impl Marker { }
+
+fn main() -> i32 {
+    with context() { }
+    val empty = [];
+    return 0;
+}

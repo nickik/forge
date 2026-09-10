@@ -1,0 +1,13 @@
+module examples.conformance.operators_unary;
+
+fn main() -> i32 {
+    val a = -1 + 2 * 3 / 4 % 2;
+    val b = ~mask & other | third ^ fourth;
+    val c = left << 2 >> 1;
+    val d = !false && true || false xor true;
+    val e = a < 3 && a <= 3 && a > 0 && a >= 0 && a == 1 && a != 2;
+    val p = &value;
+    val m = &mut mutable_value;
+    val deref = *pointer;
+    return a;
+}

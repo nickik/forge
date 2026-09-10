@@ -1,0 +1,4 @@
+module examples.conformance.tail_return_noncall;
+fn main() -> i32 {
+    return tail 1 + 2;
+}

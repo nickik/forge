@@ -1,0 +1,5 @@
+module examples.conformance.bad_capture_name;
+fn main() -> i32 {
+    val f = [&mut](x: i32) -> i32 { return x; };
+    return 0;
+}

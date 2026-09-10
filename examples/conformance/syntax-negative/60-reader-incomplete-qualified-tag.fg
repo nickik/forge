@@ -1,0 +1,5 @@
+module examples.conformance.bad_reader_qualified_tag;
+fn main() -> i32 {
+    val x = #forge/ "u32";
+    return 0;
+}

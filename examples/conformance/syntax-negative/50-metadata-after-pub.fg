@@ -1,0 +1,2 @@
+module examples.conformance.bad_metadata_position;
+pub @inline fn main() -> i32 { return 0; }

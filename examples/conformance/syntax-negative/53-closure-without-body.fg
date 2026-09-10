@@ -1,0 +1,5 @@
+module examples.conformance.bad_closure_body;
+fn main() -> i32 {
+    val f = (x: i32) -> i32;
+    return 0;
+}

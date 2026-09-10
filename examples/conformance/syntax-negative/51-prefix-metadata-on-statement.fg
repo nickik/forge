@@ -1,0 +1,5 @@
+module examples.conformance.bad_statement_metadata;
+fn main() -> i32 {
+    @trace val x: i32 = 1;
+    return x;
+}

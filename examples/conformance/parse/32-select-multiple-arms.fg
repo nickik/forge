@@ -1,0 +1,10 @@
+module examples.conformance.select_multiple_arms;
+
+fn main() -> i32 {
+    select {
+        recv left -> Some(value) => { use(value); }
+        recv right -> None => { retry(); }
+        timeout 1000 => { expire(); }
+    }
+    return 0;
+}

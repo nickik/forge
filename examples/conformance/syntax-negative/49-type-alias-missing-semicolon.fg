@@ -1,0 +1,3 @@
+module examples.conformance.bad_alias_semicolon;
+type Count = u32
+fn main() -> i32 { return 0; }

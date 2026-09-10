@@ -1,0 +1,5 @@
+module examples.conformance.bad_select_body;
+fn main() -> i32 {
+    select { timeout 100 => expire(); }
+    return 0;
+}

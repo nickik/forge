@@ -1,0 +1,2 @@
+module examples.conformance.bad_generic_alias;
+type Box[T] = T;

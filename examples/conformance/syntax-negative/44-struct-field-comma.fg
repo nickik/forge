@@ -1,0 +1,2 @@
+module examples.conformance.bad_struct_separator;
+struct Pair { x: i32, y: i32; }

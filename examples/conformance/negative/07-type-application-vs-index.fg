@@ -1,0 +1,6 @@
+module examples.conformance.type_application_semantic;
+struct Point { x: i32; }
+fn main() -> i32 {
+    val x = identity[Point](value);
+    return 0;
+}

@@ -1,0 +1,5 @@
+module examples.conformance.bad_impl_item;
+struct Point { x: i32; }
+impl Point {
+    val zero: i32 = 0;
+}

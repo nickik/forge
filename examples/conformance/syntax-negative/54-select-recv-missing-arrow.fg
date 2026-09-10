@@ -1,0 +1,5 @@
+module examples.conformance.bad_select_arrow;
+fn main() -> i32 {
+    select { recv channel value => { use(value); } }
+    return 0;
+}

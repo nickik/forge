@@ -1,0 +1,12 @@
+module examples.conformance.nested_if_else;
+
+fn classify(a: bool, b: bool) -> i32 {
+    if (a) {
+        if (b) { return 1; }
+        else { return 2; }
+    } else if (b) {
+        return 3;
+    } else {
+        return 4;
+    }
+}

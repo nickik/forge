@@ -1,0 +1,4 @@
+module examples.conformance.bad_range_pattern;
+fn f(x: i32) -> i32 {
+    return match (x) { 1.. => 1, _ => 0, };
+}

@@ -1,0 +1,6 @@
+module examples.conformance.duplicate_named_argument;
+nfn configure(width: u32 = 80u32) -> u32 { return width; }
+fn main() -> i32 {
+    val x = configure(:width = 10u32, :width = 20u32);
+    return 0;
+}

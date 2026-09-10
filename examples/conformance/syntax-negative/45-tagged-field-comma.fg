@@ -1,0 +1,2 @@
+module examples.conformance.bad_tagged_field_separator;
+tagged Value { Pair { x: i32, y: i32; }, }
