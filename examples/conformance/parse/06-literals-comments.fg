@@ -1,0 +1,22 @@
+module examples.conformance.literals_comments;
+
+/* outer comment
+   /* nested comment */
+   still outer
+*/
+
+fn main() -> i32 {
+    val decimal: u32 = 42u32;
+    val hex: u32 = 0xDEAD_BEEFu32;
+    val binary: u8 = 0b1010u8;
+    val octal: u16 = 0o755u16;
+    val signed: i16 = -17i16;
+    val real32: f32 = 3.14f32;
+    val real64: f64 = 1.0e6f64;
+    val letter: char = 'a';
+    val newline: char = '\n';
+    val text: str = "UTF-8: Zürich";
+    val c_text = c"hello";
+    // line comment
+    return 0;
+}
