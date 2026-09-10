@@ -128,7 +128,7 @@ fn reports_duplicate_named_argument() {
         module test.named_duplicate;
         nfn connect(host: str, port: u16 = 80u16) -> bool { return true; }
         fn main() -> i32 {
-            val ok = connect(host: "a", host: "b");
+            val ok = connect(:host = "a", :host = "b");
             return 0;
         }
     "#);
@@ -141,7 +141,7 @@ fn reports_unknown_named_argument() {
         module test.named_unknown;
         nfn connect(host: str, port: u16 = 80u16) -> bool { return true; }
         fn main() -> i32 {
-            val ok = connect(host: "a", bogus: 1u16);
+            val ok = connect(:host = "a", :bogus = 1u16);
             return 0;
         }
     "#);
