@@ -1,8 +1,7 @@
-{
-  :suite :forge/conformance
-  :version 1
-  :active-kinds [:parse :syntax-negative :negative]
-  :tests [
+{:suite :forge/conformance
+ :version 1
+ :active-kinds [:parse :syntax-negative :negative]
+ :tests [
     {:path #path "run/01-arithmetic-precedence.fg" :kind :run :exit 0}
     {:path #path "run/02-comparisons-logic.fg" :kind :run :exit 0}
     {:path #path "run/03-bitwise-shifts.fg" :kind :run :exit 0}
@@ -52,55 +51,55 @@
 
     {:path #path "syntax-negative/01-compound-assignment.fg" :kind :syntax-negative :expect :syntax/compound-assignment}
     {:path #path "syntax-negative/02-uninitialized-binding.fg" :kind :syntax-negative :expect :syntax/initializer-required}
-    {:path #path "syntax-negative/03-assignment-expression.fg" :kind :syntax-negative :expect :syntax/assignment-expression}
+    {:path #path "syntax-negative/03-assignment-expression.fg" :kind :syntax-negative :expect :syntax/assignment-statement-only}
     {:path #path "syntax-negative/04-if-without-parentheses.fg" :kind :syntax-negative :expect :syntax/control-parentheses}
-    {:path #path "syntax-negative/05-switch.fg" :kind :syntax-negative :expect :syntax/switch-reserved}
+    {:path #path "syntax-negative/05-switch.fg" :kind :syntax-negative :expect :syntax/switch-removed}
     {:path #path "syntax-negative/06-internal.fg" :kind :syntax-negative :expect :syntax/internal-reserved}
     {:path #path "syntax-negative/07-empty-capture-list.fg" :kind :syntax-negative :expect :syntax/empty-capture-list}
     {:path #path "syntax-negative/08-pattern-conjunction.fg" :kind :syntax-negative :expect :syntax/pattern-conjunction}
     {:path #path "syntax-negative/09-pattern-negation.fg" :kind :syntax-negative :expect :syntax/pattern-negation}
-    {:path #path "syntax-negative/10-check-metadata.fg" :kind :syntax-negative :expect :syntax/check-removed}
+    {:path #path "syntax-negative/10-check-metadata.fg" :kind :syntax-negative :expect :syntax/check-metadata-removed}
     {:path #path "syntax-negative/11-extern-c.fg" :kind :syntax-negative :expect :syntax/extern-deferred}
     {:path #path "syntax-negative/12-while-without-parentheses.fg" :kind :syntax-negative :expect :syntax/control-parentheses}
     {:path #path "syntax-negative/13-for-without-parentheses.fg" :kind :syntax-negative :expect :syntax/control-parentheses}
-    {:path #path "syntax-negative/14-fn-default-parameter.fg" :kind :syntax-negative :expect :syntax/fn-default}
-    {:path #path "syntax-negative/15-mixed-call-arguments.fg" :kind :syntax-negative :expect :syntax/mixed-call-arguments}
-    {:path #path "syntax-negative/16-context-positional-argument.fg" :kind :syntax-negative :expect :syntax/context-named-arguments}
-    {:path #path "syntax-negative/17-context-missing-keyword-colon.fg" :kind :syntax-negative :expect :syntax/context-named-arguments}
+    {:path #path "syntax-negative/14-fn-default-parameter.fg" :kind :syntax-negative :expect :syntax/fn-default-forbidden}
+    {:path #path "syntax-negative/15-mixed-call-arguments.fg" :kind :syntax-negative :expect :syntax/call-argument-form}
+    {:path #path "syntax-negative/16-context-positional-argument.fg" :kind :syntax-negative :expect :syntax/context-named-argument}
+    {:path #path "syntax-negative/17-context-missing-keyword-colon.fg" :kind :syntax-negative :expect :syntax/context-keyword}
     {:path #path "syntax-negative/18-reader-missing-payload.fg" :kind :syntax-negative :expect :syntax/reader-payload}
     {:path #path "syntax-negative/19-reader-missing-tag.fg" :kind :syntax-negative :expect :syntax/reader-tag}
     {:path #path "syntax-negative/20-fdn-map-odd-arity.fg" :kind :syntax-negative :expect :syntax/fdn-map}
-    {:path #path "syntax-negative/21-fdn-unclosed-vector.fg" :kind :syntax-negative :expect :syntax/fdn-delimiter}
-    {:path #path "syntax-negative/22-unterminated-block-comment.fg" :kind :syntax-negative :expect :syntax/unterminated-comment}
-    {:path #path "syntax-negative/23-unterminated-string.fg" :kind :syntax-negative :expect :syntax/unterminated-string}
-    {:path #path "syntax-negative/24-invalid-char-literal.fg" :kind :syntax-negative :expect :syntax/char-literal}
+    {:path #path "syntax-negative/21-fdn-unclosed-vector.fg" :kind :syntax-negative :expect :syntax/fdn-vector}
+    {:path #path "syntax-negative/22-unterminated-block-comment.fg" :kind :syntax-negative :expect :syntax/block-comment}
+    {:path #path "syntax-negative/23-unterminated-string.fg" :kind :syntax-negative :expect :syntax/string}
+    {:path #path "syntax-negative/24-invalid-char-literal.fg" :kind :syntax-negative :expect :syntax/char}
     {:path #path "syntax-negative/25-sequence-rest-not-last.fg" :kind :syntax-negative :expect :syntax/pattern-rest}
     {:path #path "syntax-negative/26-map-rest-not-last.fg" :kind :syntax-negative :expect :syntax/pattern-rest}
-    {:path #path "syntax-negative/27-some-without-parentheses.fg" :kind :syntax-negative :expect :syntax/some-pattern}
+    {:path #path "syntax-negative/27-some-without-parentheses.fg" :kind :syntax-negative :expect :syntax/some-constructor}
     {:path #path "syntax-negative/28-generic-function-declaration.fg" :kind :syntax-negative :expect :syntax/generics-reserved}
-    {:path #path "syntax-negative/29-c-varargs.fg" :kind :syntax-negative :expect :syntax/c-varargs-reserved}
+    {:path #path "syntax-negative/29-c-varargs.fg" :kind :syntax-negative :expect :syntax/varargs-deferred}
     {:path #path "syntax-negative/30-import-after-declaration.fg" :kind :syntax-negative :expect :syntax/import-order}
-    {:path #path "syntax-negative/31-duplicate-module.fg" :kind :syntax-negative :expect :syntax/module-declaration}
+    {:path #path "syntax-negative/31-duplicate-module.fg" :kind :syntax-negative :expect :syntax/module}
     {:path #path "syntax-negative/32-assignment-to-literal.fg" :kind :syntax-negative :expect :syntax/assignment-target}
-    {:path #path "syntax-negative/33-chained-assignment.fg" :kind :syntax-negative :expect :syntax/assignment-expression}
-    {:path #path "syntax-negative/34-increment-operator.fg" :kind :syntax-negative :expect :syntax/increment-reserved}
-    {:path #path "syntax-negative/35-ternary-operator.fg" :kind :syntax-negative :expect :syntax/ternary-reserved}
+    {:path #path "syntax-negative/33-chained-assignment.fg" :kind :syntax-negative :expect :syntax/assignment-statement-only}
+    {:path #path "syntax-negative/34-increment-operator.fg" :kind :syntax-negative :expect :syntax/increment-removed}
+    {:path #path "syntax-negative/35-ternary-operator.fg" :kind :syntax-negative :expect :syntax/ternary-removed}
     {:path #path "syntax-negative/36-foreach-without-binding-kind.fg" :kind :syntax-negative :expect :syntax/foreach-binding}
     {:path #path "syntax-negative/37-break-with-value.fg" :kind :syntax-negative :expect :syntax/break-value}
-    {:path #path "syntax-negative/38-if-without-block.fg" :kind :syntax-negative :expect :syntax/control-block}
-    {:path #path "syntax-negative/39-empty-enum.fg" :kind :syntax-negative :expect :syntax/empty-enum}
-    {:path #path "syntax-negative/40-empty-tagged.fg" :kind :syntax-negative :expect :syntax/empty-tagged}
+    {:path #path "syntax-negative/38-if-without-block.fg" :kind :syntax-negative :expect :syntax/if-block}
+    {:path #path "syntax-negative/39-empty-enum.fg" :kind :syntax-negative :expect :syntax/enum-variant}
+    {:path #path "syntax-negative/40-empty-tagged.fg" :kind :syntax-negative :expect :syntax/tagged-variant}
     {:path #path "syntax-negative/41-missing-module.fg" :kind :syntax-negative :expect :syntax/module-required}
     {:path #path "syntax-negative/42-module-missing-semicolon.fg" :kind :syntax-negative :expect :syntax/module-semicolon}
     {:path #path "syntax-negative/43-function-prototype-without-body.fg" :kind :syntax-negative :expect :syntax/function-body}
-    {:path #path "syntax-negative/44-struct-field-comma.fg" :kind :syntax-negative :expect :syntax/field-semicolon}
-    {:path #path "syntax-negative/45-tagged-field-comma.fg" :kind :syntax-negative :expect :syntax/field-semicolon}
+    {:path #path "syntax-negative/44-struct-field-comma.fg" :kind :syntax-negative :expect :syntax/struct-field-separator}
+    {:path #path "syntax-negative/45-tagged-field-comma.fg" :kind :syntax-negative :expect :syntax/tagged-field-separator}
     {:path #path "syntax-negative/46-enum-semicolon-separator.fg" :kind :syntax-negative :expect :syntax/enum-separator}
-    {:path #path "syntax-negative/47-bitstruct-noninteger-width.fg" :kind :syntax-negative :expect :syntax/bit-width}
-    {:path #path "syntax-negative/48-distinct-missing-semicolon.fg" :kind :syntax-negative :expect :syntax/declaration-semicolon}
-    {:path #path "syntax-negative/49-type-alias-missing-semicolon.fg" :kind :syntax-negative :expect :syntax/declaration-semicolon}
-    {:path #path "syntax-negative/50-metadata-after-pub.fg" :kind :syntax-negative :expect :syntax/metadata-position}
-    {:path #path "syntax-negative/51-prefix-metadata-on-statement.fg" :kind :syntax-negative :expect :syntax/metadata-position}
+    {:path #path "syntax-negative/47-bitstruct-noninteger-width.fg" :kind :syntax-negative :expect :syntax/bitstruct-width}
+    {:path #path "syntax-negative/48-distinct-missing-semicolon.fg" :kind :syntax-negative :expect :syntax/distinct-semicolon}
+    {:path #path "syntax-negative/49-type-alias-missing-semicolon.fg" :kind :syntax-negative :expect :syntax/type-semicolon}
+    {:path #path "syntax-negative/50-metadata-after-pub.fg" :kind :syntax-negative :expect :syntax/metadata-placement}
+    {:path #path "syntax-negative/51-prefix-metadata-on-statement.fg" :kind :syntax-negative :expect :syntax/metadata-placement}
     {:path #path "syntax-negative/52-capture-missing-name.fg" :kind :syntax-negative :expect :syntax/capture}
     {:path #path "syntax-negative/53-closure-without-body.fg" :kind :syntax-negative :expect :syntax/closure-body}
     {:path #path "syntax-negative/54-select-recv-missing-arrow.fg" :kind :syntax-negative :expect :syntax/select-arrow}
@@ -118,7 +117,7 @@
     {:path #path "negative/01-mixed-width-arithmetic.fg" :kind :negative :expect :type/mismatch}
     {:path #path "negative/02-signed-unsigned-compare.fg" :kind :negative :expect :type/mismatch}
     {:path #path "negative/03-bool-integer-mix.fg" :kind :negative :expect :type/mismatch}
-    {:path #path "negative/04-distinct-type-mix.fg" :kind :negative :expect :type/mismatch}
+    {:path #path "negative/04-distinct-type-mix.fg" :kind :negative :expect :type/distinct}
     {:path #path "negative/05-wrong-return-type.fg" :kind :negative :expect :type/return}
     {:path #path "negative/06-null-is-not-a-value.fg" :kind :negative :expect :name/unresolved}
     {:path #path "negative/07-type-application-vs-index.fg" :kind :negative :expect :type/index-on-type}
