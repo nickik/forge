@@ -1,0 +1,41 @@
+module examples.conformance.control_flow;
+
+fn loops(count: usize) -> i32 {
+    var total: i32 = 0;
+
+    if (count == 0) {
+        return 0;
+    } else if (count == 1) {
+        total = 1;
+    } else {
+        total = 2;
+    }
+
+    while (total < 10) {
+        total = total + 1;
+        if (total == 4) {
+            continue;
+        }
+        if (total == 8) {
+            break;
+        }
+    }
+
+    for (var i: usize = 0; i < count; i = i + 1) {
+        visit(i);
+    }
+
+    for (; total < 20; total = total + 1) {
+        visit(total);
+    }
+
+    for (;;) {
+        break;
+    }
+
+    for (val item in [1, 2, 3]) {
+        visit(item);
+    }
+
+    return tail finish(total);
+}
