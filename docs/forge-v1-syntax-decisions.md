@@ -198,18 +198,25 @@ and resolves statically to an associated method such as `Point::length(&p)` acco
 
 ## FFI and volatile memory
 
-`extern` and `volatile` are Forge v1 keywords.
+`volatile` is part of Forge v1 and is a raw-pointer type qualifier:
 
 ```forge
-extern "C" {
-    fn qsort(...);
-}
-
-val register: *volatile u32 = ...;
+val register: *volatile u32 = device_register;
 ```
 
-`volatile` is a type qualifier for raw memory access; actual dereference/access remains subject to `unsafe` rules.
+Actual dereference/access remains subject to `unsafe` rules.
+
+C ABI syntax is deliberately **deferred from v1**. `extern "C"` blocks/declarations and C varargs (`...`) are reserved and must be rejected by a v1 parser. A later version can add a concrete FFI contract without freezing it into the bootstrap language.
 
 ## Reserved syntax
 
-`internal` and all compound-assignment spellings are reserved/rejected in v1 so future versions can define them without changing the meaning of accepted v1 programs.
+The following spellings are reserved/rejected in v1 so future versions can define them without changing the meaning of accepted v1 programs:
+
+- `internal`;
+- `switch`;
+- compound-assignment operators;
+- empty closure capture list `[]`;
+- pattern conjunction `&` and pattern negation `!`;
+- `extern "C"` / C ABI declarations;
+- C varargs `...`;
+- generic declarations and generic/type-application call syntax.
