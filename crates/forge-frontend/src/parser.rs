@@ -176,6 +176,7 @@ where
             Node::new(kind, span(e.span()))
         })
     })
+    .boxed()
 }
 
 fn expr_parser<'tokens, I>(
@@ -351,13 +352,16 @@ where
                 just(Token::NotEq).to(BinaryOp::NotEq),
             )),
         );
-        let bit_and = bin(equality, just(Token::Amp).to(BinaryOp::BitAnd));
-        let bit_xor = bin(bit_and, just(Token::Caret).to(BinaryOp::BitXor));
-        let bit_or = bin(bit_xor, just(Token::Pipe).to(BinaryOp::BitOr));
-        let logical_and = bin(bit_or, just(Token::AndAnd).to(BinaryOp::LogicalAnd));
-        let logical_xor = bin(logical_and, just(Token::Xor).to(BinaryOp::LogicalXor));
-        bin(logical_xor, just(Token::OrOr).to(BinaryOp::LogicalOr)).labelled("expression")
+        let bit_and = bin(equality, just(Token::Amp).to(BinaryOp::BitAnd)).boxed();
+        let bit_xor = bin(bit_and, just(Token::Caret).to(BinaryOp::BitXor)).boxed();
+        let bit_or = bin(bit_xor, just(Token::Pipe).to(BinaryOp::BitOr)).boxed();
+        let logical_and = bin(bit_or, just(Token::AndAnd).to(BinaryOp::LogicalAnd)).boxed();
+        let logical_xor = bin(logical_and, just(Token::Xor).to(BinaryOp::LogicalXor)).boxed();
+        bin(logical_xor, just(Token::OrOr).to(BinaryOp::LogicalOr))
+            .labelled("expression")
+            .boxed()
     })
+    .boxed()
 }
 
 fn value_decl_parser<'tokens, I>(
@@ -487,6 +491,7 @@ where
             )),
         ))
     })
+    .boxed()
 }
 
 fn field_parser<'tokens, I>(
