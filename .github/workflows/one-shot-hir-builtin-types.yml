@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Retry builtin type identity patch'
+    if: github.event.head_commit.message == 'Retry HIR identity tests'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,13 +26,17 @@ jobs:
           s = s.replace('return HirTypeRef::Builtin;', 'return HirTypeRef::Builtin { name: name.clone() };', 1)
           p.write_text(s)
 
+          tc = Path('crates/forge-frontend/src/typecheck_v1.rs')
+          s = tc.read_text().replace('let mut env = ModuleTypeEnv::build(source, module);', 'let env = ModuleTypeEnv::build(source, module);', 1)
+          tc.write_text(s)
+
           t = Path('crates/forge-frontend/tests/body_hir.rs')
           s = t.read_text()
           s += r'''
 
           #[test]
           fn or_pattern_alternatives_share_logical_local_ids() {
-              let output = lower_body(
+              let output = lower(
                   r#"
                   module test.or_identity;
                   tagged Choice { Left { value: i32; }, Right { value: i32; } }
@@ -63,7 +67,7 @@ jobs:
 
           #[test]
           fn or_pattern_requires_identical_binding_names() {
-              let output = lower_body(
+              let output = lower(
                   r#"
                   module test.or_names;
                   tagged Choice { Left { value: i32; }, Right { value: i32; } }
@@ -90,6 +94,6 @@ jobs:
         run: |
           git config user.name 'forge-ci'
           git config user.email 'forge-ci@users.noreply.github.com'
-          git add crates/forge-frontend/src/body_hir_v1.rs crates/forge-frontend/tests/body_hir.rs
-          git commit -m 'Preserve builtin type identity in HIR'
+          git add crates/forge-frontend/src/body_hir_v1.rs crates/forge-frontend/src/typecheck_v1.rs crates/forge-frontend/tests/body_hir.rs
+          git commit -m 'Preserve builtin and OR-pattern type identity'
           git push origin HEAD:agent/conformance-runner
