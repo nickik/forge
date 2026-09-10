@@ -126,7 +126,7 @@ pub enum Token {
     Integer(String),
     #[token("_")]
     Underscore,
-    #[regex(r"[A-Za-z_][A-Za-z0-9_]*", |lex| lex.slice().to_owned())]
+    #[regex(r"([A-Za-z][A-Za-z0-9_]*|_[A-Za-z0-9][A-Za-z0-9_]*)", |lex| lex.slice().to_owned())]
     Ident(String),
 
     // Multi-character punctuation/operators, longest forms first.
