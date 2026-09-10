@@ -37,9 +37,15 @@ pub enum Token {
 
     #[regex(r#""([^"\\]|\\.)*""#, |lex| unquote(lex.slice()))]
     String(String),
-    #[regex(r"([0-9][0-9_]*)\.[0-9][0-9_]*([eE][+-]?[0-9][0-9_]*)?", |lex| lex.slice().to_owned())]
+    #[regex(
+        r"([0-9][0-9_]*)\.[0-9][0-9_]*([eE][+-]?[0-9][0-9_]*)?(f32|f64)?",
+        |lex| lex.slice().to_owned()
+    )]
     Float(String),
-    #[regex(r"0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|[0-9][0-9_]*", |lex| lex.slice().to_owned())]
+    #[regex(
+        r"(0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|[0-9][0-9_]*)(i8|i16|i32|i64|isize|u8|u16|u32|u64|usize)?",
+        |lex| lex.slice().to_owned()
+    )]
     Integer(String),
     #[regex(r"[A-Za-z_][A-Za-z0-9_]*", |lex| lex.slice().to_owned())]
     Ident(String),

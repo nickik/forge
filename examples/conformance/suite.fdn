@@ -2,6 +2,10 @@
   :suite :forge/conformance
   :version 1
 
+  ; Only kinds listed here are required to execute successfully. A kind is
+  ; activated when the corresponding compiler stage exists.
+  :active-kinds [:parse]
+
   :tests [
     {:path #path "run/01-arithmetic-precedence.fg" :kind :run :exit 0}
     {:path #path "run/02-comparisons-logic.fg" :kind :run :exit 0}

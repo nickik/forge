@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/forge-frontend"]
+members = ["crates/forge-frontend", "crates/forge-conformance"]
 resolver = "2"
 
 [workspace.package]

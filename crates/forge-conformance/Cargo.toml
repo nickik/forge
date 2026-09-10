@@ -1,0 +1,12 @@
+[package]
+name = "forge-conformance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+forge-frontend = { path = "../forge-frontend" }
+
+[[bin]]
+name = "forge-conformance"
+path = "src/main.rs"
