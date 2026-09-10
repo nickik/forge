@@ -45,13 +45,65 @@ where
         .boxed()
 }
 
+fn fdn_word<'tokens, I>() -> impl Parser<'tokens, I, String, ParseExtra<'tokens>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = CSpan>,
+{
+    select! {
+        Token::Ident(name) => name,
+        Token::Module => "module".to_owned(),
+        Token::Import => "import".to_owned(),
+        Token::Pub => "pub".to_owned(),
+        Token::InternalReserved => "internal".to_owned(),
+        Token::Fn => "fn".to_owned(),
+        Token::Nfn => "nfn".to_owned(),
+        Token::Struct => "struct".to_owned(),
+        Token::Enum => "enum".to_owned(),
+        Token::Tagged => "tagged".to_owned(),
+        Token::BitStruct => "bitstruct".to_owned(),
+        Token::Distinct => "distinct".to_owned(),
+        Token::Type => "type".to_owned(),
+        Token::Impl => "impl".to_owned(),
+        Token::Extern => "extern".to_owned(),
+        Token::Val => "val".to_owned(),
+        Token::Var => "var".to_owned(),
+        Token::Const => "const".to_owned(),
+        Token::Return => "return".to_owned(),
+        Token::Tail => "tail".to_owned(),
+        Token::If => "if".to_owned(),
+        Token::Else => "else".to_owned(),
+        Token::While => "while".to_owned(),
+        Token::For => "for".to_owned(),
+        Token::In => "in".to_owned(),
+        Token::Break => "break".to_owned(),
+        Token::Continue => "continue".to_owned(),
+        Token::Match => "match".to_owned(),
+        Token::When => "when".to_owned(),
+        Token::SwitchReserved => "switch".to_owned(),
+        Token::Defer => "defer".to_owned(),
+        Token::Unsafe => "unsafe".to_owned(),
+        Token::With => "with".to_owned(),
+        Token::Context => "context".to_owned(),
+        Token::Select => "select".to_owned(),
+        Token::Recv => "recv".to_owned(),
+        Token::Timeout => "timeout".to_owned(),
+        Token::Mut => "mut".to_owned(),
+        Token::Volatile => "volatile".to_owned(),
+        Token::None => "None".to_owned(),
+        Token::Some => "Some".to_owned(),
+        Token::Xor => "xor".to_owned(),
+        Token::ResultType => "Result".to_owned(),
+        Token::ClosureType => "closure".to_owned(),
+    }
+}
+
 fn fdn_name<'tokens, I>() -> impl Parser<'tokens, I, String, ParseExtra<'tokens>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = CSpan>,
 {
     let separator = choice((just(Token::Slash).to('/'), just(Token::Dot).to('.')));
-    ident()
-        .then(separator.then(ident()).repeated().collect::<Vec<_>>())
+    fdn_word()
+        .then(separator.then(fdn_word()).repeated().collect::<Vec<_>>())
         .map(|(first, rest)| {
             let mut name = first;
             for (separator, part) in rest {
