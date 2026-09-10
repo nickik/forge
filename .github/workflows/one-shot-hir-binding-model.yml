@@ -9,56 +9,24 @@ permissions:
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Install HIR binding model'
+    if: github.event.head_commit.message == 'Install resolved HIR error value'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/conformance-runner
-      - name: Patch HIR binding representation
+      - name: Add explicit error resolution
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           r = Path('crates/forge-frontend/src/resolution_v1.rs')
           s = r.read_text()
-          s = s.replace('    BuiltinValue,\n}', '    BuiltinValue,\n    Error,\n}', 1)
+          if '    Error,' not in s:
+              s = s.replace('    BuiltinValue,\n}', '    BuiltinValue,\n    Error,\n}', 1)
           r.write_text(s)
 
           p = Path('crates/forge-frontend/src/body_hir_v1.rs')
-          s = p.read_text()
-          s = s.replace('pub struct HirGlobalBody {\n    pub owner: DefId,\n    pub ty: Option<HirType>,\n    pub value: HirExpr,\n}',
-                        'pub struct HirGlobalBody {\n    pub owner: DefId,\n    pub pattern: HirPattern,\n    pub ty: Option<HirType>,\n    pub value: HirExpr,\n}', 1)
-          marker = '''pub struct HirLocalDecl {\n    pub id: LocalId,\n    pub span: Span,\n    pub mutable: bool,\n    pub parameter: bool,\n}\n'''
-          insert = marker + '''\n#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]\n#[serde(rename_all = "snake_case")]\npub enum HirBinding {\n    Local(LocalId),\n    Def(DefId),\n}\n'''
-          if marker not in s: raise SystemExit('local marker missing')
-          s = s.replace(marker, insert, 1)
-          s = s.replace('Binding { local: LocalId, optional: bool }', 'Binding { binding: HirBinding, optional: bool }')
-          s = s.replace('Sequence { items: Vec<HirPattern>, rest: Option<LocalId> }', 'Sequence { items: Vec<HirPattern>, rest: Option<HirBinding> }')
-          s = s.replace('As { local: LocalId, pattern: Box<HirPattern> }', 'As { binding: HirBinding, pattern: Box<HirPattern> }')
-          s = s.replace('pub shorthand_local: Option<LocalId>', 'pub shorthand_binding: Option<HirBinding>')
-          s = s.replace('pub local: LocalId,', 'pub binding: HirBinding,')
-          s = s.replace('ResolvedName::Import(u32::MAX)', 'ResolvedName::Error')
-          old = '''                let ty = value.ty.as_ref().map(|ty| lowerer.lower_type(ty));\n                let expr = lowerer.lower_expr(&value.value);\n                output.globals.insert(owner, HirGlobalBody { owner, ty, value: expr });'''
-          new = '''                let ty = value.ty.as_ref().map(|ty| lowerer.lower_type(ty));\n                let expr = lowerer.lower_expr(&value.value);\n                let pattern = lowerer.lower_global_pattern(&value.pattern, owner);\n                output.globals.insert(owner, HirGlobalBody { owner, pattern, ty, value: expr });'''
-          if old not in s: raise SystemExit('global lowering marker missing')
-          s = s.replace(old, new, 1)
-          s = s.replace('HirPatternKind::Binding { local: self.define_local(pattern.span, mutable, false, name), optional: *optional }',
-                        'HirPatternKind::Binding { binding: HirBinding::Local(self.define_local(pattern.span, mutable, false, name)), optional: *optional }')
-          s = s.replace('rest: rest.as_ref().map(|name| self.define_local(pattern.span, mutable, false, name)),',
-                        'rest: rest.as_ref().map(|name| HirBinding::Local(self.define_local(pattern.span, mutable, false, name))),')
-          s = s.replace('local: self.define_local(pattern.span, mutable, false, &e.binding),',
-                        'binding: HirBinding::Local(self.define_local(pattern.span, mutable, false, &e.binding)),')
-          s = s.replace('HirPatternKind::As { local: self.define_local(pattern.span, mutable, false, name), pattern: Box::new(self.lower_binding_pattern(inner, mutable)) }',
-                        'HirPatternKind::As { binding: HirBinding::Local(self.define_local(pattern.span, mutable, false, name)), pattern: Box::new(self.lower_binding_pattern(inner, mutable)) }')
-          s = s.replace('shorthand_local: None', 'shorthand_binding: None')
-          s = s.replace('shorthand_local: Some(self.define_local(span, mutable, false, &field.name))',
-                        'shorthand_binding: Some(HirBinding::Local(self.define_local(span, mutable, false, &field.name)))')
-
-          method_marker = '''    fn lower_pattern_field(&mut self, field: &ast::PatternField, mutable: bool, span: Span) -> HirPatternField {'''
-          global_method = '''    fn lower_global_pattern(&mut self, pattern: &ast::Pattern, owner: DefId) -> HirPattern {\n        let binding = HirBinding::Def(owner);\n        let kind = match &pattern.kind {\n            PatternKind::Wildcard => HirPatternKind::Wildcard,\n            PatternKind::Binding { optional, .. } => HirPatternKind::Binding { binding, optional: *optional },\n            PatternKind::Literal { value } => HirPatternKind::Literal { value: value.clone() },\n            PatternKind::Range { start, end, inclusive } => HirPatternKind::Range { start: start.clone(), end: end.clone(), inclusive: *inclusive },\n            PatternKind::Variant { namespace, name, fields, explicit_braces } => HirPatternKind::Variant {\n                namespace: self.lower_type_ref(namespace, pattern.span),\n                name: name.clone(),\n                fields: fields.iter().map(|f| self.lower_global_pattern_field(f, owner, pattern.span)).collect(),\n                explicit_braces: *explicit_braces,\n            },\n            PatternKind::None { explicit_braces } => HirPatternKind::None { explicit_braces: *explicit_braces },\n            PatternKind::Some { value } => HirPatternKind::Some { value: Box::new(self.lower_global_pattern(value, owner)) },\n            PatternKind::Struct { path, fields } => HirPatternKind::Struct {\n                path: self.lower_type_ref(path, pattern.span),\n                fields: fields.iter().map(|f| self.lower_global_pattern_field(f, owner, pattern.span)).collect(),\n            },\n            PatternKind::Sequence { items, rest } => HirPatternKind::Sequence {\n                items: items.iter().map(|p| self.lower_global_pattern(p, owner)).collect(),\n                rest: rest.as_ref().map(|_| binding),\n            },\n            PatternKind::Map { entries, ignore_rest } => HirPatternKind::Map {\n                entries: entries.iter().map(|e| HirMapPatternEntry { keyword: e.keyword.clone(), binding, optional: e.optional }).collect(),\n                ignore_rest: *ignore_rest,\n            },\n            PatternKind::Or { patterns } => HirPatternKind::Or { patterns: patterns.iter().map(|p| self.lower_global_pattern(p, owner)).collect() },\n            PatternKind::As { pattern: inner, .. } => HirPatternKind::As { binding, pattern: Box::new(self.lower_global_pattern(inner, owner)) },\n        };\n        HirNode::new(pattern.span, kind)\n    }\n\n    fn lower_global_pattern_field(&mut self, field: &ast::PatternField, owner: DefId, span: Span) -> HirPatternField {\n        if let Some(pattern) = &field.pattern {\n            HirPatternField { name: field.name.clone(), pattern: Some(self.lower_global_pattern(pattern, owner)), shorthand_binding: None }\n        } else {\n            HirPatternField { name: field.name.clone(), pattern: None, shorthand_binding: Some(HirBinding::Def(owner)) }\n        }\n    }\n\n'''
-          if method_marker not in s: raise SystemExit('pattern field marker missing')
-          s = s.replace(method_marker, global_method + method_marker, 1)
+          s = p.read_text().replace('ResolvedName::Import(u32::MAX)', 'ResolvedName::Error')
           p.write_text(s)
           PY
       - name: Format and test
@@ -73,5 +41,5 @@ jobs:
           git config user.name 'forge-ci'
           git config user.email 'forge-ci@users.noreply.github.com'
           git add crates/forge-frontend/src/body_hir_v1.rs crates/forge-frontend/src/resolution_v1.rs
-          git commit -m 'Resolve HIR bindings explicitly'
+          git commit -m 'Represent unresolved HIR names explicitly'
           git push origin HEAD:agent/conformance-runner
