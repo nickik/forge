@@ -1,0 +1,7 @@
+module examples.conformance.bad_assignment_expression;
+
+fn main() -> i32 {
+    var x: i32 = 0;
+    val y: i32 = (x = 4);
+    return y;
+}
