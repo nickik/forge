@@ -1,0 +1,62 @@
+name: one-shot-parser-edge-fixes
+
+on:
+  push:
+    branches: [agent/conformance-runner]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Install parser edge fixes'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/conformance-runner
+      - name: Add mutable address-of and strict tail return
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          ast = Path('crates/forge-frontend/src/ast_v1.rs')
+          text = ast.read_text()
+          marker = '''    BitNot,\n    AddressOf,\n    Deref,'''
+          replacement = '''    BitNot,\n    AddressOf,\n    AddressOfMut,\n    Deref,'''
+          if text.count(marker) != 1:
+              raise SystemExit(f'UnaryOp marker count = {text.count(marker)}')
+          ast.write_text(text.replace(marker, replacement, 1))
+
+          parser = Path('crates/forge-frontend/src/parser_v1.rs')
+          text = parser.read_text()
+          unary_marker = '''        just(Token::Tilde).to(UnaryOp::BitNot),\n        just(Token::Amp).to(UnaryOp::AddressOf),\n        just(Token::Star).to(UnaryOp::Deref),'''
+          unary_replacement = '''        just(Token::Tilde).to(UnaryOp::BitNot),\n        just(Token::Amp)\n            .then_ignore(just(Token::Mut))\n            .to(UnaryOp::AddressOfMut),\n        just(Token::Amp).to(UnaryOp::AddressOf),\n        just(Token::Star).to(UnaryOp::Deref),'''
+          if text.count(unary_marker) != 1:
+              raise SystemExit(f'unary marker count = {text.count(unary_marker)}')
+          text = text.replace(unary_marker, unary_replacement, 1)
+
+          return_marker = '''    let return_stmt = just(Token::Return)\n        .ignore_then(just(Token::Tail).or_not())\n        .then(expr.clone().or_not())\n        .then_ignore(just(Token::Semicolon))\n        .map_with(|(tail, value), e| {\n            Node::new(\n                StmtKind::Return {\n                    tail: tail.is_some(),\n                    value,\n                },\n                span(e.span()),\n            )\n        });'''
+          return_replacement = '''    let tail_return_stmt = just(Token::Return)\n        .ignore_then(just(Token::Tail))\n        .ignore_then(expr.clone())\n        .then_ignore(just(Token::Semicolon))\n        .map_with(|value, e| {\n            Node::new(\n                StmtKind::Return {\n                    tail: true,\n                    value: Some(value),\n                },\n                span(e.span()),\n            )\n        });\n    let return_stmt = just(Token::Return)\n        .ignore_then(expr.clone().or_not())\n        .then_ignore(just(Token::Semicolon))\n        .map_with(|value, e| {\n            Node::new(\n                StmtKind::Return {\n                    tail: false,\n                    value,\n                },\n                span(e.span()),\n            )\n        });'''
+          if text.count(return_marker) != 1:
+              raise SystemExit(f'return marker count = {text.count(return_marker)}')
+          text = text.replace(return_marker, return_replacement, 1)
+
+          choice_marker = '''            value_stmt,\n            return_stmt,\n            if_stmt,'''
+          choice_replacement = '''            value_stmt,\n            tail_return_stmt,\n            return_stmt,\n            if_stmt,'''
+          if text.count(choice_marker) != 1:
+              raise SystemExit(f'choice marker count = {text.count(choice_marker)}')
+          parser.write_text(text.replace(choice_marker, choice_replacement, 1))
+          PY
+      - name: Format and test patch
+        run: |
+          cargo fmt --all
+          cargo test --workspace --locked
+          cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn
+      - name: Commit patch
+        run: |
+          git config user.name 'forge-ci'
+          git config user.email 'forge-ci@users.noreply.github.com'
+          git add crates/forge-frontend/src/ast_v1.rs crates/forge-frontend/src/parser_v1.rs
+          git commit -m 'Parse mutable references and require tail values'
+          git push origin HEAD:agent/conformance-runner
