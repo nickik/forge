@@ -5,7 +5,9 @@ use std::{
     process,
 };
 
-use forge_frontend::{lower_module, parse_source, resolve_module_bodies};
+use forge_frontend::{
+    lower_module, lower_resolved_bodies, parse_source, resolve_module_bodies, type_check_module,
+};
 
 mod manifest;
 use manifest::{parse_suite, Suite, TestCase, TestKind};
@@ -127,9 +129,6 @@ fn execute_syntax_negative(path: &Path) -> Outcome {
 
 fn execute_negative(test: &TestCase, path: &Path) -> Outcome {
     let expected = test.expected.as_deref().unwrap_or("unspecified");
-    if expected != "name/unresolved" {
-        return Outcome::Pending("semantic stage for this expectation is not implemented yet");
-    }
     let source = match read_source(path) { Ok(source) => source, Err(outcome) => return outcome };
     let parsed = parse_source(&source);
     if parsed.ast.is_none() || !parsed.diagnostics.is_empty() {
@@ -138,11 +137,38 @@ fn execute_negative(test: &TestCase, path: &Path) -> Outcome {
     let ast = parsed.ast.expect("checked above");
     let items = lower_module(&ast);
     if !items.diagnostics.is_empty() {
-        return Outcome::Fail(format!("item collection failed before name resolution: {}", items.diagnostics.iter().map(|d| d.message.as_str()).collect::<Vec<_>>().join("; ")));
+        return Outcome::Fail(format!("item collection failed before semantics: {}", items.diagnostics.iter().map(|d| d.message.as_str()).collect::<Vec<_>>().join("; ")));
     }
-    let resolved = resolve_module_bodies(&ast, &items.module);
-    if resolved.diagnostics.iter().any(|d| d.message.starts_with("unresolved ")) { Outcome::Pass }
-    else { Outcome::Fail("expected unresolved-name diagnostic, but name resolution completed without one".into()) }
+
+    if expected == "name/unresolved" {
+        let resolved = resolve_module_bodies(&ast, &items.module);
+        return if resolved.diagnostics.iter().any(|d| d.message.starts_with("unresolved ")) { Outcome::Pass }
+        else { Outcome::Fail("expected unresolved-name diagnostic, but name resolution completed without one".into()) };
+    }
+
+    const IMPLEMENTED_TYPE_CODES: &[&str] = &[
+        "type/mismatch",
+        "type/distinct",
+        "type/return",
+        "call/duplicate-name",
+        "call/unknown-name",
+        "control/tail-call-required",
+    ];
+    if !IMPLEMENTED_TYPE_CODES.contains(&expected) {
+        return Outcome::Pending("semantic stage for this expectation is not implemented yet");
+    }
+
+    let bodies = lower_resolved_bodies(&ast, &items.module);
+    if !bodies.diagnostics.is_empty() {
+        return Outcome::Fail(format!("resolved HIR lowering failed before type checking: {}", bodies.diagnostics.iter().map(|d| d.message.as_str()).collect::<Vec<_>>().join("; ")));
+    }
+    let typed = type_check_module(&ast, &items.module, &bodies);
+    if typed.diagnostics.iter().any(|d| d.code == expected) {
+        Outcome::Pass
+    } else {
+        let found = typed.diagnostics.iter().map(|d| format!("{}: {}", d.code, d.message)).collect::<Vec<_>>().join("; ");
+        Outcome::Fail(format!("expected semantic diagnostic `{expected}`, found [{}]", found))
+    }
 }
 
 fn format_parse_failure(has_ast: bool, diagnostics: Vec<forge_frontend::Diagnostic>) -> String {
