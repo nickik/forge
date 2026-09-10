@@ -1,5 +1,5 @@
 use forge_frontend::{
-    body_hir::{HirExprKind, HirPatternKind, HirStmtKind, HirTypeKind, HirTypeRef},
+    body_hir::{HirExprKind, HirMatchBody, HirPatternKind, HirStmtKind, HirTypeKind, HirTypeRef},
     lower_module, lower_resolved_bodies, parse_source, DefId, LocalId, ResolvedName,
 };
 
@@ -212,10 +212,12 @@ fn or_pattern_alternatives_share_canonical_local_ids() {
     let left = variant_local(&patterns[0]);
     let right = variant_local(&patterns[1]);
     assert_eq!(left, right, "OR alternatives must reuse one logical LocalId");
-    let HirExprKind::Name { reference } = &match &arms[0].body {
-        forge_frontend::body_hir::HirMatchBody::Expr(expr) => &expr.kind,
+
+    let arm_expr = match &arms[0].body {
+        HirMatchBody::Expr(expr) => expr,
         _ => panic!("expected expression arm"),
-    } else {
+    };
+    let HirExprKind::Name { reference } = &arm_expr.kind else {
         panic!("expected name use");
     };
     assert_eq!(reference.root, ResolvedName::Local(left));
