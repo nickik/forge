@@ -29,15 +29,24 @@ fn main() {
     let result = parse_source(&source);
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&result).expect("AST serialization failed"));
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&result).expect("AST serialization failed")
+        );
     } else if let Some(ast) = &result.ast {
         println!("{ast:#?}");
         for diagnostic in &result.diagnostics {
-            eprintln!("{}..{}: {}", diagnostic.span.start, diagnostic.span.end, diagnostic.message);
+            eprintln!(
+                "{}..{}: {}",
+                diagnostic.span.start, diagnostic.span.end, diagnostic.message
+            );
         }
     } else {
         for diagnostic in &result.diagnostics {
-            eprintln!("{}..{}: {}", diagnostic.span.start, diagnostic.span.end, diagnostic.message);
+            eprintln!(
+                "{}..{}: {}",
+                diagnostic.span.start, diagnostic.span.end, diagnostic.message
+            );
         }
     }
 

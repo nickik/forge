@@ -1,4 +1,7 @@
-use forge_frontend::{ast::{DeclKind, StmtKind}, parse_source};
+use forge_frontend::{
+    ast::{DeclKind, StmtKind},
+    parse_source,
+};
 
 #[test]
 fn parses_hello_program() {
@@ -18,10 +21,15 @@ fn parses_hello_program() {
     let file = parsed.ast.expect("AST");
     assert_eq!(file.module.segments, ["examples", "hello"]);
     assert_eq!(file.imports[0].segments, ["std", "io"]);
-    let DeclKind::Function(main) = &file.declarations[0].kind else { panic!("expected function") };
+    let DeclKind::Function(main) = &file.declarations[0].kind else {
+        panic!("expected function")
+    };
     assert_eq!(main.name, "main");
     assert!(matches!(main.body.statements[0].kind, StmtKind::Value(_)));
-    assert!(matches!(main.body.statements[2].kind, StmtKind::Return { .. }));
+    assert!(matches!(
+        main.body.statements[2].kind,
+        StmtKind::Return { .. }
+    ));
 }
 
 #[test]

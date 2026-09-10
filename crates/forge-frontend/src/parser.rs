@@ -25,7 +25,8 @@ fn span(s: CSpan) -> Span {
     Span::new(s.start, s.end)
 }
 
-fn path_parser<'tokens, I>() -> impl Parser<'tokens, I, Path, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
+fn path_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, Path, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = CSpan>,
 {
@@ -37,13 +38,14 @@ where
         .labelled("qualified name")
 }
 
-fn type_parser<'tokens, I>() -> impl Parser<'tokens, I, TypeNode, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
+fn type_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, TypeNode, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = CSpan>,
 {
     recursive(|ty| {
-        let named = path_parser()
-            .map_with(|path, e| Node::new(TypeKind::Named { path }, span(e.span())));
+        let named =
+            path_parser().map_with(|path, e| Node::new(TypeKind::Named { path }, span(e.span())));
 
         let result = just(Token::ResultType)
             .ignore_then(
@@ -176,7 +178,8 @@ where
     })
 }
 
-fn expr_parser<'tokens, I>() -> impl Parser<'tokens, I, Expr, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
+fn expr_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, Expr, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = CSpan>,
 {
@@ -190,7 +193,8 @@ where
         }
         .map_with(|kind, e| Node::new(kind, span(e.span())));
 
-        let path = path_parser().map_with(|path, e| Node::new(ExprKind::Path { path }, span(e.span())));
+        let path =
+            path_parser().map_with(|path, e| Node::new(ExprKind::Path { path }, span(e.span())));
 
         let init_field = select! { Token::Ident(name) => name }
             .then_ignore(just(Token::Colon))
@@ -205,7 +209,9 @@ where
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace)),
             )
-            .map_with(|(ty, fields), e| Node::new(ExprKind::StructInit { ty, fields }, span(e.span())));
+            .map_with(|(ty, fields), e| {
+                Node::new(ExprKind::StructInit { ty, fields }, span(e.span()))
+            });
 
         let array = expr
             .clone()
@@ -220,7 +226,8 @@ where
             literal,
             array,
             path,
-            expr.clone().delimited_by(just(Token::LParen), just(Token::RParen)),
+            expr.clone()
+                .delimited_by(just(Token::LParen), just(Token::RParen)),
         ))
         .labelled("expression atom")
         .boxed();
@@ -247,8 +254,14 @@ where
 
         let postfix_expr = atom.foldl_with(postfix.repeated(), |base, op, e| {
             let kind = match op {
-                Postfix::Call(args) => ExprKind::Call { callee: Box::new(base), args },
-                Postfix::Index(index) => ExprKind::Index { base: Box::new(base), index: Box::new(index) },
+                Postfix::Call(args) => ExprKind::Call {
+                    callee: Box::new(base),
+                    args,
+                },
+                Postfix::Index(index) => ExprKind::Index {
+                    base: Box::new(base),
+                    index: Box::new(index),
+                },
             };
             Node::new(kind, span(e.span()))
         });
@@ -268,7 +281,13 @@ where
             .map_with(|(ops, value), e| {
                 let whole = span(e.span());
                 ops.into_iter().rev().fold(value, |value, op| {
-                    Node::new(ExprKind::Unary { op, value: Box::new(value) }, whole)
+                    Node::new(
+                        ExprKind::Unary {
+                            op,
+                            value: Box::new(value),
+                        },
+                        whole,
+                    )
                 })
             });
 
@@ -281,12 +300,17 @@ where
             P: Parser<'tokens, I, Expr, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone,
             O: Parser<'tokens, I, BinaryOp, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone,
         {
-            lhs.clone().foldl_with(op.then(lhs).repeated(), |left, (op, right), e| {
-                Node::new(
-                    ExprKind::Binary { op, left: Box::new(left), right: Box::new(right) },
-                    span(e.span()),
-                )
-            })
+            lhs.clone()
+                .foldl_with(op.then(lhs).repeated(), |left, (op, right), e| {
+                    Node::new(
+                        ExprKind::Binary {
+                            op,
+                            left: Box::new(left),
+                            right: Box::new(right),
+                        },
+                        span(e.span()),
+                    )
+                })
         }
 
         let product = bin(
@@ -336,7 +360,8 @@ where
     })
 }
 
-fn value_decl_parser<'tokens, I>() -> impl Parser<'tokens, I, ValueDecl, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
+fn value_decl_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, ValueDecl, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = CSpan>,
 {
@@ -349,10 +374,16 @@ where
     .then(just(Token::Colon).ignore_then(type_parser()).or_not())
     .then_ignore(just(Token::Eq))
     .then(expr_parser())
-    .map(|(((binding, name), ty), value)| ValueDecl { binding, name, ty, value })
+    .map(|(((binding, name), ty), value)| ValueDecl {
+        binding,
+        name,
+        ty,
+        value,
+    })
 }
 
-fn block_parser<'tokens, I>() -> impl Parser<'tokens, I, Block, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
+fn block_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, Block, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = CSpan>,
 {
@@ -360,10 +391,14 @@ where
         .repeated()
         .collect::<Vec<_>>()
         .delimited_by(just(Token::LBrace), just(Token::RBrace))
-        .map_with(|statements, e| Block { span: span(e.span()), statements })
+        .map_with(|statements, e| Block {
+            span: span(e.span()),
+            statements,
+        })
 }
 
-fn statement_parser<'tokens, I>() -> impl Parser<'tokens, I, Stmt, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
+fn statement_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, Stmt, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = CSpan>,
 {
@@ -373,7 +408,10 @@ where
             .repeated()
             .collect::<Vec<_>>()
             .delimited_by(just(Token::LBrace), just(Token::RBrace))
-            .map_with(|statements, e| Block { span: span(e.span()), statements });
+            .map_with(|statements, e| Block {
+                span: span(e.span()),
+                statements,
+            });
 
         let value = value_decl_parser()
             .then_ignore(just(Token::Semicolon))
@@ -384,7 +422,13 @@ where
             .then(expr_parser().or_not())
             .then_ignore(just(Token::Semicolon))
             .map_with(|(tail, value), e| {
-                Node::new(StmtKind::Return { tail: tail.is_some(), value }, span(e.span()))
+                Node::new(
+                    StmtKind::Return {
+                        tail: tail.is_some(),
+                        value,
+                    },
+                    span(e.span()),
+                )
             });
 
         let if_stmt = just(Token::If)
@@ -392,13 +436,22 @@ where
             .then(block.clone())
             .then(just(Token::Else).ignore_then(block.clone()).or_not())
             .map_with(|((condition, then_block), else_block), e| {
-                Node::new(StmtKind::If { condition, then_block, else_block }, span(e.span()))
+                Node::new(
+                    StmtKind::If {
+                        condition,
+                        then_block,
+                        else_block,
+                    },
+                    span(e.span()),
+                )
             });
 
         let while_stmt = just(Token::While)
             .ignore_then(expr_parser().delimited_by(just(Token::LParen), just(Token::RParen)))
             .then(block.clone())
-            .map_with(|(condition, body), e| Node::new(StmtKind::While { condition, body }, span(e.span())));
+            .map_with(|(condition, body), e| {
+                Node::new(StmtKind::While { condition, body }, span(e.span()))
+            });
 
         let defer_stmt = just(Token::Defer)
             .ignore_then(block.clone())
@@ -416,15 +469,28 @@ where
             .then_ignore(just(Token::Semicolon))
             .map_with(|expr, e| Node::new(StmtKind::Expr { expr }, span(e.span())));
 
-        choice((value, ret, if_stmt, while_stmt, defer_stmt, unsafe_stmt, nested_block, expr_stmt))
-            .recover_with(skip_then_retry_until(
-                any().ignored(),
-                choice((just(Token::Semicolon).ignored(), just(Token::RBrace).ignored())),
-            ))
+        choice((
+            value,
+            ret,
+            if_stmt,
+            while_stmt,
+            defer_stmt,
+            unsafe_stmt,
+            nested_block,
+            expr_stmt,
+        ))
+        .recover_with(skip_then_retry_until(
+            any().ignored(),
+            choice((
+                just(Token::Semicolon).ignored(),
+                just(Token::RBrace).ignored(),
+            )),
+        ))
     })
 }
 
-fn field_parser<'tokens, I>() -> impl Parser<'tokens, I, FieldDecl, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
+fn field_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, FieldDecl, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = CSpan>,
 {
@@ -435,7 +501,8 @@ where
         .map(|(name, ty)| FieldDecl { name, ty })
 }
 
-fn declaration_parser<'tokens, I>() -> impl Parser<'tokens, I, Decl, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
+fn declaration_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, Decl, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = CSpan>,
 {
@@ -457,25 +524,49 @@ where
 
     let function = visibility
         .clone()
-        .then(choice((just(Token::Fn).to(false), just(Token::Nfn).to(true))))
+        .then(choice((
+            just(Token::Fn).to(false),
+            just(Token::Nfn).to(true),
+        )))
         .then(ident.clone())
         .then(params)
         .then(just(Token::Arrow).ignore_then(type_parser()).or_not())
         .then(block_parser())
-        .map_with(|(((((public, named_arguments), name), params), return_type), body), e| {
-            Node::new(
-                DeclKind::Function(FunctionDecl { public, named_arguments, name, params, return_type, body }),
-                span(e.span()),
-            )
-        });
+        .map_with(
+            |(((((public, named_arguments), name), params), return_type), body), e| {
+                Node::new(
+                    DeclKind::Function(FunctionDecl {
+                        public,
+                        named_arguments,
+                        name,
+                        params,
+                        return_type,
+                        body,
+                    }),
+                    span(e.span()),
+                )
+            },
+        );
 
     let struct_decl = visibility
         .clone()
         .then_ignore(just(Token::Struct))
         .then(ident.clone())
-        .then(field_parser().repeated().collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)))
+        .then(
+            field_parser()
+                .repeated()
+                .collect::<Vec<_>>()
+                .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+        )
         .map_with(|((public, name), fields), e| {
-            Node::new(DeclKind::Struct(StructDecl { public, name, fields }), span(e.span()))
+            Node::new(
+                DeclKind::Struct(StructDecl {
+                    public,
+                    name,
+                    fields,
+                }),
+                span(e.span()),
+            )
         });
 
     let enum_decl = visibility
@@ -483,14 +574,22 @@ where
         .then_ignore(just(Token::Enum))
         .then(ident.clone())
         .then(
-            ident.clone()
+            ident
+                .clone()
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
                 .collect::<Vec<_>>()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace)),
         )
         .map_with(|((public, name), variants), e| {
-            Node::new(DeclKind::Enum(EnumDecl { public, name, variants }), span(e.span()))
+            Node::new(
+                DeclKind::Enum(EnumDecl {
+                    public,
+                    name,
+                    variants,
+                }),
+                span(e.span()),
+            )
         });
 
     let tagged_variant = ident
@@ -502,7 +601,10 @@ where
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 .or_not(),
         )
-        .map(|(name, fields)| TaggedVariant { name, fields: fields.unwrap_or_default() });
+        .map(|(name, fields)| TaggedVariant {
+            name,
+            fields: fields.unwrap_or_default(),
+        });
 
     let tagged_decl = visibility
         .clone()
@@ -516,7 +618,14 @@ where
                 .delimited_by(just(Token::LBrace), just(Token::RBrace)),
         )
         .map_with(|((public, name), variants), e| {
-            Node::new(DeclKind::Tagged(TaggedDecl { public, name, variants }), span(e.span()))
+            Node::new(
+                DeclKind::Tagged(TaggedDecl {
+                    public,
+                    name,
+                    variants,
+                }),
+                span(e.span()),
+            )
         });
 
     let distinct = visibility
@@ -527,7 +636,14 @@ where
         .then(type_parser())
         .then_ignore(just(Token::Semicolon))
         .map_with(|((public, name), underlying), e| {
-            Node::new(DeclKind::Distinct(DistinctDecl { public, name, underlying }), span(e.span()))
+            Node::new(
+                DeclKind::Distinct(DistinctDecl {
+                    public,
+                    name,
+                    underlying,
+                }),
+                span(e.span()),
+            )
         });
 
     let alias = visibility
@@ -538,7 +654,14 @@ where
         .then(type_parser())
         .then_ignore(just(Token::Semicolon))
         .map_with(|((public, name), target), e| {
-            Node::new(DeclKind::TypeAlias(TypeAliasDecl { public, name, target }), span(e.span()))
+            Node::new(
+                DeclKind::TypeAlias(TypeAliasDecl {
+                    public,
+                    name,
+                    target,
+                }),
+                span(e.span()),
+            )
         });
 
     let global = visibility
@@ -548,11 +671,20 @@ where
             Node::new(DeclKind::Global { public, value }, span(e.span()))
         });
 
-    choice((function, struct_decl, enum_decl, tagged_decl, distinct, alias, global))
-        .labelled("declaration")
+    choice((
+        function,
+        struct_decl,
+        enum_decl,
+        tagged_decl,
+        distinct,
+        alias,
+        global,
+    ))
+    .labelled("declaration")
 }
 
-fn source_file_parser<'tokens, I>() -> impl Parser<'tokens, I, SourceFile, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
+fn source_file_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, SourceFile, extra::Err<Rich<'tokens, Token, CSpan>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = CSpan>,
 {
@@ -568,33 +700,39 @@ where
         )
         .then(declaration_parser().repeated().collect::<Vec<_>>())
         .then_ignore(end())
-        .map(|((module, imports), declarations)| SourceFile { module, imports, declarations })
+        .map(|((module, imports), declarations)| SourceFile {
+            module,
+            imports,
+            declarations,
+        })
 }
 
 pub fn parse_source(source: &str) -> ParseOutput {
     let mut diagnostics = Vec::new();
 
     let tokens = Token::lexer(source)
-    .spanned()
-    .map(|(token, range)| {
-        let token = match token {
-            Ok(token) => token,
-            Err(()) => {
-                diagnostics.push(Diagnostic {
-                    span: Span::new(range.start, range.end),
-                    message: format!("invalid token `{}`", &source[range.clone()]),
-                });
-                // Keep a real error token in the stream so parser recovery can continue
-                // without accidentally treating invalid source as a valid identifier.
-                Token::Error
-            }
-        };
-        (token, CSpan::from(range))
-    })
-    .collect::<Vec<_>>();
+        .spanned()
+        .map(|(token, range)| {
+            let token = match token {
+                Ok(token) => token,
+                Err(()) => {
+                    diagnostics.push(Diagnostic {
+                        span: Span::new(range.start, range.end),
+                        message: format!("invalid token `{}`", &source[range.clone()]),
+                    });
+                    // Keep a real error token in the stream so parser recovery can continue
+                    // without accidentally treating invalid source as a valid identifier.
+                    Token::Error
+                }
+            };
+            (token, CSpan::from(range))
+        })
+        .collect::<Vec<_>>();
 
-let stream = Stream::from_iter(tokens)
-        .map((0..source.len()).into(), |(token, span): (_, _)| (token, span));
+    let stream = Stream::from_iter(tokens)
+        .map((0..source.len()).into(), |(token, span): (_, _)| {
+            (token, span)
+        });
 
     let (ast, parse_errors) = source_file_parser().parse(stream).into_output_errors();
     diagnostics.extend(parse_errors.into_iter().map(|error| Diagnostic {

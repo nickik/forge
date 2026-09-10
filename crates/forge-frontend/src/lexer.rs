@@ -8,32 +8,58 @@ pub enum Token {
     /// Synthetic token inserted after a Logos lexing error so parsing can recover.
     Error,
 
-    #[token("module")] Module,
-    #[token("import")] Import,
-    #[token("pub")] Pub,
-    #[token("fn")] Fn,
-    #[token("nfn")] Nfn,
-    #[token("struct")] Struct,
-    #[token("enum")] Enum,
-    #[token("tagged")] Tagged,
-    #[token("distinct")] Distinct,
-    #[token("type")] Type,
-    #[token("val")] Val,
-    #[token("var")] Var,
-    #[token("const")] Const,
-    #[token("return")] Return,
-    #[token("tail")] Tail,
-    #[token("if")] If,
-    #[token("else")] Else,
-    #[token("while")] While,
-    #[token("defer")] Defer,
-    #[token("unsafe")] Unsafe,
-    #[token("mut")] Mut,
-    #[token("true")] True,
-    #[token("false")] False,
-    #[token("xor")] Xor,
-    #[token("Result")] ResultType,
-    #[token("closure")] ClosureType,
+    #[token("module")]
+    Module,
+    #[token("import")]
+    Import,
+    #[token("pub")]
+    Pub,
+    #[token("fn")]
+    Fn,
+    #[token("nfn")]
+    Nfn,
+    #[token("struct")]
+    Struct,
+    #[token("enum")]
+    Enum,
+    #[token("tagged")]
+    Tagged,
+    #[token("distinct")]
+    Distinct,
+    #[token("type")]
+    Type,
+    #[token("val")]
+    Val,
+    #[token("var")]
+    Var,
+    #[token("const")]
+    Const,
+    #[token("return")]
+    Return,
+    #[token("tail")]
+    Tail,
+    #[token("if")]
+    If,
+    #[token("else")]
+    Else,
+    #[token("while")]
+    While,
+    #[token("defer")]
+    Defer,
+    #[token("unsafe")]
+    Unsafe,
+    #[token("mut")]
+    Mut,
+    #[token("true")]
+    True,
+    #[token("false")]
+    False,
+    #[token("xor")]
+    Xor,
+    #[token("Result")]
+    ResultType,
+    #[token("closure")]
+    ClosureType,
 
     #[regex(r#""([^"\\]|\\.)*""#, |lex| unquote(lex.slice()))]
     String(String),
@@ -50,43 +76,79 @@ pub enum Token {
     #[regex(r"[A-Za-z_][A-Za-z0-9_]*", |lex| lex.slice().to_owned())]
     Ident(String),
 
-    #[token("->")] Arrow,
-    #[token("=>")] FatArrow,
-    #[token("::")] ColonColon,
-    #[token("==")] EqEq,
-    #[token("!=")] NotEq,
-    #[token("<=")] LessEq,
-    #[token(">=")] GreaterEq,
-    #[token("&&")] AndAnd,
-    #[token("||")] OrOr,
-    #[token("<<")] ShiftLeft,
-    #[token(">>")] ShiftRight,
-    #[token("??")] Coalesce,
+    #[token("->")]
+    Arrow,
+    #[token("=>")]
+    FatArrow,
+    #[token("::")]
+    ColonColon,
+    #[token("==")]
+    EqEq,
+    #[token("!=")]
+    NotEq,
+    #[token("<=")]
+    LessEq,
+    #[token(">=")]
+    GreaterEq,
+    #[token("&&")]
+    AndAnd,
+    #[token("||")]
+    OrOr,
+    #[token("<<")]
+    ShiftLeft,
+    #[token(">>")]
+    ShiftRight,
+    #[token("??")]
+    Coalesce,
 
-    #[token("(")] LParen,
-    #[token(")")] RParen,
-    #[token("{")] LBrace,
-    #[token("}")] RBrace,
-    #[token("[")] LBracket,
-    #[token("]")] RBracket,
-    #[token(",")] Comma,
-    #[token(";")] Semicolon,
-    #[token(":")] Colon,
-    #[token(".")] Dot,
-    #[token("?")] Question,
-    #[token("=")] Eq,
-    #[token("+")] Plus,
-    #[token("-")] Minus,
-    #[token("*")] Star,
-    #[token("/")] Slash,
-    #[token("%")] Percent,
-    #[token("<")] Less,
-    #[token(">")] Greater,
-    #[token("&")] Amp,
-    #[token("|")] Pipe,
-    #[token("^")] Caret,
-    #[token("!")] Bang,
-    #[token("~")] Tilde,
+    #[token("(")]
+    LParen,
+    #[token(")")]
+    RParen,
+    #[token("{")]
+    LBrace,
+    #[token("}")]
+    RBrace,
+    #[token("[")]
+    LBracket,
+    #[token("]")]
+    RBracket,
+    #[token(",")]
+    Comma,
+    #[token(";")]
+    Semicolon,
+    #[token(":")]
+    Colon,
+    #[token(".")]
+    Dot,
+    #[token("?")]
+    Question,
+    #[token("=")]
+    Eq,
+    #[token("+")]
+    Plus,
+    #[token("-")]
+    Minus,
+    #[token("*")]
+    Star,
+    #[token("/")]
+    Slash,
+    #[token("%")]
+    Percent,
+    #[token("<")]
+    Less,
+    #[token(">")]
+    Greater,
+    #[token("&")]
+    Amp,
+    #[token("|")]
+    Pipe,
+    #[token("^")]
+    Caret,
+    #[token("!")]
+    Bang,
+    #[token("~")]
+    Tilde,
 }
 
 fn unquote(text: &str) -> String {

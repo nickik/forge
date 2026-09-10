@@ -149,33 +149,75 @@ pub struct Block {
 #[serde(tag = "stmt", rename_all = "snake_case")]
 pub enum StmtKind {
     Value(ValueDecl),
-    Expr { expr: Expr },
-    Return { tail: bool, value: Option<Expr> },
+    Expr {
+        expr: Expr,
+    },
+    Return {
+        tail: bool,
+        value: Option<Expr>,
+    },
     If {
         condition: Expr,
         then_block: Block,
         else_block: Option<Block>,
     },
-    While { condition: Expr, body: Block },
-    Defer { body: Block },
-    Unsafe { body: Block },
-    Block { block: Block },
+    While {
+        condition: Expr,
+        body: Block,
+    },
+    Defer {
+        body: Block,
+    },
+    Unsafe {
+        body: Block,
+    },
+    Block {
+        block: Block,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "expr", rename_all = "snake_case")]
 pub enum ExprKind {
-    Integer { text: String },
-    Float { text: String },
-    String { value: String },
-    Bool { value: bool },
-    Path { path: Path },
-    Array { items: Vec<Expr> },
-    StructInit { ty: Path, fields: Vec<InitField> },
-    Unary { op: UnaryOp, value: Box<Expr> },
-    Binary { op: BinaryOp, left: Box<Expr>, right: Box<Expr> },
-    Call { callee: Box<Expr>, args: Vec<Expr> },
-    Index { base: Box<Expr>, index: Box<Expr> },
+    Integer {
+        text: String,
+    },
+    Float {
+        text: String,
+    },
+    String {
+        value: String,
+    },
+    Bool {
+        value: bool,
+    },
+    Path {
+        path: Path,
+    },
+    Array {
+        items: Vec<Expr>,
+    },
+    StructInit {
+        ty: Path,
+        fields: Vec<InitField>,
+    },
+    Unary {
+        op: UnaryOp,
+        value: Box<Expr>,
+    },
+    Binary {
+        op: BinaryOp,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
+    Call {
+        callee: Box<Expr>,
+        args: Vec<Expr>,
+    },
+    Index {
+        base: Box<Expr>,
+        index: Box<Expr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -221,13 +263,37 @@ pub enum BinaryOp {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TypeKind {
-    Named { path: Path },
-    Pointer { inner: Box<TypeNode> },
-    Reference { mutable: bool, inner: Box<TypeNode> },
-    Optional { inner: Box<TypeNode> },
-    Slice { mutable: bool, element: Box<TypeNode> },
-    Array { element: Box<TypeNode>, length: Box<Expr> },
-    Result { ok: Box<TypeNode>, error: Box<TypeNode> },
-    Function { params: Vec<TypeNode>, result: Box<TypeNode> },
-    Closure { params: Vec<TypeNode>, result: Box<TypeNode> },
+    Named {
+        path: Path,
+    },
+    Pointer {
+        inner: Box<TypeNode>,
+    },
+    Reference {
+        mutable: bool,
+        inner: Box<TypeNode>,
+    },
+    Optional {
+        inner: Box<TypeNode>,
+    },
+    Slice {
+        mutable: bool,
+        element: Box<TypeNode>,
+    },
+    Array {
+        element: Box<TypeNode>,
+        length: Box<Expr>,
+    },
+    Result {
+        ok: Box<TypeNode>,
+        error: Box<TypeNode>,
+    },
+    Function {
+        params: Vec<TypeNode>,
+        result: Box<TypeNode>,
+    },
+    Closure {
+        params: Vec<TypeNode>,
+        result: Box<TypeNode>,
+    },
 }

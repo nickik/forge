@@ -125,8 +125,7 @@ fn suite_from_value(value: Value) -> Result<Suite, ManifestError> {
         let exit = optional(test, "exit")
             .map(|value| {
                 let value = expect_integer(value, ":exit")?;
-                i32::try_from(value)
-                    .map_err(|_| ManifestError::semantic(":exit does not fit i32"))
+                i32::try_from(value).map_err(|_| ManifestError::semantic(":exit does not fit i32"))
             })
             .transpose()?;
 
@@ -153,8 +152,7 @@ fn suite_from_value(value: Value) -> Result<Suite, ManifestError> {
 }
 
 fn required<'a>(map: &'a [(Value, Value)], key: &str) -> Result<&'a Value, ManifestError> {
-    optional(map, key)
-        .ok_or_else(|| ManifestError::semantic(format!("missing required :{key}")))
+    optional(map, key).ok_or_else(|| ManifestError::semantic(format!("missing required :{key}")))
 }
 
 fn optional<'a>(map: &'a [(Value, Value)], key: &str) -> Option<&'a Value> {
@@ -176,10 +174,7 @@ fn expect_map<'a>(
     }
 }
 
-fn expect_vector<'a>(
-    value: &'a Value,
-    description: &str,
-) -> Result<&'a [Value], ManifestError> {
+fn expect_vector<'a>(value: &'a Value, description: &str) -> Result<&'a [Value], ManifestError> {
     match value {
         Value::Vector(values) => Ok(values),
         _ => Err(ManifestError::semantic(format!(
@@ -447,8 +442,7 @@ impl<'a> Parser<'a> {
 }
 
 fn is_delimiter(byte: u8) -> bool {
-    byte.is_ascii_whitespace()
-        || matches!(byte, b',' | b'{' | b'}' | b'[' | b']' | b'"' | b';')
+    byte.is_ascii_whitespace() || matches!(byte, b',' | b'{' | b'}' | b'[' | b']' | b'"' | b';')
 }
 
 #[cfg(test)]
