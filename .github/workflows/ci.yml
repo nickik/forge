@@ -10,82 +10,46 @@ permissions:
 jobs:
   rust:
     runs-on: ubuntu-latest
-    env:
-      CARGO_INCREMENTAL: 1
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Box large Chumsky parser types
+      - name: Finalize parser bootstrap changes
         if: github.ref == 'refs/heads/agent/conformance-runner'
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('crates/forge-frontend/src/parser.rs')
           source = path.read_text()
 
-          # Chumsky recommends strategic boxing for long parser types. Box the
-          # three recursive parser boundaries, where monomorphization is largest.
-          pairs = [
-              ('fn type_parser', 'fn expr_parser'),
-              ('fn expr_parser', 'fn value_decl_parser'),
-              ('fn statement_parser', 'fn field_parser'),
-          ]
-          for start_marker, end_marker in pairs:
-              start = source.index(start_marker)
-              end = source.index(end_marker, start)
-              segment = source[start:end]
-              if '\n    .boxed()\n}\n\n' in segment:
-                  continue
-              close = segment.rfind('\n}')
-              if close < 0:
-                  raise SystemExit(f'cannot find end of {start_marker}')
-              before = segment[:close]
-              if not before.rstrip().endswith('})'):
-                  raise SystemExit(f'unexpected final expression in {start_marker}')
-              segment = before + '\n    .boxed()' + segment[close:]
-              source = source[:start] + segment + source[end:]
-
-          # Break the expression precedence ladder into erased parser types too.
-          replacements = {
-              '        let bit_and = bin(equality, just(Token::Amp).to(BinaryOp::BitAnd));':
-              '        let bit_and = bin(equality, just(Token::Amp).to(BinaryOp::BitAnd)).boxed();',
-              '        let bit_xor = bin(bit_and, just(Token::Caret).to(BinaryOp::BitXor));':
-              '        let bit_xor = bin(bit_and, just(Token::Caret).to(BinaryOp::BitXor)).boxed();',
-              '        let bit_or = bin(bit_xor, just(Token::Pipe).to(BinaryOp::BitOr));':
-              '        let bit_or = bin(bit_xor, just(Token::Pipe).to(BinaryOp::BitOr)).boxed();',
-              '        let logical_and = bin(bit_or, just(Token::AndAnd).to(BinaryOp::LogicalAnd));':
-              '        let logical_and = bin(bit_or, just(Token::AndAnd).to(BinaryOp::LogicalAnd)).boxed();',
-              '        let logical_xor = bin(logical_and, just(Token::Xor).to(BinaryOp::LogicalXor));':
-              '        let logical_xor = bin(logical_and, just(Token::Xor).to(BinaryOp::LogicalXor)).boxed();',
-              '        bin(logical_xor, just(Token::OrOr).to(BinaryOp::LogicalOr)).labelled("expression")':
-              '        bin(logical_xor, just(Token::OrOr).to(BinaryOp::LogicalOr))\n            .labelled("expression")\n            .boxed()',
-          }
-          for old, new in replacements.items():
-              if old in source:
-                  source = source.replace(old, new, 1)
-
+          start = source.index('fn declaration_parser')
+          end = source.index('fn source_file_parser', start)
+          segment = source[start:end]
+          segment = re.sub(r'\bident\s*\.clone\(\)', 'ident', segment)
+          source = source[:start] + segment + source[end:]
           path.write_text(source)
           PY
           cargo fmt --all
-          if ! git diff --quiet -- crates/forge-frontend/src/parser.rs; then
+          cargo generate-lockfile
+          if ! git diff --quiet -- crates/forge-frontend/src/parser.rs Cargo.lock; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add crates/forge-frontend/src/parser.rs
-            git commit -m "Box Chumsky parser boundaries"
+            git add crates/forge-frontend/src/parser.rs Cargo.lock
+            git commit -m "Clean parser lints and lock dependencies"
             git push origin HEAD:agent/conformance-runner
           fi
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
       - run: cargo fmt --all -- --check
-      - run: cargo check --workspace
+      - run: cargo check --workspace --locked
       - name: Test workspace
         run: |
           set -o pipefail
-          timeout 300s cargo test --workspace -- --nocapture 2>&1 | tee cargo-test.log
+          timeout 300s cargo test --workspace --locked -- --nocapture 2>&1 | tee cargo-test.log
       - name: Upload test diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -95,11 +59,11 @@ jobs:
       - name: Run Forge conformance suite
         run: |
           set -o pipefail
-          timeout 120s cargo run -p forge-conformance -- examples/conformance/suite.fdn 2>&1 | tee conformance.log
+          timeout 120s cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn 2>&1 | tee conformance.log
       - name: Upload conformance diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: conformance-log
           path: conformance.log
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
