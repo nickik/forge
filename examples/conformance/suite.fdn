@@ -23,6 +23,14 @@
     {:path #path "parse/03-nfn-defaults.fg" :kind :parse}
     {:path #path "parse/04-defer-unsafe.fg" :kind :parse}
     {:path #path "parse/05-resolved-v1-syntax.fg" :kind :parse}
+    {:path #path "parse/06-literals-comments.fg" :kind :parse}
+    {:path #path "parse/07-declarations-types.fg" :kind :parse}
+    {:path #path "parse/08-control-flow.fg" :kind :parse}
+    {:path #path "parse/09-patterns.fg" :kind :parse}
+    {:path #path "parse/10-metadata-readers.fg" :kind :parse}
+    {:path #path "parse/11-functions-calls.fg" :kind :parse}
+    {:path #path "parse/12-select-context.fg" :kind :parse}
+    {:path #path "parse/13-impl-methods.fg" :kind :parse}
 
     {:path #path "syntax-negative/01-compound-assignment.fg" :kind :syntax-negative :expect :syntax/compound-assignment}
     {:path #path "syntax-negative/02-uninitialized-binding.fg" :kind :syntax-negative :expect :syntax/initializer-required}
