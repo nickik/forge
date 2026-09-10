@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Install resolved HIR follow-up fixes'
+    if: github.event.head_commit.message == 'Retry resolved HIR fixes'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +22,7 @@ jobs:
 
           p = Path('crates/forge-frontend/src/body_hir_v1.rs')
           s = p.read_text()
+          s = s.replace('#[serde(tag = "pattern", rename_all = "snake_case")]', '#[serde(tag = "pattern_kind", rename_all = "snake_case")]', 1)
           s = s.replace(
           '''pub struct HirBody {\n    pub owner: DefId,\n    pub locals: Vec<HirLocalDecl>,\n    pub block: HirBlock,\n}''',
           '''pub struct HirBody {\n    pub owner: DefId,\n    pub params: Vec<(LocalId, HirType)>,\n    pub return_type: Option<HirType>,\n    pub locals: Vec<HirLocalDecl>,\n    pub block: HirBlock,\n}''')
