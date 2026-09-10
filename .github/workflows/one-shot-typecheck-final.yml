@@ -9,19 +9,23 @@ permissions:
 
 jobs:
   validate:
-    if: github.event.head_commit.message == 'Validate initial type checking'
+    if: github.event.head_commit.message == 'Classify distinct type errors'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/conformance-runner
-      - name: Cleanup type checker
+      - name: Patch type checker
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('crates/forge-frontend/src/typecheck_v1.rs')
           s = p.read_text().replace('let mut env = ModuleTypeEnv::build(source, module);', 'let env = ModuleTypeEnv::build(source, module);')
-          p.write_text(s)
+          old = '''    fn require_assignable(&mut self, span: Span, expected: &Ty, actual: &Ty, code: &str) {\n        if !self.is_assignable(expected,actual) { self.diagnostic(span,code,format!("expected {expected:?}, found {actual:?}")); }\n    }'''
+          new = '''    fn require_assignable(&mut self, span: Span, expected: &Ty, actual: &Ty, code: &str) {\n        if !self.is_assignable(expected, actual) {\n            let code = if matches!((expected, actual), (Ty::Nominal(a), Ty::Nominal(b)) if a != b) {\n                "type/distinct"\n            } else {\n                code\n            };\n            self.diagnostic(span, code, format!("expected {expected:?}, found {actual:?}"));\n        }\n    }'''
+          if old not in s:
+              raise SystemExit('require_assignable marker not found')
+          p.write_text(s.replace(old, new, 1))
           PY
           cargo fmt --all
       - name: Validate compiler
@@ -30,7 +34,7 @@ jobs:
           cargo test --workspace --locked
           cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn
           cargo clippy --workspace --all-targets --locked -- -D warnings -A clippy::large-enum-variant -A clippy::only-used-in-recursion
-      - name: Commit validated cleanup
+      - name: Commit validated checker
         run: |
           git config user.name 'forge-ci'
           git config user.email 'forge-ci@users.noreply.github.com'
