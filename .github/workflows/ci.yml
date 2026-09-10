@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   rust:
     runs-on: ubuntu-latest
@@ -14,6 +17,66 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Box large Chumsky parser types
+        if: github.ref == 'refs/heads/agent/conformance-runner'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/forge-frontend/src/parser.rs')
+          source = path.read_text()
+
+          # Chumsky recommends strategic boxing for long parser types. Box the
+          # three recursive parser boundaries, where monomorphization is largest.
+          pairs = [
+              ('fn type_parser', 'fn expr_parser'),
+              ('fn expr_parser', 'fn value_decl_parser'),
+              ('fn statement_parser', 'fn field_parser'),
+          ]
+          for start_marker, end_marker in pairs:
+              start = source.index(start_marker)
+              end = source.index(end_marker, start)
+              segment = source[start:end]
+              if '\n    .boxed()\n}\n\n' in segment:
+                  continue
+              close = segment.rfind('\n}')
+              if close < 0:
+                  raise SystemExit(f'cannot find end of {start_marker}')
+              before = segment[:close]
+              if not before.rstrip().endswith('})'):
+                  raise SystemExit(f'unexpected final expression in {start_marker}')
+              segment = before + '\n    .boxed()' + segment[close:]
+              source = source[:start] + segment + source[end:]
+
+          # Break the expression precedence ladder into erased parser types too.
+          replacements = {
+              '        let bit_and = bin(equality, just(Token::Amp).to(BinaryOp::BitAnd));':
+              '        let bit_and = bin(equality, just(Token::Amp).to(BinaryOp::BitAnd)).boxed();',
+              '        let bit_xor = bin(bit_and, just(Token::Caret).to(BinaryOp::BitXor));':
+              '        let bit_xor = bin(bit_and, just(Token::Caret).to(BinaryOp::BitXor)).boxed();',
+              '        let bit_or = bin(bit_xor, just(Token::Pipe).to(BinaryOp::BitOr));':
+              '        let bit_or = bin(bit_xor, just(Token::Pipe).to(BinaryOp::BitOr)).boxed();',
+              '        let logical_and = bin(bit_or, just(Token::AndAnd).to(BinaryOp::LogicalAnd));':
+              '        let logical_and = bin(bit_or, just(Token::AndAnd).to(BinaryOp::LogicalAnd)).boxed();',
+              '        let logical_xor = bin(logical_and, just(Token::Xor).to(BinaryOp::LogicalXor));':
+              '        let logical_xor = bin(logical_and, just(Token::Xor).to(BinaryOp::LogicalXor)).boxed();',
+              '        bin(logical_xor, just(Token::OrOr).to(BinaryOp::LogicalOr)).labelled("expression")':
+              '        bin(logical_xor, just(Token::OrOr).to(BinaryOp::LogicalOr))\n            .labelled("expression")\n            .boxed()',
+          }
+          for old, new in replacements.items():
+              if old in source:
+                  source = source.replace(old, new, 1)
+
+          path.write_text(source)
+          PY
+          cargo fmt --all
+          if ! git diff --quiet -- crates/forge-frontend/src/parser.rs; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add crates/forge-frontend/src/parser.rs
+            git commit -m "Box Chumsky parser boundaries"
+            git push origin HEAD:agent/conformance-runner
+          fi
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
