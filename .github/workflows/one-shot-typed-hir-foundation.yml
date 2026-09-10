@@ -1,0 +1,53 @@
+name: one-shot-typed-hir-foundation
+on:
+  push:
+    branches: [agent/conformance-runner]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Install typed HIR foundation patch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/conformance-runner
+      - name: Patch resolved HIR foundations
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('crates/forge-frontend/src/body_hir_v1.rs')
+          s=p.read_text()
+          s=s.replace('    Builtin,\n    Error,', '    Builtin { name: String },\n    Error,', 1)
+          s=s.replace('return HirTypeRef::Builtin;', 'return HirTypeRef::Builtin { name: name.clone() };', 1)
+          old='''            PatternKind::Or { patterns } => HirPatternKind::Or {\n                patterns: patterns\n                    .iter()\n                    .map(|p| self.lower_binding_pattern(p, mutable))\n                    .collect(),\n            },'''
+          new='''            PatternKind::Or { patterns } => {\n                let expected = patterns.first().map(pattern_binding_names).unwrap_or_default();\n                for alternative in patterns.iter().skip(1) {\n                    let actual = pattern_binding_names(alternative);\n                    if actual != expected {\n                        self.diagnostics.push(HirDiagnostic {\n                            span: alternative.span,\n                            message: format!(\n                                "OR-pattern alternatives must bind the same names; expected {:?}, found {:?}",\n                                expected, actual\n                            ),\n                        });\n                    }\n                }\n\n                let base_next = self.next_local;\n                let base_locals = self.locals.len();\n                let mut lowered = Vec::new();\n                let mut branch_maps = Vec::new();\n                for alternative in patterns {\n                    self.push_scope();\n                    let hir = self.lower_binding_pattern(alternative, mutable);\n                    let mut map = BTreeMap::new();\n                    collect_pattern_local_map(alternative, &hir, &mut map);\n                    self.pop_scope();\n                    lowered.push(hir);\n                    branch_maps.push(map);\n                    self.locals.truncate(base_locals);\n                    self.next_local = base_next;\n                }\n\n                let mut canonical = BTreeMap::new();\n                for name in &expected {\n                    let id = self.define_local(pattern.span, mutable, false, name);\n                    canonical.insert(name.clone(), id);\n                }\n                for (hir, branch) in lowered.iter_mut().zip(branch_maps.iter()) {\n                    let remap = branch\n                        .iter()\n                        .filter_map(|(name, old)| canonical.get(name).map(|new| (*old, *new)))\n                        .collect::<BTreeMap<_, _>>();\n                    remap_pattern_locals(hir, &remap);\n                }\n                HirPatternKind::Or { patterns: lowered }\n            },'''
+          if old not in s: raise SystemExit('OR pattern block not found')
+          s=s.replace(old,new,1)
+          insert='''\nfn pattern_binding_names(pattern: &ast::Pattern) -> Vec<String> {\n    let mut names = Vec::new();\n    collect_ast_pattern_names(pattern, &mut names);\n    names.sort();\n    names.dedup();\n    names\n}\n\nfn collect_ast_pattern_names(pattern: &ast::Pattern, out: &mut Vec<String>) {\n    match &pattern.kind {\n        PatternKind::Binding { name, .. } => out.push(name.clone()),\n        PatternKind::Variant { fields, .. } | PatternKind::Struct { fields, .. } => {\n            for field in fields {\n                if let Some(pattern) = &field.pattern { collect_ast_pattern_names(pattern, out); }\n                else { out.push(field.name.clone()); }\n            }\n        }\n        PatternKind::Sequence { items, rest } => {\n            for item in items { collect_ast_pattern_names(item, out); }\n            if let Some(rest) = rest { out.push(rest.clone()); }\n        }\n        PatternKind::Map { entries, .. } => out.extend(entries.iter().map(|e| e.binding.clone())),\n        PatternKind::Some { value } => collect_ast_pattern_names(value, out),\n        PatternKind::As { name, pattern } => { out.push(name.clone()); collect_ast_pattern_names(pattern, out); }\n        PatternKind::Or { patterns } => { if let Some(first)=patterns.first() { collect_ast_pattern_names(first,out); } }\n        PatternKind::Wildcard | PatternKind::Literal { .. } | PatternKind::Range { .. } | PatternKind::None { .. } => {}\n    }\n}\n\nfn collect_pattern_local_map(ast: &ast::Pattern, hir: &HirPattern, out: &mut BTreeMap<String, LocalId>) {\n    match (&ast.kind, &hir.kind) {\n        (PatternKind::Binding { name, .. }, HirPatternKind::Binding { local, .. }) => { out.insert(name.clone(), *local); }\n        (PatternKind::Variant { fields: af, .. }, HirPatternKind::Variant { fields: hf, .. })\n        | (PatternKind::Struct { fields: af, .. }, HirPatternKind::Struct { fields: hf, .. }) => {\n            for (a,h) in af.iter().zip(hf.iter()) {\n                if let (Some(ap), Some(hp)) = (&a.pattern, &h.pattern) { collect_pattern_local_map(ap,hp,out); }\n                else if a.pattern.is_none() { if let Some(id)=h.shorthand_local { out.insert(a.name.clone(),id); } }\n            }\n        }\n        (PatternKind::Sequence { items: ai, rest: ar }, HirPatternKind::Sequence { items: hi, rest: hr }) => {\n            for (a,h) in ai.iter().zip(hi.iter()) { collect_pattern_local_map(a,h,out); }\n            if let (Some(name),Some(id))=(ar,hr) { out.insert(name.clone(),*id); }\n        }\n        (PatternKind::Map { entries: ae, .. }, HirPatternKind::Map { entries: he, .. }) => {\n            for (a,h) in ae.iter().zip(he.iter()) { out.insert(a.binding.clone(),h.local); }\n        }\n        (PatternKind::Some { value: a }, HirPatternKind::Some { value: h }) => collect_pattern_local_map(a,h,out),\n        (PatternKind::As { name, pattern: a }, HirPatternKind::As { local, pattern: h }) => { out.insert(name.clone(),*local); collect_pattern_local_map(a,h,out); }\n        _ => {}\n    }\n}\n\nfn remap_pattern_locals(pattern: &mut HirPattern, remap: &BTreeMap<LocalId, LocalId>) {\n    match &mut pattern.kind {\n        HirPatternKind::Binding { local, .. } => if let Some(new)=remap.get(local) { *local=*new; },\n        HirPatternKind::Variant { fields, .. } | HirPatternKind::Struct { fields, .. } => {\n            for field in fields {\n                if let Some(p)=&mut field.pattern { remap_pattern_locals(p,remap); }\n                if let Some(id)=&mut field.shorthand_local { if let Some(new)=remap.get(id) { *id=*new; } }\n            }\n        }\n        HirPatternKind::Sequence { items, rest } => {\n            for item in items { remap_pattern_locals(item,remap); }\n            if let Some(id)=rest { if let Some(new)=remap.get(id) { *id=*new; } }\n        }\n        HirPatternKind::Map { entries, .. } => for e in entries { if let Some(new)=remap.get(&e.local) { e.local=*new; } },\n        HirPatternKind::Some { value } => remap_pattern_locals(value,remap),\n        HirPatternKind::Or { patterns } => for p in patterns { remap_pattern_locals(p,remap); },\n        HirPatternKind::As { local, pattern } => { if let Some(new)=remap.get(local) { *local=*new; } remap_pattern_locals(pattern,remap); },\n        HirPatternKind::Wildcard | HirPatternKind::Literal { .. } | HirPatternKind::Range { .. } | HirPatternKind::None { .. } => {}\n    }\n}\n'''
+          marker='\nfn is_builtin_type(name: &str) -> bool {'
+          if marker not in s: raise SystemExit('builtin marker missing')
+          s=s.replace(marker,insert+marker,1)
+          p.write_text(s)
+
+          # Adjust tests for richer builtin HIR reference.
+          for f in Path('crates/forge-frontend/tests').glob('*.rs'):
+              t=f.read_text()
+              t=t.replace('HirTypeRef::Builtin)', 'HirTypeRef::Builtin { .. })')
+              t=t.replace('HirTypeRef::Builtin,', 'HirTypeRef::Builtin { .. },')
+              f.write_text(t)
+          PY
+      - name: Format and validate
+        run: |
+          cargo fmt --all
+          cargo check --workspace --locked
+          cargo test --workspace --locked
+          cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn
+          cargo clippy --workspace --all-targets --locked -- -D warnings -A clippy::large-enum-variant -A clippy::only-used-in-recursion
+      - name: Commit
+        run: |
+          git config user.name 'forge-ci'
+          git config user.email 'forge-ci@users.noreply.github.com'
+          git add crates/forge-frontend/src/body_hir_v1.rs crates/forge-frontend/tests
+          git commit -m 'Normalize OR-pattern bindings in HIR'
+          git push origin HEAD:agent/conformance-runner
