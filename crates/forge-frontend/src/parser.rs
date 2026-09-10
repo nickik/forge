@@ -515,7 +515,6 @@ where
     let ident = select! { Token::Ident(name) => name };
 
     let param = ident
-        .clone()
         .then_ignore(just(Token::Colon))
         .then(type_parser())
         .then(just(Token::Eq).ignore_then(expr_parser()).or_not())
@@ -533,7 +532,7 @@ where
             just(Token::Fn).to(false),
             just(Token::Nfn).to(true),
         )))
-        .then(ident.clone())
+        .then(ident)
         .then(params)
         .then(just(Token::Arrow).ignore_then(type_parser()).or_not())
         .then(block_parser())
@@ -556,7 +555,7 @@ where
     let struct_decl = visibility
         .clone()
         .then_ignore(just(Token::Struct))
-        .then(ident.clone())
+        .then(ident)
         .then(
             field_parser()
                 .repeated()
@@ -577,10 +576,9 @@ where
     let enum_decl = visibility
         .clone()
         .then_ignore(just(Token::Enum))
-        .then(ident.clone())
+        .then(ident)
         .then(
             ident
-                .clone()
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
                 .collect::<Vec<_>>()
@@ -598,7 +596,6 @@ where
         });
 
     let tagged_variant = ident
-        .clone()
         .then(
             field_parser()
                 .repeated()
@@ -614,7 +611,7 @@ where
     let tagged_decl = visibility
         .clone()
         .then_ignore(just(Token::Tagged))
-        .then(ident.clone())
+        .then(ident)
         .then(
             tagged_variant
                 .separated_by(just(Token::Comma))
@@ -636,7 +633,7 @@ where
     let distinct = visibility
         .clone()
         .then_ignore(just(Token::Distinct))
-        .then(ident.clone())
+        .then(ident)
         .then_ignore(just(Token::Colon))
         .then(type_parser())
         .then_ignore(just(Token::Semicolon))
@@ -654,7 +651,7 @@ where
     let alias = visibility
         .clone()
         .then_ignore(just(Token::Type))
-        .then(ident.clone())
+        .then(ident)
         .then_ignore(just(Token::Eq))
         .then(type_parser())
         .then_ignore(just(Token::Semicolon))
