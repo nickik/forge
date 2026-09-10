@@ -1,0 +1,23 @@
+module examples.conformance.metadata_readers;
+
+@{
+    :since #version "1.0.0"
+    :doc/category :network
+}
+pub struct Connection {
+    @deprecated("legacy")
+    id: u32;
+}
+
+@inline
+fn metadata(value: u32) -> u32 {
+    val id = #uuid "550e8400-e29b-41d4-a716-446655440000";
+    val instant = #inst "1985-04-12T23:20:50.52Z";
+    val table = #forge/array {
+        :type #type "u32"
+        :size 4
+        :init 0
+    };
+    val marked = value @unchecked;
+    return @wrap(marked + 1u32);
+}
