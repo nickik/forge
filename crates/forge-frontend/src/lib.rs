@@ -9,6 +9,8 @@ pub mod lexer;
 pub mod parser;
 #[path = "resolution_v1.rs"]
 pub mod resolution;
+#[path = "typecheck_v1.rs"]
+pub mod typecheck;
 
 pub use body_hir::{
     lower_resolved_bodies, BodyHirOutput, HirBody, HirExpr, HirExprKind, HirGlobalBody, HirLocalDecl,
@@ -19,4 +21,8 @@ pub use parser::{parse_source, Diagnostic, ParseOutput};
 pub use resolution::{
     resolve_module_bodies, BodyResolutionOutput, HirLocal, LocalId, NameUse, ResolvedBody,
     ResolvedName,
+};
+pub use typecheck::{
+    type_check_module, IntWidth, Ty, TypeCheckOutput, TypeDiagnostic, TypedBody, TypedExpr,
+    TypedExprKind,
 };
