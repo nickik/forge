@@ -1,0 +1,5 @@
+module examples.conformance.bad_extern_c;
+
+extern "C" {
+    fn puts(text: *u8) -> i32;
+}
