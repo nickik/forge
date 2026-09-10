@@ -1,0 +1,7 @@
+module examples.conformance.bad_switch;
+
+fn main() -> i32 {
+    switch (1) {
+    }
+    return 0;
+}
