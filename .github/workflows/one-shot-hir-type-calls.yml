@@ -1,0 +1,45 @@
+name: one-shot-hir-type-calls
+on:
+  push:
+    branches: [agent/conformance-runner]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Install HIR type-call lowering'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/conformance-runner
+      - name: Patch HIR type calls
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('crates/forge-frontend/src/body_hir_v1.rs')
+          s=p.read_text()
+          marker='''    Call {\n        callee: Box<HirExpr>,\n        args: Vec<HirCallArg>,\n    },'''
+          repl=marker+'''\n    TypeCall {\n        target: HirTypeRef,\n        args: Vec<HirCallArg>,\n    },'''
+          if marker not in s: raise SystemExit('call enum marker missing')
+          s=s.replace(marker,repl,1)
+          old='''            ExprKind::Call { callee, args } => HirExprKind::Call {\n                callee: Box::new(self.lower_expr(callee)),\n                args: args\n                    .iter()\n                    .map(|a| match a {\n                        ast::CallArg::Positional { value } => HirCallArg::Positional {\n                            value: self.lower_expr(value),\n                        },\n                        ast::CallArg::Named { name, value } => HirCallArg::Named {\n                            name: name.clone(),\n                            value: self.lower_expr(value),\n                        },\n                    })\n                    .collect(),\n            },'''
+          new='''            ExprKind::Call { callee, args } => {\n                let lowered_args = || {\n                    args.iter()\n                        .map(|a| match a {\n                            ast::CallArg::Positional { value } => HirCallArg::Positional {\n                                value: self.lower_expr(value),\n                            },\n                            ast::CallArg::Named { name, value } => HirCallArg::Named {\n                                name: name.clone(),\n                                value: self.lower_expr(value),\n                            },\n                        })\n                        .collect()\n                };\n                if let ExprKind::Path { path } = &callee.kind {\n                    if path.segments.len() == 1 {\n                        let name = &path.segments[0];\n                        if is_builtin_type(name)\n                            || self.module.symbols.get(name).and_then(|s| s.type_def).is_some()\n                        {\n                            HirExprKind::TypeCall {\n                                target: self.lower_type_ref(path, callee.span),\n                                args: lowered_args(),\n                            }\n                        } else {\n                            HirExprKind::Call {\n                                callee: Box::new(self.lower_expr(callee)),\n                                args: lowered_args(),\n                            }\n                        }\n                    } else {\n                        HirExprKind::Call {\n                            callee: Box::new(self.lower_expr(callee)),\n                            args: lowered_args(),\n                        }\n                    }\n                } else {\n                    HirExprKind::Call {\n                        callee: Box::new(self.lower_expr(callee)),\n                        args: lowered_args(),\n                    }\n                }\n            },'''
+          if old not in s: raise SystemExit('call lowering block missing')
+          s=s.replace(old,new,1)
+          s=s.replace('            | "char"\n            | "str"', '            | "char"\n            | "byte"\n            | "str"', 1)
+          p.write_text(s)
+          PY
+      - name: Validate
+        run: |
+          cargo fmt --all
+          cargo check --workspace --locked
+          cargo test --workspace --locked
+          cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn
+          cargo clippy --workspace --all-targets --locked -- -D warnings -A clippy::large-enum-variant -A clippy::only-used-in-recursion
+      - name: Commit
+        run: |
+          git config user.name 'forge-ci'
+          git config user.email 'forge-ci@users.noreply.github.com'
+          git add crates/forge-frontend/src/body_hir_v1.rs
+          git commit -m 'Represent explicit type calls in HIR'
+          git push origin HEAD:agent/conformance-runner
