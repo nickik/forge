@@ -1,0 +1,37 @@
+name: semantic-followup-once
+on:
+  push:
+    branches: [agent/conformance-runner]
+permissions:
+  contents: write
+jobs:
+  semantic-followup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/conformance-runner
+          fetch-depth: 0
+      - name: Apply semantic follow-up
+        run: python scripts/semantic_followup_patch.py
+      - name: Format
+        run: cargo fmt --all
+      - name: Validate
+        run: |
+          cargo fmt --all -- --check
+          cargo check --workspace --locked
+          cargo test --workspace --locked
+          cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn
+          cargo clippy --workspace --all-targets --locked -- -D warnings -A unused_mut -A clippy::collapsible_match -A clippy::large-enum-variant -A clippy::only-used-in-recursion
+      - name: Commit
+        run: |
+          rm -f scripts/semantic_followup_patch.py
+          rm -f .github/workflows/semantic-followup-once.yml
+          rm -f .github/workflows/reconcile-typed-hir-once.yml
+          git config user.name forge-ci
+          git config user.email forge-ci@users.noreply.github.com
+          git add -A
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Advance typed HIR semantic checks"
+          git push origin HEAD:agent/conformance-runner
