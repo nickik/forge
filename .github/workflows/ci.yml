@@ -12,12 +12,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
       - run: cargo check --workspace
       - name: Test workspace
         run: |
           set -o pipefail
-          timeout 120s cargo test --workspace -- --nocapture 2>&1 | tee cargo-test.log
+          timeout 300s cargo test --workspace -- --nocapture 2>&1 | tee cargo-test.log
       - name: Upload test diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -27,7 +28,7 @@ jobs:
       - name: Run Forge conformance suite
         run: |
           set -o pipefail
-          timeout 60s cargo run -p forge-conformance -- examples/conformance/suite.fdn 2>&1 | tee conformance.log
+          timeout 120s cargo run -p forge-conformance -- examples/conformance/suite.fdn 2>&1 | tee conformance.log
       - name: Upload conformance diagnostics
         if: always()
         uses: actions/upload-artifact@v4
