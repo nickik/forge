@@ -207,6 +207,10 @@ pub enum HirExprKind {
         callee: Box<HirExpr>,
         args: Vec<HirCallArg>,
     },
+    TypeCall {
+        target: HirTypeRef,
+        args: Vec<HirCallArg>,
+    },
     Index {
         base: Box<HirExpr>,
         index: Box<HirExpr>,
@@ -834,21 +838,57 @@ impl<'a, 'd> Lowerer<'a, 'd> {
                 left: Box::new(self.lower_expr(left)),
                 right: Box::new(self.lower_expr(right)),
             },
-            ExprKind::Call { callee, args } => HirExprKind::Call {
-                callee: Box::new(self.lower_expr(callee)),
-                args: args
-                    .iter()
-                    .map(|a| match a {
-                        ast::CallArg::Positional { value } => HirCallArg::Positional {
-                            value: self.lower_expr(value),
-                        },
-                        ast::CallArg::Named { name, value } => HirCallArg::Named {
-                            name: name.clone(),
-                            value: self.lower_expr(value),
-                        },
-                    })
-                    .collect(),
-            },
+            ExprKind::Call { callee, args } => {
+                let type_path = match &callee.kind {
+                    ExprKind::Path { path } if path.segments.len() == 1 => {
+                        let name = &path.segments[0];
+                        if is_builtin_type(name)
+                            || self
+                                .module
+                                .symbols
+                                .get(name)
+                                .and_then(|s| s.type_def)
+                                .is_some()
+                        {
+                            Some(path)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(path) = type_path {
+                    let target = self.lower_type_ref(path, callee.span);
+                    let args = args
+                        .iter()
+                        .map(|a| match a {
+                            ast::CallArg::Positional { value } => HirCallArg::Positional {
+                                value: self.lower_expr(value),
+                            },
+                            ast::CallArg::Named { name, value } => HirCallArg::Named {
+                                name: name.clone(),
+                                value: self.lower_expr(value),
+                            },
+                        })
+                        .collect();
+                    HirExprKind::TypeCall { target, args }
+                } else {
+                    let callee = Box::new(self.lower_expr(callee));
+                    let args = args
+                        .iter()
+                        .map(|a| match a {
+                            ast::CallArg::Positional { value } => HirCallArg::Positional {
+                                value: self.lower_expr(value),
+                            },
+                            ast::CallArg::Named { name, value } => HirCallArg::Named {
+                                name: name.clone(),
+                                value: self.lower_expr(value),
+                            },
+                        })
+                        .collect();
+                    HirExprKind::Call { callee, args }
+                }
+            }
             ExprKind::Index { base, index } => HirExprKind::Index {
                 base: Box::new(self.lower_expr(base)),
                 index: Box::new(self.lower_expr(index)),
@@ -1249,6 +1289,7 @@ fn is_builtin_type(name: &str) -> bool {
         name,
         "bool"
             | "char"
+            | "byte"
             | "str"
             | "void"
             | "never"
