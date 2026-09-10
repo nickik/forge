@@ -574,7 +574,9 @@ where
 pub fn parse_source(source: &str) -> ParseOutput {
     let mut diagnostics = Vec::new();
 
-    let token_iter = Token::lexer(source).spanned().map(|(token, range)| {
+    let tokens = Token::lexer(source)
+    .spanned()
+    .map(|(token, range)| {
         let token = match token {
             Ok(token) => token,
             Err(()) => {
@@ -588,9 +590,10 @@ pub fn parse_source(source: &str) -> ParseOutput {
             }
         };
         (token, CSpan::from(range))
-    });
+    })
+    .collect::<Vec<_>>();
 
-    let stream = Stream::from_iter(token_iter)
+let stream = Stream::from_iter(tokens)
         .map((0..source.len()).into(), |(token, span): (_, _)| (token, span));
 
     let (ast, parse_errors) = source_file_parser().parse(stream).into_output_errors();
