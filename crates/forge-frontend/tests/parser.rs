@@ -1,5 +1,5 @@
 use forge_frontend::{
-    ast::{DeclKind, ExprKind, StmtKind},
+    ast::{DeclKind, ExprKind, StmtKind, UnaryOp},
     parse_source,
 };
 
@@ -184,4 +184,68 @@ fn rejects_assignment_expression() {
         "#,
     );
     assert!(!parsed.diagnostics.is_empty() || parsed.ast.is_none());
+}
+
+#[test]
+fn mutable_address_of_has_distinct_ast_operation() {
+    let function = first_function(
+        r#"
+        module test.mutable_reference_expression;
+        fn main() -> i32 {
+            val pointer = &mut value;
+            return 0;
+        }
+        "#,
+    );
+    let StmtKind::Value(value) = &function.body.statements[0].kind else {
+        panic!("expected value declaration")
+    };
+    let ExprKind::Unary { op, .. } = value.value.kind else {
+        panic!("expected unary expression")
+    };
+    assert_eq!(op, UnaryOp::AddressOfMut);
+}
+
+#[test]
+fn fdn_reader_tag_can_use_forge_keyword() {
+    let function = first_function(
+        r#"
+        module test.fdn_keyword_reader;
+        fn main() -> i32 {
+            val descriptor = #type "u32";
+            return 0;
+        }
+        "#,
+    );
+    let StmtKind::Value(value) = &function.body.statements[0].kind else {
+        panic!("expected value declaration")
+    };
+    let ExprKind::ReaderForm { tag, .. } = &value.value.kind else {
+        panic!("expected reader form")
+    };
+    assert_eq!(tag, "type");
+}
+
+#[test]
+fn return_tail_requires_expression() {
+    let parsed = parse_source(
+        r#"
+        module test.bad_tail_return;
+        fn main() -> i32 {
+            return tail;
+        }
+        "#,
+    );
+    assert!(!parsed.diagnostics.is_empty() || parsed.ast.is_none());
+}
+
+#[test]
+fn empty_enum_and_tagged_are_rejected() {
+    for source in [
+        "module test.empty_enum; enum Empty { }",
+        "module test.empty_tagged; tagged Empty { }",
+    ] {
+        let parsed = parse_source(source);
+        assert!(!parsed.diagnostics.is_empty(), "{source}");
+    }
 }
