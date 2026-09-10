@@ -62,19 +62,19 @@ fn main() {
         match outcome {
             Outcome::Pass => {
                 passed += 1;
-                println!("PASS    {:8} {}", test.kind.as_str(), test.path.display());
+                println!("PASS    {:15} {}", test.kind.as_str(), test.path.display());
             }
             Outcome::Pending(reason) => {
                 pending += 1;
                 println!(
-                    "PENDING {:8} {} ({reason})",
+                    "PENDING {:15} {} ({reason})",
                     test.kind.as_str(),
                     test.path.display()
                 );
             }
             Outcome::Fail(reason) => {
                 failed += 1;
-                println!("FAIL    {:8} {}", test.kind.as_str(), test.path.display());
+                println!("FAIL    {:15} {}", test.kind.as_str(), test.path.display());
                 for line in reason.lines() {
                     println!("        {line}");
                 }
@@ -153,16 +153,18 @@ fn validate_suite(suite: &Suite) -> Result<(), String> {
                     ));
                 }
             }
-            TestKind::Negative => {
+            TestKind::SyntaxNegative | TestKind::Negative => {
                 if test.expected.is_none() {
                     return Err(format!(
-                        ":negative test {} requires :expect",
+                        ":{} test {} requires :expect",
+                        test.kind.as_str(),
                         test.path.display()
                     ));
                 }
                 if test.exit.is_some() {
                     return Err(format!(
-                        ":negative test {} must not specify :exit",
+                        ":{} test {} must not specify :exit",
+                        test.kind.as_str(),
                         test.path.display()
                     ));
                 }
@@ -191,6 +193,7 @@ fn execute_case(suite: &Suite, test: &TestCase, path: &Path) -> Outcome {
 
     match test.kind {
         TestKind::Parse => execute_parse(path),
+        TestKind::SyntaxNegative => execute_syntax_negative(path),
         TestKind::Negative => Outcome::Fail(format!(
             ":negative was activated for {} before a semantic rejection executor exists (expected :{})",
             test.path.display(),
@@ -209,22 +212,36 @@ fn execute_parse(path: &Path) -> Outcome {
         Ok(source) => source,
         Err(error) => return Outcome::Fail(format!("cannot read {}: {error}", path.display())),
     };
-
-    // This is the same frontend entry point used by the `forge-parse` CLI.
-    // Calling it in-process avoids one subprocess per fixture while exercising
-    // exactly the same lexer and parser.
     let output = parse_source(&source);
 
     if output.ast.is_some() && output.diagnostics.is_empty() {
         return Outcome::Pass;
     }
 
+    Outcome::Fail(format_parse_failure(output.ast.is_some(), output.diagnostics))
+}
+
+fn execute_syntax_negative(path: &Path) -> Outcome {
+    let source = match fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(error) => return Outcome::Fail(format!("cannot read {}: {error}", path.display())),
+    };
+    let output = parse_source(&source);
+
+    if output.ast.is_none() || !output.diagnostics.is_empty() {
+        Outcome::Pass
+    } else {
+        Outcome::Fail("source was expected to be rejected syntactically, but parsed cleanly".into())
+    }
+}
+
+fn format_parse_failure(has_ast: bool, diagnostics: Vec<forge_frontend::Diagnostic>) -> String {
     let mut reason = String::new();
-    if output.ast.is_none() {
+    if !has_ast {
         reason.push_str("parser produced no AST");
     }
 
-    for diagnostic in output.diagnostics {
+    for diagnostic in diagnostics {
         if !reason.is_empty() {
             reason.push('\n');
         }
@@ -233,8 +250,7 @@ fn execute_parse(path: &Path) -> Outcome {
             diagnostic.span.start, diagnostic.span.end, diagnostic.message
         ));
     }
-
-    Outcome::Fail(reason)
+    reason
 }
 
 fn format_active_kinds(suite: &Suite) -> String {
