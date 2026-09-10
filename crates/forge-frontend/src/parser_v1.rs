@@ -1420,14 +1420,26 @@ fn validate_decl(declaration: &Decl, diagnostics: &mut Vec<Diagnostic>) {
             }
         }
         DeclKind::Enum(value) => {
-            for variant in &value.variants {
+  if value.variants.is_empty() {
+      diagnostics.push(Diagnostic {
+          span: declaration.span,
+          message: "enum declarations require at least one variant".into(),
+      });
+  }
+  for variant in &value.variants {
                 if let Some(value) = &variant.value {
                     validate_expr(value, diagnostics);
                 }
             }
         }
         DeclKind::Tagged(value) => {
-            for variant in &value.variants {
+  if value.variants.is_empty() {
+      diagnostics.push(Diagnostic {
+          span: declaration.span,
+          message: "tagged declarations require at least one variant".into(),
+      });
+  }
+  for variant in &value.variants {
                 for field in &variant.fields {
                     if let Some(default) = &field.default {
                         validate_expr(default, diagnostics);
