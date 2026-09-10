@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Finalize HIR type identity patch'
+    if: github.event.head_commit.message == 'Apply typed HIR identity fixes'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,14 +32,10 @@ jobs:
 
           t = Path('crates/forge-frontend/tests/body_hir.rs')
           s = t.read_text()
-          old = '''    let HirExprKind::Name { reference } = &match &arms[0].body {
-        forge_frontend::body_hir::HirMatchBody::Expr(expr) => &expr.kind,
-        _ => panic!("expected expression arm"),
-    } else {
-        panic!("expected name use");
-    };
-'''
-          new = '''    let arm_expr = match &arms[0].body {
+          start = s.index('    let HirExprKind::Name { reference } = &match &arms[0].body {')
+          end_marker = '    assert_eq!(reference.root, ResolvedName::Local(left));'
+          end = s.index(end_marker, start)
+          replacement = '''    let arm_expr = match &arms[0].body {
         forge_frontend::body_hir::HirMatchBody::Expr(expr) => expr,
         _ => panic!("expected expression arm"),
     };
@@ -47,9 +43,8 @@ jobs:
         panic!("expected name use");
     };
 '''
-          if old not in s:
-              raise SystemExit('OR-pattern assertion marker not found')
-          t.write_text(s.replace(old, new, 1))
+          s = s[:start] + replacement + s[end:]
+          t.write_text(s)
           PY
       - name: Format and test
         run: |
