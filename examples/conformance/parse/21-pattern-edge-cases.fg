@@ -3,7 +3,7 @@ module examples.conformance.pattern_edge_cases;
 fn decode(value: Value) -> i32 {
     return match (value) {
         [..rest] => 1,
-        [head, ..tail] => 2,
+        [head, ..remainder] => 2,
         Point{x, y: 0} => x,
         Shape::Circle{radius: r} => r,
         name @ Some(inner) => inner,
