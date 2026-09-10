@@ -26,8 +26,9 @@ impl<T> Node<T> {
 
 pub type Expr = Node<ExprKind>;
 pub type Stmt = Node<StmtKind>;
-pub type Decl = Node<DeclKind>;
+pub type Decl = Node<DeclData>;
 pub type TypeNode = Node<TypeKind>;
+pub type Pattern = Node<PatternKind>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Path {
@@ -48,20 +49,29 @@ pub struct SourceFile {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DeclData {
+    pub public: bool,
+    pub metadata: Vec<Metadata>,
+    pub kind: DeclKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "decl", rename_all = "snake_case")]
 pub enum DeclKind {
     Function(FunctionDecl),
     Struct(StructDecl),
     Enum(EnumDecl),
     Tagged(TaggedDecl),
+    BitStruct(BitStructDecl),
     Distinct(DistinctDecl),
     TypeAlias(TypeAliasDecl),
-    Global { public: bool, value: ValueDecl },
+    Impl(ImplDecl),
+    Extern(ExternDecl),
+    Global(ValueDecl),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FunctionDecl {
-    pub public: bool,
     pub named_arguments: bool,
     pub name: String,
     pub params: Vec<Param>,
@@ -78,27 +88,32 @@ pub struct Param {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct StructDecl {
-    pub public: bool,
     pub name: String,
     pub fields: Vec<FieldDecl>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FieldDecl {
+    pub metadata: Vec<Metadata>,
     pub name: String,
     pub ty: TypeNode,
+    pub default: Option<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EnumDecl {
-    pub public: bool,
     pub name: String,
-    pub variants: Vec<String>,
+    pub variants: Vec<EnumVariant>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EnumVariant {
+    pub name: String,
+    pub value: Option<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TaggedDecl {
-    pub public: bool,
     pub name: String,
     pub variants: Vec<TaggedVariant>,
 }
@@ -110,17 +125,53 @@ pub struct TaggedVariant {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct BitStructDecl {
+    pub name: String,
+    pub storage: TypeNode,
+    pub fields: Vec<BitField>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct BitField {
+    pub name: String,
+    pub width: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DistinctDecl {
-    pub public: bool,
     pub name: String,
     pub underlying: TypeNode,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypeAliasDecl {
-    pub public: bool,
     pub name: String,
     pub target: TypeNode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ImplDecl {
+    pub target: Path,
+    pub methods: Vec<ImplMethod>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ImplMethod {
+    pub metadata: Vec<Metadata>,
+    pub function: FunctionDecl,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ExternDecl {
+    pub abi: String,
+    pub functions: Vec<ExternFunctionDecl>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ExternFunctionDecl {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub return_type: Option<TypeNode>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -134,7 +185,7 @@ pub enum BindingKind {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ValueDecl {
     pub binding: BindingKind,
-    pub name: String,
+    pub pattern: Pattern,
     pub ty: Option<TypeNode>,
     pub value: Expr,
 }
@@ -149,6 +200,10 @@ pub struct Block {
 #[serde(tag = "stmt", rename_all = "snake_case")]
 pub enum StmtKind {
     Value(ValueDecl),
+    Assignment {
+        target: Expr,
+        value: Expr,
+    },
     Expr {
         expr: Expr,
     },
@@ -159,20 +214,95 @@ pub enum StmtKind {
     If {
         condition: Expr,
         then_block: Block,
-        else_block: Option<Block>,
+        else_branch: Option<Box<Stmt>>,
     },
     While {
         condition: Expr,
         body: Block,
     },
-    Defer {
+    ForC {
+        init: Option<ForInit>,
+        condition: Option<Expr>,
+        step: Option<ForStep>,
         body: Block,
+    },
+    ForEach {
+        binding: BindingKind,
+        pattern: Pattern,
+        iterable: Expr,
+        body: Block,
+    },
+    Match {
+        value: Expr,
+        arms: Vec<MatchArm>,
+    },
+    Break,
+    Continue,
+    Defer {
+        body: DeferBody,
     },
     Unsafe {
         body: Block,
     },
+    WithContext {
+        overrides: FdnValue,
+        body: Block,
+    },
+    Select {
+        arms: Vec<SelectArm>,
+    },
     Block {
         block: Block,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ForInit {
+    Value(ValueDecl),
+    Assignment { target: Expr, value: Expr },
+    Expr(Expr),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ForStep {
+    Assignment { target: Expr, value: Expr },
+    Expr(Expr),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DeferBody {
+    Block(Block),
+    Expr(Expr),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+    pub guard: Option<Expr>,
+    pub body: MatchBody,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum MatchBody {
+    Block(Block),
+    Expr(Expr),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SelectArm {
+    Receive {
+        channel: Expr,
+        pattern: Pattern,
+        body: Block,
+    },
+    Timeout {
+        duration: Expr,
+        body: Block,
     },
 }
 
@@ -185,20 +315,35 @@ pub enum ExprKind {
     Float {
         text: String,
     },
+    Character {
+        value: char,
+    },
     String {
+        value: String,
+    },
+    CString {
         value: String,
     },
     Bool {
         value: bool,
     },
+    None,
+    Keyword {
+        name: String,
+    },
     Path {
         path: Path,
+    },
+    Qualified {
+        namespace: Path,
+        name: String,
     },
     Array {
         items: Vec<Expr>,
     },
     StructInit {
-        ty: Path,
+        namespace: Path,
+        variant: Option<String>,
         fields: Vec<InitField>,
     },
     Unary {
@@ -212,18 +357,53 @@ pub enum ExprKind {
     },
     Call {
         callee: Box<Expr>,
-        args: Vec<Expr>,
+        args: Vec<CallArg>,
     },
     Index {
         base: Box<Expr>,
         index: Box<Expr>,
     },
+    Member {
+        base: Box<Expr>,
+        name: String,
+    },
+    Try {
+        value: Box<Expr>,
+    },
+    Closure {
+        captures: Vec<Capture>,
+        params: Vec<Param>,
+        return_type: Option<TypeNode>,
+        body: Block,
+    },
+    ReaderForm {
+        tag: String,
+        value: FdnValue,
+    },
+    Annotated {
+        value: Box<Expr>,
+        metadata: Vec<Metadata>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CallArg {
+    Positional { value: Expr },
+    Named { name: String, value: Expr },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct InitField {
     pub name: String,
     pub value: Expr,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Capture {
+    pub name: String,
+    pub by_reference: bool,
+    pub mutable: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -267,6 +447,7 @@ pub enum TypeKind {
         path: Path,
     },
     Pointer {
+        volatile: bool,
         inner: Box<TypeNode>,
     },
     Reference {
@@ -296,4 +477,122 @@ pub enum TypeKind {
         params: Vec<TypeNode>,
         result: Box<TypeNode>,
     },
+    Annotated {
+        inner: Box<TypeNode>,
+        metadata: Vec<Metadata>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Metadata {
+    pub name: Option<String>,
+    pub arguments: Vec<MetadataArg>,
+    pub map: Option<FdnValue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum MetadataArg {
+    Value(FdnValue),
+    Named { name: String, value: FdnValue },
+    Range {
+        start: Box<FdnValue>,
+        end: Box<FdnValue>,
+        inclusive: bool,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "pattern", rename_all = "snake_case")]
+pub enum PatternKind {
+    Wildcard,
+    Binding {
+        name: String,
+        optional: bool,
+    },
+    Literal {
+        value: PatternLiteral,
+    },
+    Range {
+        start: PatternLiteral,
+        end: PatternLiteral,
+        inclusive: bool,
+    },
+    Variant {
+        namespace: Path,
+        name: String,
+        fields: Vec<PatternField>,
+        explicit_braces: bool,
+    },
+    None {
+        explicit_braces: bool,
+    },
+    Some {
+        value: Box<Pattern>,
+    },
+    Struct {
+        path: Path,
+        fields: Vec<PatternField>,
+    },
+    Sequence {
+        items: Vec<Pattern>,
+        rest: Option<String>,
+    },
+    Map {
+        entries: Vec<MapPatternEntry>,
+        ignore_rest: bool,
+    },
+    Or {
+        patterns: Vec<Pattern>,
+    },
+    As {
+        name: String,
+        pattern: Box<Pattern>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PatternLiteral {
+    Integer { text: String },
+    Character { value: char },
+    String { value: String },
+    Bool { value: bool },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PatternField {
+    pub name: String,
+    pub pattern: Option<Pattern>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MapPatternEntry {
+    pub keyword: String,
+    pub binding: String,
+    pub optional: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "fdn", rename_all = "snake_case")]
+pub enum FdnValue {
+    Nil,
+    Bool { value: bool },
+    Integer { text: String },
+    Float { text: String },
+    String { value: String },
+    Character { value: char },
+    Keyword { name: String },
+    Symbol { name: String },
+    Vector { values: Vec<FdnValue> },
+    List { values: Vec<FdnValue> },
+    Map { entries: Vec<FdnMapEntry> },
+    Set { values: Vec<FdnValue> },
+    Tagged { tag: String, value: Box<FdnValue> },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FdnMapEntry {
+    pub key: FdnValue,
+    pub value: FdnValue,
 }
