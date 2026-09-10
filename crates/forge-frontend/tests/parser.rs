@@ -95,7 +95,7 @@ fn match_is_an_expression() {
 fn with_context_contains_named_forge_expressions() {
     let function = first_function(
         r#"
-        module test.context;
+        module test.context_usage;
         fn main() -> i32 {
             with context(:scratch = &scratch, :logger = &logger) {
                 run();
@@ -155,7 +155,7 @@ fn method_call_is_member_then_call() {
 fn capture_free_closure_omits_capture_list() {
     let function = first_function(
         r#"
-        module test.closure;
+        module test.lambda;
         fn main() -> i32 {
             val inc = (x: i32) -> i32 { return x + 1; };
             return inc(1);
