@@ -503,7 +503,7 @@ impl<'a, 'd> Lowerer<'a, 'd> {
             span,
             message: format!("unresolved value name `{name}`"),
         });
-        ResolvedName::Import(u32::MAX)
+        ResolvedName::Error
     }
 
     fn lower_value_path(&mut self, path: &ast::Path, span: Span) -> HirValueRef {

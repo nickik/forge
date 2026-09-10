@@ -18,6 +18,7 @@ pub enum ResolvedName {
     Import(u32),
     BuiltinType,
     BuiltinValue,
+    Error,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
