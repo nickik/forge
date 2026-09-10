@@ -1,0 +1,22 @@
+module examples.conformance.select_context;
+
+fn worker(jobs: JobChannel, shutdown: ShutdownChannel) -> void {
+    with context(
+        :scratch = &worker_scratch,
+        :logger = &worker_logger
+    ) {
+        select {
+            recv jobs -> job => {
+                process(job);
+            }
+
+            recv shutdown -> _ => {
+                return;
+            }
+
+            timeout #duration "100ms" => {
+                maintenance();
+            }
+        }
+    }
+}
