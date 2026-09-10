@@ -30,16 +30,10 @@ fn forge_parse_cli_accepts_conformance_fixture() {
 }
 
 #[test]
-fn forge_parse_cli_rejects_invalid_source() {
-    let repository_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let fixture = repository_root.join("examples/conformance/negative/06-null-is-not-a-value.fg");
-
-    // This fixture is semantically invalid but still syntactically valid today, so use
-    // a temporary malformed Forge source to verify the CLI exit-code contract itself.
+fn forge_parse_cli_rejects_malformed_source() {
     let malformed = std::env::temp_dir().join(format!(
-        "forge-cli-invalid-{}-{}.fg",
-        std::process::id(),
-        std::thread::current().name().unwrap_or("test")
+        "forge-cli-invalid-{}.fg",
+        std::process::id()
     ));
     std::fs::write(&malformed, "module test.invalid; fn main( -> i32 { return 0; }")
         .expect("write malformed source");
@@ -53,7 +47,6 @@ fn forge_parse_cli_rejects_invalid_source() {
 
     assert!(
         !output.status.success(),
-        "forge-parse must return non-zero for malformed source; semantic fixture is {}",
-        fixture.display()
+        "forge-parse must return non-zero for malformed source"
     );
 }
