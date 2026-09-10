@@ -150,7 +150,7 @@ pub struct HirValueRef {
 pub enum HirTypeRef {
     Def(DefId),
     Import { import: u32, tail: Vec<String> },
-    Builtin,
+    Builtin { name: String },
     Error,
 }
 
@@ -519,7 +519,7 @@ impl<'a, 'd> Lowerer<'a, 'd> {
         if path.segments.len() == 1 {
             let name = &path.segments[0];
             if is_builtin_type(name) {
-                return HirTypeRef::Builtin;
+                return HirTypeRef::Builtin { name: name.clone() };
             }
             if let Some(id) = self.module.symbols.get(name).and_then(|s| s.type_def) {
                 return HirTypeRef::Def(id);
@@ -1008,12 +1008,54 @@ impl<'a, 'd> Lowerer<'a, 'd> {
                     .collect(),
                 ignore_rest: *ignore_rest,
             },
-            PatternKind::Or { patterns } => HirPatternKind::Or {
-                patterns: patterns
-                    .iter()
-                    .map(|p| self.lower_binding_pattern(p, mutable))
-                    .collect(),
-            },
+            PatternKind::Or { patterns } => {
+                let expected = patterns
+                    .first()
+                    .map(pattern_binding_names)
+                    .unwrap_or_default();
+                for alternative in patterns.iter().skip(1) {
+                    let actual = pattern_binding_names(alternative);
+                    if actual != expected {
+                        self.diagnostics.push(HirDiagnostic {
+                            span: alternative.span,
+                            message: format!(
+                                "OR-pattern alternatives must bind the same names; expected {:?}, found {:?}",
+                                expected, actual
+                            ),
+                        });
+                    }
+                }
+
+                let base_next = self.next_local;
+                let base_locals = self.locals.len();
+                let mut lowered = Vec::new();
+                let mut branch_maps = Vec::new();
+                for alternative in patterns {
+                    self.push_scope();
+                    let hir = self.lower_binding_pattern(alternative, mutable);
+                    let mut map = BTreeMap::new();
+                    collect_pattern_local_map(alternative, &hir, &mut map);
+                    self.pop_scope();
+                    lowered.push(hir);
+                    branch_maps.push(map);
+                    self.locals.truncate(base_locals);
+                    self.next_local = base_next;
+                }
+
+                let mut canonical = BTreeMap::new();
+                for name in &expected {
+                    let id = self.define_local(pattern.span, mutable, false, name);
+                    canonical.insert(name.clone(), id);
+                }
+                for (hir, branch) in lowered.iter_mut().zip(branch_maps.iter()) {
+                    let remap = branch
+                        .iter()
+                        .filter_map(|(name, old)| canonical.get(name).map(|new| (*old, *new)))
+                        .collect::<BTreeMap<_, _>>();
+                    remap_pattern_locals(hir, &remap);
+                }
+                HirPatternKind::Or { patterns: lowered }
+            }
             PatternKind::As {
                 name,
                 pattern: inner,
@@ -1044,6 +1086,161 @@ impl<'a, 'd> Lowerer<'a, 'd> {
                 shorthand_local: Some(self.define_local(span, mutable, false, &field.name)),
             }
         }
+    }
+}
+
+fn pattern_binding_names(pattern: &ast::Pattern) -> Vec<String> {
+    let mut names = Vec::new();
+    collect_ast_pattern_names(pattern, &mut names);
+    names.sort();
+    names.dedup();
+    names
+}
+
+fn collect_ast_pattern_names(pattern: &ast::Pattern, out: &mut Vec<String>) {
+    match &pattern.kind {
+        PatternKind::Binding { name, .. } => out.push(name.clone()),
+        PatternKind::Variant { fields, .. } | PatternKind::Struct { fields, .. } => {
+            for field in fields {
+                if let Some(pattern) = &field.pattern {
+                    collect_ast_pattern_names(pattern, out);
+                } else {
+                    out.push(field.name.clone());
+                }
+            }
+        }
+        PatternKind::Sequence { items, rest } => {
+            for item in items {
+                collect_ast_pattern_names(item, out);
+            }
+            if let Some(rest) = rest {
+                out.push(rest.clone());
+            }
+        }
+        PatternKind::Map { entries, .. } => out.extend(entries.iter().map(|e| e.binding.clone())),
+        PatternKind::Some { value } => collect_ast_pattern_names(value, out),
+        PatternKind::As { name, pattern } => {
+            out.push(name.clone());
+            collect_ast_pattern_names(pattern, out);
+        }
+        PatternKind::Or { patterns } => {
+            if let Some(first) = patterns.first() {
+                collect_ast_pattern_names(first, out);
+            }
+        }
+        PatternKind::Wildcard
+        | PatternKind::Literal { .. }
+        | PatternKind::Range { .. }
+        | PatternKind::None { .. } => {}
+    }
+}
+
+fn collect_pattern_local_map(
+    ast: &ast::Pattern,
+    hir: &HirPattern,
+    out: &mut BTreeMap<String, LocalId>,
+) {
+    match (&ast.kind, &hir.kind) {
+        (PatternKind::Binding { name, .. }, HirPatternKind::Binding { local, .. }) => {
+            out.insert(name.clone(), *local);
+        }
+        (PatternKind::Variant { fields: af, .. }, HirPatternKind::Variant { fields: hf, .. })
+        | (PatternKind::Struct { fields: af, .. }, HirPatternKind::Struct { fields: hf, .. }) => {
+            for (a, h) in af.iter().zip(hf.iter()) {
+                if let (Some(ap), Some(hp)) = (&a.pattern, &h.pattern) {
+                    collect_pattern_local_map(ap, hp, out);
+                } else if a.pattern.is_none() {
+                    if let Some(id) = h.shorthand_local {
+                        out.insert(a.name.clone(), id);
+                    }
+                }
+            }
+        }
+        (
+            PatternKind::Sequence {
+                items: ai,
+                rest: ar,
+            },
+            HirPatternKind::Sequence {
+                items: hi,
+                rest: hr,
+            },
+        ) => {
+            for (a, h) in ai.iter().zip(hi.iter()) {
+                collect_pattern_local_map(a, h, out);
+            }
+            if let (Some(name), Some(id)) = (ar, hr) {
+                out.insert(name.clone(), *id);
+            }
+        }
+        (PatternKind::Map { entries: ae, .. }, HirPatternKind::Map { entries: he, .. }) => {
+            for (a, h) in ae.iter().zip(he.iter()) {
+                out.insert(a.binding.clone(), h.local);
+            }
+        }
+        (PatternKind::Some { value: a }, HirPatternKind::Some { value: h }) => {
+            collect_pattern_local_map(a, h, out)
+        }
+        (PatternKind::As { name, pattern: a }, HirPatternKind::As { local, pattern: h }) => {
+            out.insert(name.clone(), *local);
+            collect_pattern_local_map(a, h, out);
+        }
+        _ => {}
+    }
+}
+
+fn remap_pattern_locals(pattern: &mut HirPattern, remap: &BTreeMap<LocalId, LocalId>) {
+    match &mut pattern.kind {
+        HirPatternKind::Binding { local, .. } => {
+            if let Some(new) = remap.get(local) {
+                *local = *new;
+            }
+        }
+        HirPatternKind::Variant { fields, .. } | HirPatternKind::Struct { fields, .. } => {
+            for field in fields {
+                if let Some(p) = &mut field.pattern {
+                    remap_pattern_locals(p, remap);
+                }
+                if let Some(id) = &mut field.shorthand_local {
+                    if let Some(new) = remap.get(id) {
+                        *id = *new;
+                    }
+                }
+            }
+        }
+        HirPatternKind::Sequence { items, rest } => {
+            for item in items {
+                remap_pattern_locals(item, remap);
+            }
+            if let Some(id) = rest {
+                if let Some(new) = remap.get(id) {
+                    *id = *new;
+                }
+            }
+        }
+        HirPatternKind::Map { entries, .. } => {
+            for e in entries {
+                if let Some(new) = remap.get(&e.local) {
+                    e.local = *new;
+                }
+            }
+        }
+        HirPatternKind::Some { value } => remap_pattern_locals(value, remap),
+        HirPatternKind::Or { patterns } => {
+            for p in patterns {
+                remap_pattern_locals(p, remap);
+            }
+        }
+        HirPatternKind::As { local, pattern } => {
+            if let Some(new) = remap.get(local) {
+                *local = *new;
+            }
+            remap_pattern_locals(pattern, remap);
+        }
+        HirPatternKind::Wildcard
+        | HirPatternKind::Literal { .. }
+        | HirPatternKind::Range { .. }
+        | HirPatternKind::None { .. } => {}
     }
 }
 

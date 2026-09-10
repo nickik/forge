@@ -36,7 +36,10 @@ fn embeds_local_ids_in_expression_uses() {
     };
     assert_eq!(reference.root, ResolvedName::Local(LocalId(0)));
 
-    let HirStmtKind::Return { value: Some(value), .. } = &body.block.statements[1].kind else {
+    let HirStmtKind::Return {
+        value: Some(value), ..
+    } = &body.block.statements[1].kind
+    else {
         panic!("expected return");
     };
     let HirExprKind::Name { reference } = &value.kind else {
@@ -56,7 +59,10 @@ fn embeds_top_level_definition_ids() {
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
     let body = &output.functions[&DefId(0)];
-    let HirStmtKind::Return { value: Some(value), .. } = &body.block.statements[0].kind else {
+    let HirStmtKind::Return {
+        value: Some(value), ..
+    } = &body.block.statements[0].kind
+    else {
         panic!("expected return");
     };
     let HirExprKind::Call { callee, .. } = &value.kind else {
@@ -113,10 +119,11 @@ fn resolves_user_and_builtin_types_in_hir() {
         panic!("expected named parameter type");
     };
     assert_eq!(reference, &HirTypeRef::Def(DefId(0)));
-    let HirTypeKind::Named { reference } = &body.return_type.as_ref().expect("return type").kind else {
+    let HirTypeKind::Named { reference } = &body.return_type.as_ref().expect("return type").kind
+    else {
         panic!("expected named return type");
     };
-    assert_eq!(reference, &HirTypeRef::Builtin);
+    assert!(matches!(reference, HirTypeRef::Builtin { name } if name == "i32"));
 }
 
 #[test]
@@ -135,7 +142,10 @@ fn closure_capture_records_outer_source_and_inner_local() {
     let HirStmtKind::Value { value, .. } = &body.block.statements[0].kind else {
         panic!("expected closure binding");
     };
-    let HirExprKind::Closure { captures, params, .. } = &value.kind else {
+    let HirExprKind::Closure {
+        captures, params, ..
+    } = &value.kind
+    else {
         panic!("expected closure");
     };
     assert_eq!(captures.len(), 1);
@@ -154,7 +164,10 @@ fn unresolved_names_become_explicit_error_references() {
     );
     assert_eq!(output.diagnostics.len(), 1);
     let body = &output.functions[&DefId(0)];
-    let HirStmtKind::Return { value: Some(value), .. } = &body.block.statements[0].kind else {
+    let HirStmtKind::Return {
+        value: Some(value), ..
+    } = &body.block.statements[0].kind
+    else {
         panic!("expected return");
     };
     let HirExprKind::Name { reference } = &value.kind else {
