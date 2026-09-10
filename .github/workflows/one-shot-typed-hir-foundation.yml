@@ -6,7 +6,7 @@ permissions:
   contents: write
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Install typed HIR foundation patch'
+    if: github.event.head_commit.message == 'Retry typed HIR foundation'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,12 +30,11 @@ jobs:
           s=s.replace(marker,insert+marker,1)
           p.write_text(s)
 
-          # Adjust tests for richer builtin HIR reference.
-          for f in Path('crates/forge-frontend/tests').glob('*.rs'):
-              t=f.read_text()
-              t=t.replace('HirTypeRef::Builtin)', 'HirTypeRef::Builtin { .. })')
-              t=t.replace('HirTypeRef::Builtin,', 'HirTypeRef::Builtin { .. },')
-              f.write_text(t)
+          # Adjust the one existing builtin-reference assertion.
+          t=Path('crates/forge-frontend/tests/body_hir.rs')
+          x=t.read_text()
+          x=x.replace('assert_eq!(reference, &HirTypeRef::Builtin);', 'assert!(matches!(reference, HirTypeRef::Builtin { name } if name == "i32"));')
+          t.write_text(x)
           PY
       - name: Format and validate
         run: |
@@ -48,6 +47,6 @@ jobs:
         run: |
           git config user.name 'forge-ci'
           git config user.email 'forge-ci@users.noreply.github.com'
-          git add crates/forge-frontend/src/body_hir_v1.rs crates/forge-frontend/tests
+          git add crates/forge-frontend/src/body_hir_v1.rs crates/forge-frontend/tests/body_hir.rs
           git commit -m 'Normalize OR-pattern bindings in HIR'
           git push origin HEAD:agent/conformance-runner
