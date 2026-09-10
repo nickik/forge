@@ -98,6 +98,8 @@ pub enum Token {
     False,
     #[token("None")]
     None,
+    #[token("Some")]
+    Some,
     #[token("xor")]
     Xor,
     #[token("Result")]
@@ -122,10 +124,14 @@ pub enum Token {
         |lex| lex.slice().to_owned()
     )]
     Integer(String),
+    #[token("_")]
+    Underscore,
     #[regex(r"[A-Za-z_][A-Za-z0-9_]*", |lex| lex.slice().to_owned())]
     Ident(String),
 
     // Multi-character punctuation/operators, longest forms first.
+    #[token("...")]
+    Ellipsis,
     #[token("..=")]
     DotDotEq,
     #[token("..")]
