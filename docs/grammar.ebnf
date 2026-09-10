@@ -5,18 +5,22 @@ module_decl     = "module", qualified_name, ";" ;
 import_decl     = "import", qualified_name, { ",", qualified_name }, ";" ;
 
 declaration     = metadata*, [ "pub" ], ( value_decl | function_decl | struct_decl | enum_decl
-                | tagged_decl | bitstruct_decl | distinct_decl | type_decl | impl_decl | extern_decl ) ;
+                | tagged_decl | bitstruct_decl | distinct_decl | type_decl | impl_decl ) ;
 
-metadata        = "@", identifier, [ "(", fdn_argument_list, ")" ]
-                | "@", fdn_map ;
+metadata         = "@", identifier, [ "(", fdn_argument_list, ")" ]
+                 | "@", fdn_map ;
 postfix_metadata = "@", identifier, [ "(", fdn_argument_list, ")" ] ;
 
 value_decl      = ("val" | "var" | "const"), pattern, [ ":", type ], "=", expression ;
 
-function_decl   = ("fn" | "nfn"), identifier, "(", [ parameter_list ], ")",
+function_decl   = "fn", identifier, "(", [ fn_parameter_list ], ")",
+                  [ "->", type ], block
+                | "nfn", identifier, "(", [ nfn_parameter_list ], ")",
                   [ "->", type ], block ;
-parameter_list  = parameter, { ",", parameter } ;
-parameter       = identifier, ":", type, [ "=", expression ] ;
+fn_parameter_list = fn_parameter, { ",", fn_parameter }, [","] ;
+fn_parameter    = identifier, ":", type ;
+nfn_parameter_list = nfn_parameter, { ",", nfn_parameter }, [","] ;
+nfn_parameter  = identifier, ":", type, [ "=", expression ] ;
 
 struct_decl     = "struct", identifier, "{", { field_decl }, "}" ;
 field_decl      = metadata*, identifier, ":", type, [ "=", expression ], ";" ;
@@ -34,8 +38,6 @@ distinct_decl   = "distinct", identifier, ":", type, ";" ;
 type_decl       = "type", identifier, "=", type, { postfix_metadata }, ";" ;
 
 impl_decl       = "impl", qualified_name, "{", { metadata*, function_decl }, "}" ;
-extern_decl     = "extern", string_literal, "{", { extern_function_decl }, "}" ;
-extern_function_decl = "fn", identifier, "(", [ parameter_list ], ")", [ "->", type ], ";" ;
 
 type            = primary_type, { type_suffix } ;
 type_suffix     = "?" | "[", "]", [ "mut" ] | postfix_metadata ;
@@ -54,7 +56,6 @@ statement       = value_decl, ";"
                 | if_stmt
                 | while_stmt
                 | for_stmt
-                | match_stmt
                 | defer_stmt
                 | return_stmt
                 | break_stmt
@@ -76,15 +77,14 @@ for_step        = assignment_no_semi | expression ;
 assignment_no_semi = assignable, "=", expression ;
 iteration_header = ("val" | "var"), pattern, "in", expression ;
 
-match_stmt      = "match", "(", expression, ")", "{", { match_arm }, "}" ;
-match_arm       = pattern, [ "when", expression ], "=>", ( block | expression ), ["," | ";"] ;
-
 defer_stmt      = "defer", ( block | expression, ";" ) ;
 return_stmt     = "return", [ "tail" ], [ expression ], ";" ;
 break_stmt      = "break", ";" ;
 continue_stmt   = "continue", ";" ;
 unsafe_stmt     = "unsafe", block ;
-with_context_stmt = "with", "context", fdn_map, block ;
+
+with_context_stmt = "with", "context", "(", [ context_arguments ], ")", block ;
+context_arguments = named_argument, { ",", named_argument }, [","] ;
 
 pattern         = or_pattern ;
 or_pattern      = as_pattern, { "|", as_pattern } ;
@@ -112,8 +112,11 @@ map_pattern_items = map_pattern_item, { ",", map_pattern_item }, [ ",", ".." ]
 map_pattern_item = keyword, identifier, [ "?" ] ;
 range_pattern   = literal, (".." | "..="), literal ;
 
-expression      = logical_or_expression, { postfix_metadata } ;
-postfix_expression = primary_expression, { call_suffix | index_suffix | member_suffix } ;
+expression      = match_expression | logical_or_expression, { postfix_metadata } ;
+match_expression = "match", "(", expression, ")", "{", { match_arm }, "}" ;
+match_arm       = pattern, [ "when", expression ], "=>", ( block | expression ), ["," | ";"] ;
+
+postfix_expression = primary_expression, { call_suffix | index_suffix | member_suffix | try_suffix } ;
 member_suffix   = ".", identifier ;
 call_suffix     = "(", [ call_arguments ], ")" ;
 call_arguments  = positional_arguments | named_arguments ;
@@ -121,8 +124,9 @@ positional_arguments = expression, { ",", expression }, [","] ;
 named_arguments = named_argument, { ",", named_argument }, [","] ;
 named_argument  = keyword, "=", expression ;
 index_suffix    = "[", expression, "]" ;
+try_suffix      = "?" ;
 
-closure_expression = [ capture_list ], "(", [ parameter_list ], ")", [ "->", type ], block ;
+closure_expression = [ capture_list ], "(", [ fn_parameter_list ], ")", [ "->", type ], block ;
 capture_list    = "[", capture, { ",", capture }, [","], "]" ;
 capture         = identifier | "&", [ "mut" ], identifier ;
 (* An empty capture list [] is not legal; omit the list when there are no captures. *)
@@ -143,4 +147,7 @@ fdn_tagged      = "#", qualified_name, fdn_value ;
 fdn_argument_list = [ fdn_value, { ",", fdn_value } ] ;
 
 (* Reserved/rejected in v1: `internal`, `switch`, compound assignment operators,
-   empty closure capture list `[]`, pattern conjunction `&`, pattern negation `!`. *)
+   empty closure capture list `[]`, pattern conjunction `&`, pattern negation `!`,
+   `extern` blocks/C ABI declarations, C varargs, and generic/type-application syntax
+   such as callee[Type](...). Compiler intrinsics use ordinary call syntax and contextual
+   typing where necessary. *)
