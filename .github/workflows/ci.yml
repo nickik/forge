@@ -4,9 +4,6 @@ on:
   push:
   pull_request:
 
-permissions:
-  contents: write
-
 jobs:
   rust:
     runs-on: ubuntu-latest
@@ -15,55 +12,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Finalize parser bootstrap changes
-        if: github.ref == 'refs/heads/agent/conformance-runner'
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          path = Path('crates/forge-frontend/src/parser.rs')
-          source = path.read_text()
-
-          start = source.index('fn declaration_parser')
-          end = source.index('fn source_file_parser', start)
-          segment = source[start:end]
-          segment = re.sub(r'\bident\s*\.clone\(\)', 'ident', segment)
-          source = source[:start] + segment + source[end:]
-          path.write_text(source)
-          PY
-          cargo fmt --all
-          cargo generate-lockfile
-          if ! git diff --quiet -- crates/forge-frontend/src/parser.rs Cargo.lock; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add crates/forge-frontend/src/parser.rs Cargo.lock
-            git commit -m "Clean parser lints and lock dependencies"
-            git push origin HEAD:agent/conformance-runner
-          fi
       - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
       - run: cargo fmt --all -- --check
       - run: cargo check --workspace --locked
-      - name: Test workspace
-        run: |
-          set -o pipefail
-          timeout 300s cargo test --workspace --locked -- --nocapture 2>&1 | tee cargo-test.log
-      - name: Upload test diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cargo-test-log
-          path: cargo-test.log
-      - name: Run Forge conformance suite
-        run: |
-          set -o pipefail
-          timeout 120s cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn 2>&1 | tee conformance.log
-      - name: Upload conformance diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: conformance-log
-          path: conformance.log
+      - run: cargo test --workspace --locked
+      - run: cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
