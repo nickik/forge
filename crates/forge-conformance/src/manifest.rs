@@ -101,7 +101,11 @@ pub fn parse_suite(input: &str) -> Result<Suite, ManifestError> {
 
 fn suite_from_value(value: Value) -> Result<Suite, ManifestError> {
     let map = expect_map(&value, "suite root")?;
-    validate_keyword_map_keys(map, &["suite", "version", "active-kinds", "tests"], "suite root")?;
+    validate_keyword_map_keys(
+        map,
+        &["suite", "version", "active-kinds", "tests"],
+        "suite root",
+    )?;
 
     let name = expect_keyword(required(map, "suite")?, ":suite")?.to_owned();
     let version = expect_integer(required(map, "version")?, ":version")?;

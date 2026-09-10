@@ -62,10 +62,34 @@ pub fn resolve_module_bodies(source: &ast::SourceFile, module: &HirModule) -> Bo
         })
         .collect::<BTreeMap<_, _>>();
 
+    let qualified_only_variants = source
+        .declarations
+        .iter()
+        .flat_map(|declaration| match &declaration.kind.kind {
+            DeclKind::Enum(value) => value
+                .variants
+                .iter()
+                .map(|variant| variant.name.clone())
+                .collect::<Vec<_>>(),
+            DeclKind::Tagged(value) => value
+                .variants
+                .iter()
+                .map(|variant| variant.name.clone())
+                .collect::<Vec<_>>(),
+            _ => Vec::new(),
+        })
+        .collect::<BTreeSet<_>>();
+
     let mut output = BodyResolutionOutput::default();
     for (index, declaration) in source.declarations.iter().enumerate() {
         let owner = DefId(index as u32);
-        let mut resolver = Resolver::new(owner, module, &imports, &mut output.diagnostics);
+        let mut resolver = Resolver::new(
+            owner,
+            module,
+            &imports,
+            &qualified_only_variants,
+            &mut output.diagnostics,
+        );
         match &declaration.kind.kind {
             DeclKind::Function(function) => {
                 resolver.push_scope();
@@ -144,6 +168,7 @@ struct Resolver<'a, 'd> {
     owner: DefId,
     module: &'a HirModule,
     imports: &'a BTreeMap<String, u32>,
+    qualified_only_variants: &'a BTreeSet<String>,
     diagnostics: &'d mut Vec<HirDiagnostic>,
     scopes: Vec<BTreeMap<String, LocalId>>,
     locals: Vec<HirLocal>,
@@ -156,12 +181,14 @@ impl<'a, 'd> Resolver<'a, 'd> {
         owner: DefId,
         module: &'a HirModule,
         imports: &'a BTreeMap<String, u32>,
+        qualified_only_variants: &'a BTreeSet<String>,
         diagnostics: &'d mut Vec<HirDiagnostic>,
     ) -> Self {
         Self {
             owner,
             module,
             imports,
+            qualified_only_variants,
             diagnostics,
             scopes: Vec::new(),
             locals: Vec::new(),
@@ -224,12 +251,31 @@ impl<'a, 'd> Resolver<'a, 'd> {
             self.record_use(name, span, ResolvedName::Def(symbol));
             return;
         }
+        // Preserve type identity in expression position so semantic analysis can
+        // diagnose misuse precisely instead of losing it as an unresolved name.
+        if let Some(symbol) = self.module.symbols.get(name).and_then(|set| set.type_def) {
+            self.record_use(name, span, ResolvedName::Def(symbol));
+            return;
+        }
+        if builtin_types().contains(name) {
+            self.record_use(name, span, ResolvedName::BuiltinType);
+            return;
+        }
         if let Some(index) = self.imports.get(name).copied() {
             self.record_use(name, span, ResolvedName::Import(index));
             return;
         }
         if matches!(name, "Some") {
             self.record_use(name, span, ResolvedName::BuiltinValue);
+            return;
+        }
+        if self.qualified_only_variants.contains(name) {
+            self.diagnostics.push(HirDiagnostic {
+                span,
+                message: format!(
+                    "name/qualified-variant-required: variant `{name}` must be qualified by its enum/tagged type"
+                ),
+            });
             return;
         }
         self.diagnostics.push(HirDiagnostic {

@@ -56,8 +56,12 @@ fn reports_duplicate_definitions_in_same_namespace() {
     );
 
     assert_eq!(output.diagnostics.len(), 2);
-    assert!(output.diagnostics[0].message.contains("duplicate Value definition `work`"));
-    assert!(output.diagnostics[1].message.contains("duplicate Type definition `Item`"));
+    assert!(output.diagnostics[0]
+        .message
+        .contains("duplicate Value definition `work`"));
+    assert!(output.diagnostics[1]
+        .message
+        .contains("duplicate Type definition `Item`"));
 }
 
 #[test]

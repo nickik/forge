@@ -104,37 +104,73 @@ pub fn lower_module(source: &ast::SourceFile) -> HirOutput {
                 }
             }
             DeclKind::Struct(value) => {
-                define_type(&mut module, &mut diagnostics, &value.name, id, declaration.span);
+                define_type(
+                    &mut module,
+                    &mut diagnostics,
+                    &value.name,
+                    id,
+                    declaration.span,
+                );
                 HirItemKind::Struct {
                     name: value.name.clone(),
                 }
             }
             DeclKind::Enum(value) => {
-                define_type(&mut module, &mut diagnostics, &value.name, id, declaration.span);
+                define_type(
+                    &mut module,
+                    &mut diagnostics,
+                    &value.name,
+                    id,
+                    declaration.span,
+                );
                 HirItemKind::Enum {
                     name: value.name.clone(),
                 }
             }
             DeclKind::Tagged(value) => {
-                define_type(&mut module, &mut diagnostics, &value.name, id, declaration.span);
+                define_type(
+                    &mut module,
+                    &mut diagnostics,
+                    &value.name,
+                    id,
+                    declaration.span,
+                );
                 HirItemKind::Tagged {
                     name: value.name.clone(),
                 }
             }
             DeclKind::BitStruct(value) => {
-                define_type(&mut module, &mut diagnostics, &value.name, id, declaration.span);
+                define_type(
+                    &mut module,
+                    &mut diagnostics,
+                    &value.name,
+                    id,
+                    declaration.span,
+                );
                 HirItemKind::BitStruct {
                     name: value.name.clone(),
                 }
             }
             DeclKind::Distinct(value) => {
-                define_type(&mut module, &mut diagnostics, &value.name, id, declaration.span);
+                define_type(
+                    &mut module,
+                    &mut diagnostics,
+                    &value.name,
+                    id,
+                    declaration.span,
+                );
                 HirItemKind::Distinct {
                     name: value.name.clone(),
                 }
             }
             DeclKind::TypeAlias(value) => {
-                define_type(&mut module, &mut diagnostics, &value.name, id, declaration.span);
+                define_type(
+                    &mut module,
+                    &mut diagnostics,
+                    &value.name,
+                    id,
+                    declaration.span,
+                );
                 HirItemKind::TypeAlias {
                     name: value.name.clone(),
                 }

@@ -497,6 +497,14 @@ impl<'a, 'd> Lowerer<'a, 'd> {
         if let Some(id) = self.module.symbols.get(name).and_then(|s| s.value_def) {
             return ResolvedName::Def(id);
         }
+        // Preserve a type used in expression position. The type checker owns the
+        // semantic diagnostic for illegal uses such as `value[Point]`.
+        if let Some(id) = self.module.symbols.get(name).and_then(|s| s.type_def) {
+            return ResolvedName::Def(id);
+        }
+        if is_builtin_type(name) {
+            return ResolvedName::BuiltinType;
+        }
         if let Some(index) = self.imports.get(name).copied() {
             return ResolvedName::Import(index);
         }

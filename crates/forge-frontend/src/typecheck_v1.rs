@@ -406,6 +406,7 @@ struct BodyChecker<'a, 'd> {
     env: &'a ModuleTypeEnv,
     expected_return: Ty,
     local_types: BTreeMap<LocalId, Ty>,
+    mutable_locals: BTreeSet<LocalId>,
     expressions: Vec<TypedExpr>,
     diagnostics: &'d mut Vec<TypeDiagnostic>,
 }
@@ -420,6 +421,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             env,
             expected_return,
             local_types: BTreeMap::new(),
+            mutable_locals: BTreeSet::new(),
             expressions: Vec::new(),
             diagnostics,
         }
@@ -442,7 +444,10 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
     fn check_stmt(&mut self, stmt: &HirStmt) {
         match &stmt.kind {
             HirStmtKind::Value {
-                pattern, ty, value, ..
+                mutable,
+                pattern,
+                ty,
+                value,
             } => {
                 let expected = ty.as_ref().map(|t| self.env.lower_hir_type(t));
                 let actual = self.check_expr(value, expected.as_ref());
@@ -453,8 +458,12 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     self.materialize_literal(value.span, actual)
                 };
                 self.bind_pattern_type(pattern, &final_ty);
+                if *mutable {
+                    self.mark_pattern_mutable(pattern);
+                }
             }
             HirStmtKind::Assignment { target, value } => {
+                self.check_assignment_target(target);
                 let target_ty = self.check_expr(target, None);
                 let value_ty = self.check_expr(value, Some(&target_ty));
                 self.require_assignable(value.span, &target_ty, &value_ty, "type/mismatch");
@@ -526,10 +535,10 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 self.check_block(body);
             }
             HirStmtKind::ForEach {
+                mutable,
                 pattern,
                 iterable,
                 body,
-                ..
             } => {
                 let iter_ty = self.check_expr(iterable, None);
                 let element = match iter_ty {
@@ -537,6 +546,9 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     _ => Ty::Unknown,
                 };
                 self.bind_pattern_type(pattern, &element);
+                if *mutable {
+                    self.mark_pattern_mutable(pattern);
+                }
                 self.check_block(body);
             }
             HirStmtKind::DeferExpr { expr } => {
@@ -622,7 +634,15 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             HirExprKind::TypeCall { target, args } => self.check_type_call(expr.span, target, args),
             HirExprKind::Index { base, index } => {
                 let base_ty = self.check_expr(base, None);
-                self.check_expr(index, None);
+                if self.is_type_expr(index) {
+                    self.diagnostic(
+                        index.span,
+                        "type/index-on-type",
+                        "a type cannot be used as an index; Forge v1 does not support generic application syntax",
+                    );
+                } else {
+                    self.check_expr(index, None);
+                }
                 match base_ty {
                     Ty::Array { element } | Ty::Slice { element, .. } => *element,
                     _ => Ty::Unknown,
@@ -719,6 +739,68 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             kind: TypedExprKind::Source { hir: expr.clone() },
         });
         ty
+    }
+
+    fn is_type_expr(&self, expr: &HirExpr) -> bool {
+        match &expr.kind {
+            HirExprKind::Name { reference } => match reference.root {
+                ResolvedName::BuiltinType => true,
+                ResolvedName::Def(id) => self.env.types.contains_key(&id),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    fn check_assignment_target(&mut self, target: &HirExpr) {
+        match &target.kind {
+            HirExprKind::Name { reference } => match reference.root {
+                ResolvedName::Local(id) => {
+                    if !self.mutable_locals.contains(&id) {
+                        self.diagnostic(
+                            target.span,
+                            "assignment/immutable",
+                            "cannot assign to a `val` binding",
+                        );
+                    }
+                }
+                _ => self.diagnostic(
+                    target.span,
+                    "assignment/invalid-target",
+                    "assignment target is not a mutable local or writable place",
+                ),
+            },
+            HirExprKind::Member { base, .. } | HirExprKind::Index { base, .. } => {
+                self.check_assignment_target(base);
+            }
+            HirExprKind::Unary {
+                op: UnaryOp::Deref,
+                value,
+            } => {
+                let value_ty = self.check_expr(value, None);
+                if matches!(value_ty, Ty::Reference { mutable: false, .. }) {
+                    self.diagnostic(
+                        target.span,
+                        "assignment/immutable",
+                        "cannot assign through an immutable reference",
+                    );
+                } else if !matches!(
+                    value_ty,
+                    Ty::Reference { mutable: true, .. } | Ty::Pointer { .. }
+                ) {
+                    self.diagnostic(
+                        target.span,
+                        "assignment/invalid-target",
+                        "dereference assignment requires a pointer or reference",
+                    );
+                }
+            }
+            _ => self.diagnostic(
+                target.span,
+                "assignment/invalid-target",
+                "expression is not a valid assignment target",
+            ),
+        }
     }
 
     fn type_of_name(&self, name: ResolvedName) -> Ty {
@@ -967,6 +1049,51 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 );
                 Ty::Error
             }
+        }
+    }
+
+    fn mark_pattern_mutable(&mut self, pattern: &HirPattern) {
+        match &pattern.kind {
+            HirPatternKind::Binding { local, .. } => {
+                self.mutable_locals.insert(*local);
+            }
+            HirPatternKind::As { local, pattern } => {
+                self.mutable_locals.insert(*local);
+                self.mark_pattern_mutable(pattern);
+            }
+            HirPatternKind::Some { value } => self.mark_pattern_mutable(value),
+            HirPatternKind::Sequence { items, rest } => {
+                for item in items {
+                    self.mark_pattern_mutable(item);
+                }
+                if let Some(id) = rest {
+                    self.mutable_locals.insert(*id);
+                }
+            }
+            HirPatternKind::Or { patterns } => {
+                for pattern in patterns {
+                    self.mark_pattern_mutable(pattern);
+                }
+            }
+            HirPatternKind::Variant { fields, .. } | HirPatternKind::Struct { fields, .. } => {
+                for field in fields {
+                    if let Some(pattern) = &field.pattern {
+                        self.mark_pattern_mutable(pattern);
+                    }
+                    if let Some(id) = field.shorthand_local {
+                        self.mutable_locals.insert(id);
+                    }
+                }
+            }
+            HirPatternKind::Map { entries, .. } => {
+                for entry in entries {
+                    self.mutable_locals.insert(entry.local);
+                }
+            }
+            HirPatternKind::Wildcard
+            | HirPatternKind::Literal { .. }
+            | HirPatternKind::Range { .. }
+            | HirPatternKind::None { .. } => {}
         }
     }
 
