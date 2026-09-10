@@ -15,56 +15,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Repair bootstrap frontend
+      - name: Format branch
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          lexer = Path("crates/forge-frontend/src/lexer.rs")
-          source = lexer.read_text()
-          source = source.replace(
-              '#[logos(skip r"//[^\\n]*")]',
-              '#[logos(skip(r"//[^\\n]*", allow_greedy = true))]',
-          )
-          lexer.write_text(source)
-
-          parser = Path("crates/forge-frontend/src/parser.rs")
-          source = parser.read_text()
-          start_marker = "    let token_iter = Token::lexer(source).spanned().map(|(token, range)| {"
-          end_marker = "    let stream = Stream::from_iter(token_iter)"
-          start = source.find(start_marker)
-          if start >= 0:
-              end = source.find(end_marker, start)
-              if end < 0:
-                  raise SystemExit("could not locate token stream end marker")
-              end += len(end_marker)
-              replacement = '''    let tokens = Token::lexer(source)
-              .spanned()
-              .map(|(token, range)| {
-                  let token = match token {
-                      Ok(token) => token,
-                      Err(()) => {
-                          diagnostics.push(Diagnostic {
-                              span: Span::new(range.start, range.end),
-                              message: format!("invalid token `{}`", &source[range.clone()]),
-                          });
-                          // Keep a real error token in the stream so parser recovery can continue
-                          // without accidentally treating invalid source as a valid identifier.
-                          Token::Error
-                      }
-                  };
-                  (token, CSpan::from(range))
-              })
-              .collect::<Vec<_>>();
-
-          let stream = Stream::from_iter(tokens)'''
-              parser.write_text(source[:start] + replacement + source[end:])
-          PY
-          if ! git diff --quiet -- crates/forge-frontend/src/lexer.rs crates/forge-frontend/src/parser.rs; then
+          cargo fmt --all
+          if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add crates/forge-frontend/src/lexer.rs crates/forge-frontend/src/parser.rs
-            git commit -m "Fix bootstrap frontend compilation"
+            git add '*.rs'
+            git commit -m "Format Rust workspace"
             git push origin HEAD:agent/conformance-runner
           fi
       - name: Check workspace
