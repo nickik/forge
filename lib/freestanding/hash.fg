@@ -1,37 +1,58 @@
 module core.hash;
 
 // Stable, non-cryptographic hashing primitives for in-memory tables.
-// These values are not a persistent/on-disk ABI.
+// Hash values are deliberately not a persistent/on-disk ABI.
 
 pub const FNV64_OFFSET: u64 = 14695981039346656037;
 pub const FNV64_PRIME: u64 = 1099511628211;
 
-pub fn hash_init() -> u64 {
+pub const FNV_USIZE_OFFSET: usize = 2166136261;
+pub const FNV_USIZE_PRIME: usize = 16777619;
+
+pub fn hash_init_u64() -> u64 {
     return FNV64_OFFSET;
 }
 
-pub fn hash_byte(state: u64, value: u8) -> u64 {
-    return (state ^ value) * FNV64_PRIME;
+pub fn hash_octet_u64(state: u64, value: u64) -> u64 {
+    return (state ^ (value & 255)) * FNV64_PRIME;
 }
 
 pub fn hash_u64(value: u64) -> u64 {
-    var state: u64 = hash_init();
-    var shift: u64 = 0;
-    while (shift < 64) {
-        val byte_value: u8 = ((value >> shift) & 255) as u8;
-        state = hash_byte(state, byte_value);
-        shift = shift + 8;
+    var state: u64 = hash_init_u64();
+    var remaining: u64 = value;
+    var count: usize = 0;
+    while (count < 8) {
+        state = hash_octet_u64(state, remaining & 255);
+        remaining = remaining >> 8;
+        count = count + 1;
     }
     return state;
 }
 
-pub fn hash_usize(value: usize) -> u64 {
-    return hash_u64(value as u64);
+pub fn hash_init_usize() -> usize {
+    return FNV_USIZE_OFFSET;
 }
 
-// Finalize a byte-at-a-time hash stream. Keeping this separate allows strings,
-// byte slices and protocol buffers to share the same table hash without making
-// core.hash depend on hosted String support.
-pub fn hash_finish(state: u64) -> u64 {
+pub fn hash_octet_usize(state: usize, value: usize) -> usize {
+    return (state ^ (value & 255)) * FNV_USIZE_PRIME;
+}
+
+pub fn hash_usize(value: usize) -> usize {
+    var state: usize = hash_init_usize();
+    var remaining: usize = value;
+    var count: usize = 0;
+    while (count < 8) {
+        state = hash_octet_usize(state, remaining & 255);
+        remaining = remaining >> 8;
+        count = count + 1;
+    }
+    return state;
+}
+
+pub fn hash_finish_u64(state: u64) -> u64 {
+    return state;
+}
+
+pub fn hash_finish_usize(state: usize) -> usize {
     return state;
 }
