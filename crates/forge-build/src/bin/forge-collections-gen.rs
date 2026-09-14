@@ -42,7 +42,7 @@ const STRING: TypeSpec = TypeSpec {
     align: 8,
 };
 
-const LISTS: &[TypeSpec] = &[U8, USIZE, STRING];
+const LISTS: &[TypeSpec] = &[U8, USIZE];
 const SETS: &[TypeSpec] = &[U64, STRING];
 const MAPS: &[MapSpec] = &[
     MapSpec {
@@ -73,6 +73,7 @@ module forge_collections_native;
 
 import core;
 import core.hash;
+import core.string;
 import std.string;
 
 // Temporary compiler/backend boundary for compiler-defined Option/Result construction
@@ -84,7 +85,11 @@ nfn memory_block_value(block: core.MemoryBlock?) -> core.MemoryBlock { }
 nfn result_void_ok() -> Result[void, core.AllocError] { }
 nfn option_u64_none() -> u64? { }
 nfn option_u64_some(value: u64) -> u64? { }
+nfn option_owned_string_none() -> core.string.String? { }
+nfn option_owned_string_some(value: core.string.String) -> core.string.String? { }
 nfn collection_bounds_fail() -> never { }
+nfn owned_string_slot_size() -> usize { }
+nfn owned_string_slot_align() -> usize { }
 nfn storage_load_u8(block: core.MemoryBlock?, index: usize) -> u8 { }
 nfn storage_store_u8(block: core.MemoryBlock?, index: usize, value: u8) -> void { }
 nfn storage_load_u64(block: core.MemoryBlock?, index: usize) -> u64 { }
@@ -93,6 +98,8 @@ nfn storage_load_usize(block: core.MemoryBlock?, index: usize) -> usize { }
 nfn storage_store_usize(block: core.MemoryBlock?, index: usize, value: usize) -> void { }
 nfn storage_load_string(block: core.MemoryBlock?, index: usize) -> str { }
 nfn storage_store_string(block: core.MemoryBlock?, index: usize, value: str) -> void { }
+nfn storage_load_owned_string(block: core.MemoryBlock?, index: usize) -> core.string.String { }
+nfn storage_store_owned_string(block: core.MemoryBlock?, index: usize, value: core.string.String) -> void { }
 
 pub const COLLECTION_INITIAL_CAPACITY: usize = 8;
 pub const COLLECTION_LOAD_NUMERATOR: usize = 7;
@@ -124,8 +131,7 @@ pub fn eq_string(a: str, b: str) -> bool { return a == b; }
 
 "#;
 
-const LIST_U64: &str = r#"// ListU64: first fully Forge-implemented dynamic collection.
-// Only Option/Result construction and typed MemoryBlock access remain backend primitives.
+const LIST_U64: &str = r#"// ListU64: allocator-explicit contiguous growable vector.
 pub struct ListU64 {
     block: core.MemoryBlock?;
     len: usize;
@@ -239,6 +245,180 @@ pub fn list_u64_destroy(list: &mut ListU64, allocator: &mut core.Allocator) -> R
 
 "#;
 
+const LIST_STRING: &str = r#"// ListString: owns independent UTF-8 strings cloned from borrowed str inputs.
+pub struct ListString {
+    block: core.MemoryBlock?;
+    len: usize;
+    capacity: usize;
+}
+nfn result_list_string_ok(value: ListString) -> Result[ListString, core.AllocError] { }
+pub fn list_string_create() -> ListString {
+    return ListString{block: memory_block_none(), len: 0, capacity: 0};
+}
+pub fn list_string_with_capacity(allocator: &mut core.Allocator, capacity: usize) -> Result[ListString, core.AllocError] {
+    if (capacity == 0) { return result_list_string_ok(list_string_create()); }
+    val bytes: usize = capacity * owned_string_slot_size();
+    val request: core.AllocRequest = core.AllocRequest{size: bytes, align: owned_string_slot_align(), wait: core.AllocWait.MayWait};
+    val block: core.MemoryBlock = core.allocator_alloc(allocator, request)?;
+    val list: ListString = ListString{block: memory_block_some(block), len: 0, capacity: capacity};
+    return result_list_string_ok(list);
+}
+pub fn list_string_len(list: &ListString) -> usize { return list.len; }
+pub fn list_string_capacity(list: &ListString) -> usize { return list.capacity; }
+pub fn list_string_is_empty(list: &ListString) -> bool { return list.len == 0; }
+fn list_string_validate_storage(list: &ListString, allocator: &mut core.Allocator) -> Result[void, core.AllocError] {
+    if (list.capacity != 0) {
+        val block: core.MemoryBlock = memory_block_value(list.block);
+        core.allocator_validate(allocator, block)?;
+    }
+    return result_void_ok();
+}
+pub fn list_string_try_reserve(list: &mut ListString, allocator: &mut core.Allocator, requested: usize) -> Result[void, core.AllocError] {
+    if (requested <= list.capacity) { return result_void_ok(); }
+    val replacement_capacity: usize = next_capacity(list.capacity, requested);
+    val replacement_bytes: usize = replacement_capacity * owned_string_slot_size();
+
+    if (list.capacity == 0) {
+        val request: core.AllocRequest = core.AllocRequest{size: replacement_bytes, align: owned_string_slot_align(), wait: core.AllocWait.MayWait};
+        val replacement: core.MemoryBlock = core.allocator_alloc(allocator, request)?;
+        list.block = memory_block_some(replacement);
+        list.capacity = replacement_capacity;
+        return result_void_ok();
+    }
+
+    val old_block: core.MemoryBlock = memory_block_value(list.block);
+    val replacement: core.MemoryBlock = core.allocator_resize(allocator, old_block, replacement_bytes)?;
+    list.block = memory_block_some(replacement);
+    list.capacity = replacement_capacity;
+    return result_void_ok();
+}
+pub fn list_string_push(list: &mut ListString, allocator: &mut core.Allocator, value: str) -> Result[void, core.AllocError] {
+    if (list.len == list.capacity) {
+        list_string_try_reserve(list, allocator, list.len + 1)?;
+    } else {
+        list_string_validate_storage(list, allocator)?;
+    }
+    val owned: core.string.String = core.string.string_from_str(allocator, value)?;
+    storage_store_owned_string(list.block, list.len, owned);
+    list.len = list.len + 1;
+    return result_void_ok();
+}
+pub fn list_string_insert(list: &mut ListString, allocator: &mut core.Allocator, index: usize, value: str) -> Result[void, core.AllocError] {
+    if (index > list.len) { collection_bounds_fail(); }
+    if (list.len == list.capacity) {
+        list_string_try_reserve(list, allocator, list.len + 1)?;
+    } else {
+        list_string_validate_storage(list, allocator)?;
+    }
+    val owned: core.string.String = core.string.string_from_str(allocator, value)?;
+    var cursor: usize = list.len;
+    while (cursor > index) {
+        val moved: core.string.String = storage_load_owned_string(list.block, cursor - 1);
+        storage_store_owned_string(list.block, cursor, moved);
+        cursor = cursor - 1;
+    }
+    storage_store_owned_string(list.block, index, owned);
+    list.len = list.len + 1;
+    return result_void_ok();
+}
+pub fn list_string_get(list: &ListString, index: usize) -> str {
+    if (index >= list.len) { collection_bounds_fail(); }
+    val value: core.string.String = storage_load_owned_string(list.block, index);
+    return core.string.string_as_str(&value);
+}
+pub fn list_string_set(list: &mut ListString, allocator: &mut core.Allocator, index: usize, value: str) -> Result[void, core.AllocError] {
+    if (index >= list.len) { collection_bounds_fail(); }
+    list_string_validate_storage(list, allocator)?;
+    var old: core.string.String = storage_load_owned_string(list.block, index);
+    core.string.string_validate(&old, allocator)?;
+    val replacement: core.string.String = core.string.string_from_str(allocator, value)?;
+    core.string.string_destroy(&mut old, allocator)?;
+    storage_store_owned_string(list.block, index, replacement);
+    return result_void_ok();
+}
+pub fn list_string_pop(list: &mut ListString) -> core.string.String? {
+    if (list.len == 0) { return option_owned_string_none(); }
+    val index: usize = list.len - 1;
+    val value: core.string.String = storage_load_owned_string(list.block, index);
+    list.len = index;
+    return option_owned_string_some(value);
+}
+pub fn list_string_remove(list: &mut ListString, index: usize) -> core.string.String {
+    if (index >= list.len) { collection_bounds_fail(); }
+    val removed: core.string.String = storage_load_owned_string(list.block, index);
+    var cursor: usize = index;
+    while ((cursor + 1) < list.len) {
+        val moved: core.string.String = storage_load_owned_string(list.block, cursor + 1);
+        storage_store_owned_string(list.block, cursor, moved);
+        cursor = cursor + 1;
+    }
+    list.len = list.len - 1;
+    return removed;
+}
+pub fn list_string_swap_remove(list: &mut ListString, index: usize) -> core.string.String {
+    if (index >= list.len) { collection_bounds_fail(); }
+    val removed: core.string.String = storage_load_owned_string(list.block, index);
+    val last_index: usize = list.len - 1;
+    if (index != last_index) {
+        val last: core.string.String = storage_load_owned_string(list.block, last_index);
+        storage_store_owned_string(list.block, index, last);
+    }
+    list.len = last_index;
+    return removed;
+}
+fn list_string_validate_range(list: &ListString, allocator: &mut core.Allocator, start: usize) -> Result[void, core.AllocError] {
+    list_string_validate_storage(list, allocator)?;
+    var index: usize = start;
+    while (index < list.len) {
+        val value: core.string.String = storage_load_owned_string(list.block, index);
+        core.string.string_validate(&value, allocator)?;
+        index = index + 1;
+    }
+    return result_void_ok();
+}
+pub fn list_string_clear(list: &mut ListString, allocator: &mut core.Allocator) -> Result[void, core.AllocError] {
+    list_string_validate_range(list, allocator, 0)?;
+    var index: usize = 0;
+    while (index < list.len) {
+        var value: core.string.String = storage_load_owned_string(list.block, index);
+        core.string.string_destroy(&mut value, allocator)?;
+        index = index + 1;
+    }
+    list.len = 0;
+    return result_void_ok();
+}
+pub fn list_string_truncate(list: &mut ListString, allocator: &mut core.Allocator, len: usize) -> Result[void, core.AllocError] {
+    if (len >= list.len) { return result_void_ok(); }
+    list_string_validate_range(list, allocator, len)?;
+    var index: usize = len;
+    while (index < list.len) {
+        var value: core.string.String = storage_load_owned_string(list.block, index);
+        core.string.string_destroy(&mut value, allocator)?;
+        index = index + 1;
+    }
+    list.len = len;
+    return result_void_ok();
+}
+pub fn list_string_destroy(list: &mut ListString, allocator: &mut core.Allocator) -> Result[void, core.AllocError] {
+    list_string_validate_range(list, allocator, 0)?;
+    var index: usize = 0;
+    while (index < list.len) {
+        var value: core.string.String = storage_load_owned_string(list.block, index);
+        core.string.string_destroy(&mut value, allocator)?;
+        index = index + 1;
+    }
+    if (list.capacity != 0) {
+        val block: core.MemoryBlock = memory_block_value(list.block);
+        core.allocator_free(allocator, block)?;
+    }
+    list.block = memory_block_none();
+    list.len = 0;
+    list.capacity = 0;
+    return result_void_ok();
+}
+
+"#;
+
 fn snake(suffix: &str) -> String {
     let mut out = String::new();
     for (index, ch) in suffix.chars().enumerate() {
@@ -326,6 +506,7 @@ fn generate() -> String {
         emit_list_stub(&mut out, *ty);
     }
     out.push_str(LIST_U64);
+    out.push_str(LIST_STRING);
     for ty in SETS {
         emit_set(&mut out, *ty);
     }
@@ -371,16 +552,23 @@ mod tests {
     fn list_u64_policy_is_forge_code_not_collection_intrinsics() {
         let source = generate();
         assert!(source.contains("pub fn list_u64_create() -> ListU64"));
-        assert!(source.contains("pub fn list_u64_try_reserve("));
         assert!(source.contains("core.allocator_alloc(allocator, request)?"));
         assert!(source.contains("core.allocator_resize(allocator, old_block, replacement_bytes)?"));
-        assert!(source.contains("pub fn list_u64_push("));
-        assert!(source.contains("pub fn list_u64_insert("));
-        assert!(source.contains("pub fn list_u64_remove("));
         assert!(source.contains("core.allocator_free(allocator, block)?;"));
         assert!(!source.contains("nfn list_u64_push"));
         assert!(!source.contains("nfn list_u64_try_reserve"));
         assert!(!source.contains("nfn list_u64_destroy"));
+    }
+
+    #[test]
+    fn list_string_owns_strings_in_forge_code() {
+        let source = generate();
+        assert!(source.contains("pub fn list_string_push("));
+        assert!(source.contains("core.string.string_from_str(allocator, value)?"));
+        assert!(source.contains("core.string.string_validate(&value, allocator)?"));
+        assert!(source.contains("core.string.string_destroy(&mut value, allocator)?"));
+        assert!(!source.contains("nfn list_string_push"));
+        assert!(!source.contains("nfn list_string_destroy"));
     }
 
     #[test]
