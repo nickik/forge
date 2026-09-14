@@ -113,6 +113,10 @@ pub enum MatchTest {
     Variant {
         name: String,
     },
+    Length {
+        count: u64,
+        at_least: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -120,12 +124,15 @@ pub enum MatchTest {
 pub enum MatchProjection {
     OptionPayload { ty: Ty },
     Field { name: String, ty: Ty },
+    Index { index: u64, ty: Ty },
+    Rest { start: u64, ty: Ty },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "condition", rename_all = "snake_case")]
 pub enum MatchCondition {
     Always,
+    Never,
     Test {
         projections: Vec<MatchProjection>,
         test: MatchTest,
@@ -146,9 +153,14 @@ pub struct TypedMatchBinding {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct TypedMatchArmPlan {
+pub struct TypedMatchAlternative {
     pub condition: MatchCondition,
     pub bindings: Vec<TypedMatchBinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypedMatchArmPlan {
+    pub alternatives: Vec<TypedMatchAlternative>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -2085,10 +2097,18 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         arms: &[crate::body_hir::HirMatchArm],
     ) -> Option<TypedMatchPlan> {
         let supported = match ty {
-            Ty::Bool | Ty::Char | Ty::Str | Ty::Int { .. } | Ty::Optional { .. } => true,
+            Ty::Bool
+            | Ty::Char
+            | Ty::Str
+            | Ty::Int { .. }
+            | Ty::Optional { .. }
+            | Ty::Array { .. }
+            | Ty::Slice { .. } => true,
             Ty::Nominal(id) => matches!(
                 self.env.types.get(id).map(|info| &info.kind),
-                Some(TypeInfoKind::Enum(_)) | Some(TypeInfoKind::Tagged(_))
+                Some(TypeInfoKind::Struct(_))
+                    | Some(TypeInfoKind::Enum(_))
+                    | Some(TypeInfoKind::Tagged(_))
             ),
             _ => false,
         };
@@ -2098,10 +2118,8 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
 
         let mut planned = Vec::with_capacity(arms.len());
         for arm in arms {
-            let (condition, bindings) = self.plan_match_pattern(&arm.pattern, ty)?;
             planned.push(TypedMatchArmPlan {
-                condition,
-                bindings,
+                alternatives: self.plan_match_pattern(&arm.pattern, ty)?,
             });
         }
         Some(TypedMatchPlan {
@@ -2114,41 +2132,62 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         &self,
         pattern: &HirPattern,
         ty: &Ty,
-    ) -> Option<(MatchCondition, Vec<TypedMatchBinding>)> {
-        let root_test = |test| MatchCondition::Test {
-            projections: Vec::new(),
+    ) -> Option<Vec<TypedMatchAlternative>> {
+        self.plan_match_pattern_at(pattern, ty, &[])
+    }
+
+    fn plan_match_pattern_at(
+        &self,
+        pattern: &HirPattern,
+        ty: &Ty,
+        projections: &[MatchProjection],
+    ) -> Option<Vec<TypedMatchAlternative>> {
+        let test = |test| MatchCondition::Test {
+            projections: projections.to_vec(),
             test,
         };
+        let one = |condition, bindings| {
+            vec![TypedMatchAlternative {
+                condition,
+                bindings,
+            }]
+        };
         match &pattern.kind {
-            HirPatternKind::Wildcard => Some((MatchCondition::Always, Vec::new())),
-            HirPatternKind::Binding { local, .. } => Some((
+            HirPatternKind::Wildcard => Some(one(MatchCondition::Always, Vec::new())),
+            HirPatternKind::Binding { local, .. } => Some(one(
                 MatchCondition::Always,
                 vec![TypedMatchBinding {
                     local: *local,
                     ty: ty.clone(),
-                    projections: Vec::new(),
+                    projections: projections.to_vec(),
                 }],
             )),
             HirPatternKind::As { local, pattern } => {
-                let (condition, mut bindings) = self.plan_match_pattern(pattern, ty)?;
-                bindings.insert(
-                    0,
-                    TypedMatchBinding {
-                        local: *local,
-                        ty: ty.clone(),
-                        projections: Vec::new(),
-                    },
-                );
-                Some((condition, bindings))
+                let mut alternatives = self.plan_match_pattern_at(pattern, ty, projections)?;
+                for alternative in &mut alternatives {
+                    alternative.bindings.insert(
+                        0,
+                        TypedMatchBinding {
+                            local: *local,
+                            ty: ty.clone(),
+                            projections: projections.to_vec(),
+                        },
+                    );
+                }
+                Some(alternatives)
             }
             HirPatternKind::Literal {
                 value: ast::PatternLiteral::Bool { value },
-            } if *ty == Ty::Bool => {
-                Some((root_test(MatchTest::Bool { value: *value }), Vec::new()))
-            }
+            } if *ty == Ty::Bool => Some(one(
+                MatchCondition::Test {
+                    projections: projections.to_vec(),
+                    test: MatchTest::Bool { value: *value },
+                },
+                Vec::new(),
+            )),
             HirPatternKind::Literal { value } => self
                 .match_scalar(value, ty)
-                .map(|value| (root_test(MatchTest::ScalarLiteral { value }), Vec::new())),
+                .map(|value| one(test(MatchTest::ScalarLiteral { value }), Vec::new())),
             HirPatternKind::Range {
                 start,
                 end,
@@ -2156,8 +2195,8 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             } => {
                 let start = self.match_scalar(start, ty)?;
                 let end = self.match_scalar(end, ty)?;
-                Some((
-                    root_test(MatchTest::ScalarRange {
+                Some(one(
+                    test(MatchTest::ScalarRange {
                         start,
                         end,
                         inclusive: *inclusive,
@@ -2166,25 +2205,52 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 ))
             }
             HirPatternKind::None { .. } if matches!(ty, Ty::Optional { .. }) => {
-                Some((root_test(MatchTest::OptionNone), Vec::new()))
+                Some(one(test(MatchTest::OptionNone), Vec::new()))
             }
             HirPatternKind::Some { value } => {
                 let Ty::Optional { inner } = ty else {
                     return None;
                 };
-                let mut bindings = Vec::new();
-                let projections = vec![MatchProjection::OptionPayload {
+                let mut payload = projections.to_vec();
+                payload.push(MatchProjection::OptionPayload {
                     ty: inner.as_ref().clone(),
-                }];
-                if !self.collect_irrefutable_match_bindings(
-                    value,
-                    inner,
-                    &projections,
-                    &mut bindings,
-                ) {
+                });
+                let nested = self.plan_match_pattern_at(value, inner, &payload)?;
+                Some(
+                    nested
+                        .into_iter()
+                        .map(|alternative| TypedMatchAlternative {
+                            condition: self.match_condition_all(vec![
+                                test(MatchTest::OptionSome),
+                                alternative.condition,
+                            ]),
+                            bindings: alternative.bindings,
+                        })
+                        .collect(),
+                )
+            }
+            HirPatternKind::Struct { path, fields } => {
+                let expected = self.env.ty_from_ref(path);
+                if expected != *ty {
                     return None;
                 }
-                Some((root_test(MatchTest::OptionSome), bindings))
+                let Ty::Nominal(id) = ty else {
+                    return None;
+                };
+                let Some(TypeInfoKind::Struct(defs)) =
+                    self.env.types.get(id).map(|info| &info.kind)
+                else {
+                    return None;
+                };
+                self.plan_record_fields(
+                    vec![TypedMatchAlternative {
+                        condition: MatchCondition::Always,
+                        bindings: Vec::new(),
+                    }],
+                    fields,
+                    defs,
+                    projections,
+                )
             }
             HirPatternKind::Variant {
                 namespace,
@@ -2199,52 +2265,188 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 let Ty::Nominal(id) = ty else {
                     return None;
                 };
+                let variant_test = test(MatchTest::Variant { name: name.clone() });
                 match self.env.types.get(id).map(|info| &info.kind) {
                     Some(TypeInfoKind::Enum(variants)) => {
                         if !variants.contains(name) || !fields.is_empty() {
                             return None;
                         }
-                        Some((
-                            root_test(MatchTest::Variant { name: name.clone() }),
-                            Vec::new(),
-                        ))
+                        Some(one(variant_test, Vec::new()))
                     }
                     Some(TypeInfoKind::Tagged(variants)) => {
                         let defs = variants.get(name)?;
-                        let mut bindings = Vec::new();
-                        for field in fields {
-                            let info = defs.get(&field.name)?;
-                            let projections = vec![MatchProjection::Field {
-                                name: field.name.clone(),
-                                ty: info.ty.clone(),
-                            }];
-                            if let Some(local) = field.shorthand_local {
-                                bindings.push(TypedMatchBinding {
-                                    local,
-                                    ty: info.ty.clone(),
-                                    projections: projections.clone(),
-                                });
-                            }
-                            if let Some(nested) = &field.pattern {
-                                if !self.collect_irrefutable_match_bindings(
-                                    nested,
-                                    &info.ty,
-                                    &projections,
-                                    &mut bindings,
-                                ) {
-                                    return None;
-                                }
-                            }
-                        }
-                        Some((
-                            root_test(MatchTest::Variant { name: name.clone() }),
-                            bindings,
-                        ))
+                        self.plan_record_fields(
+                            one(variant_test, Vec::new()),
+                            fields,
+                            defs,
+                            projections,
+                        )
                     }
                     _ => None,
                 }
             }
-            _ => None,
+            HirPatternKind::Sequence { items, rest } => {
+                let (element, length_condition) = match ty {
+                    Ty::Slice { element, .. } => (
+                        element.as_ref().clone(),
+                        MatchCondition::Test {
+                            projections: projections.to_vec(),
+                            test: MatchTest::Length {
+                                count: items.len() as u64,
+                                at_least: rest.is_some(),
+                            },
+                        },
+                    ),
+                    Ty::Array {
+                        element,
+                        length: Some(length),
+                    } => {
+                        let compatible = if rest.is_some() {
+                            *length >= items.len() as u64
+                        } else {
+                            *length == items.len() as u64
+                        };
+                        (
+                            element.as_ref().clone(),
+                            if compatible {
+                                MatchCondition::Always
+                            } else {
+                                MatchCondition::Never
+                            },
+                        )
+                    }
+                    Ty::Array { element, .. } => (
+                        element.as_ref().clone(),
+                        MatchCondition::Test {
+                            projections: projections.to_vec(),
+                            test: MatchTest::Length {
+                                count: items.len() as u64,
+                                at_least: rest.is_some(),
+                            },
+                        },
+                    ),
+                    _ => return None,
+                };
+                let mut alternatives = one(length_condition, Vec::new());
+                for (index, item) in items.iter().enumerate() {
+                    let mut item_projection = projections.to_vec();
+                    item_projection.push(MatchProjection::Index {
+                        index: index as u64,
+                        ty: element.clone(),
+                    });
+                    let nested = self.plan_match_pattern_at(item, &element, &item_projection)?;
+                    alternatives = self.combine_match_alternatives(alternatives, nested);
+                }
+                if let Some(local) = rest {
+                    let rest_ty = self.sequence_rest_type(ty, items.len() as u64);
+                    for alternative in &mut alternatives {
+                        let mut rest_projection = projections.to_vec();
+                        rest_projection.push(MatchProjection::Rest {
+                            start: items.len() as u64,
+                            ty: rest_ty.clone(),
+                        });
+                        alternative.bindings.push(TypedMatchBinding {
+                            local: *local,
+                            ty: rest_ty.clone(),
+                            projections: rest_projection,
+                        });
+                    }
+                }
+                Some(alternatives)
+            }
+            HirPatternKind::Or { patterns } => {
+                let mut alternatives = Vec::new();
+                for pattern in patterns {
+                    alternatives.extend(self.plan_match_pattern_at(pattern, ty, projections)?);
+                }
+                Some(alternatives)
+            }
+            HirPatternKind::None { .. } => None,
+            HirPatternKind::Map { .. } => None,
+        }
+    }
+
+    fn plan_record_fields(
+        &self,
+        mut alternatives: Vec<TypedMatchAlternative>,
+        fields: &[crate::body_hir::HirPatternField],
+        defs: &BTreeMap<String, FieldInfo>,
+        projections: &[MatchProjection],
+    ) -> Option<Vec<TypedMatchAlternative>> {
+        for field in fields {
+            let info = defs.get(&field.name)?;
+            let mut field_projection = projections.to_vec();
+            field_projection.push(MatchProjection::Field {
+                name: field.name.clone(),
+                ty: info.ty.clone(),
+            });
+            if let Some(local) = field.shorthand_local {
+                for alternative in &mut alternatives {
+                    alternative.bindings.push(TypedMatchBinding {
+                        local,
+                        ty: info.ty.clone(),
+                        projections: field_projection.clone(),
+                    });
+                }
+            }
+            if let Some(pattern) = &field.pattern {
+                let nested = self.plan_match_pattern_at(pattern, &info.ty, &field_projection)?;
+                alternatives = self.combine_match_alternatives(alternatives, nested);
+            }
+        }
+        Some(alternatives)
+    }
+
+    fn combine_match_alternatives(
+        &self,
+        left: Vec<TypedMatchAlternative>,
+        right: Vec<TypedMatchAlternative>,
+    ) -> Vec<TypedMatchAlternative> {
+        let mut combined = Vec::new();
+        for left in left {
+            for right in &right {
+                let mut bindings = left.bindings.clone();
+                bindings.extend(right.bindings.clone());
+                combined.push(TypedMatchAlternative {
+                    condition: self
+                        .match_condition_all(vec![left.condition.clone(), right.condition.clone()]),
+                    bindings,
+                });
+            }
+        }
+        combined
+    }
+
+    fn match_condition_all(&self, conditions: Vec<MatchCondition>) -> MatchCondition {
+        let mut flattened = Vec::new();
+        for condition in conditions {
+            match condition {
+                MatchCondition::Never => return MatchCondition::Never,
+                MatchCondition::Always => {}
+                MatchCondition::All { conditions } => flattened.extend(conditions),
+                other => flattened.push(other),
+            }
+        }
+        match flattened.len() {
+            0 => MatchCondition::Always,
+            1 => flattened.pop().expect("one match condition"),
+            _ => MatchCondition::All {
+                conditions: flattened,
+            },
+        }
+    }
+
+    fn sequence_rest_type(&self, ty: &Ty, start: u64) -> Ty {
+        match ty {
+            Ty::Slice { mutable, element } => Ty::Slice {
+                mutable: *mutable,
+                element: element.clone(),
+            },
+            Ty::Array { element, length } => Ty::Array {
+                element: element.clone(),
+                length: length.map(|length| length.saturating_sub(start)),
+            },
+            _ => Ty::Error,
         }
     }
 
@@ -2260,35 +2462,6 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 value: value.clone(),
             }),
             _ => None,
-        }
-    }
-
-    fn collect_irrefutable_match_bindings(
-        &self,
-        pattern: &HirPattern,
-        ty: &Ty,
-        projections: &[MatchProjection],
-        out: &mut Vec<TypedMatchBinding>,
-    ) -> bool {
-        match &pattern.kind {
-            HirPatternKind::Wildcard => true,
-            HirPatternKind::Binding { local, .. } => {
-                out.push(TypedMatchBinding {
-                    local: *local,
-                    ty: ty.clone(),
-                    projections: projections.to_vec(),
-                });
-                true
-            }
-            HirPatternKind::As { local, pattern } => {
-                out.push(TypedMatchBinding {
-                    local: *local,
-                    ty: ty.clone(),
-                    projections: projections.to_vec(),
-                });
-                self.collect_irrefutable_match_bindings(pattern, ty, projections, out)
-            }
-            _ => false,
         }
     }
 
@@ -2489,7 +2662,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     self.collect_pattern_bindings(item, &element, out);
                 }
                 if let Some(id) = rest {
-                    out.insert(*id, ty.clone());
+                    out.insert(*id, self.sequence_rest_type(ty, items.len() as u64));
                 }
             }
             HirPatternKind::Struct { path, fields } => {

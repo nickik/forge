@@ -359,13 +359,12 @@ fn tagged_match_extracts_typed_payload_bindings() {
 }
 
 #[test]
-fn structural_match_still_waits_for_later_pattern_step() {
+fn map_match_still_waits_for_collection_pattern_protocol() {
     let output = lower(
         r#"
-        module test.fir_struct_match_later;
-        struct Point { x: i32; }
-        fn choose(value: Point) -> i32 {
-            return match (value) { Point{x} => x, };
+        module test.fir_map_match_later;
+        fn choose(values: u32[]) -> i32 {
+            return match (values) { {:name ignored, ..} => 1i32, _ => 0i32, };
         }
         "#,
     );
@@ -437,4 +436,91 @@ fn scalar_string_literal_match_is_resolved_before_fir() {
         .diagnostics
         .iter()
         .any(|d| d.code == "fir/pattern-decision-tree-missing"));
+}
+
+#[test]
+fn struct_pattern_lowers_nested_field_test_and_binding() {
+    let output = lower(
+        r#"
+        module test.fir_struct_pattern;
+        struct Point { x: i32; y: i32; }
+        fn choose(point: Point) -> i32 {
+            return match (point) {
+                Point{x: 7, y} => y,
+                _ => 0i32,
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::ExtractField { field, .. } if field == "x"
+    )));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::ExtractField { field, .. } if field == "y"
+    )));
+}
+
+#[test]
+fn sequence_rest_pattern_lowers_length_index_and_tail() {
+    let output = lower(
+        r#"
+        module test.fir_sequence_pattern;
+        fn choose(values: u32[]) -> u32 {
+            return match (values) {
+                [first, second, ..rest] => first + second,
+                _ => 0u32,
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::Len { .. })));
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::IndexUnchecked { .. })));
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::Subsequence { .. })));
+}
+
+#[test]
+fn or_pattern_uses_separate_resolved_alternatives() {
+    let output = lower(
+        r#"
+        module test.fir_or_pattern;
+        enum Token { Plus, Minus, Number }
+        fn choose(token: Token) -> i32 {
+            return match (token) {
+                Token::Plus | Token::Minus => 1i32,
+                _ => 0i32,
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let variants = instructions(&output)
+        .filter(|op| matches!(op, FirInstructionKind::VariantIs { .. }))
+        .count();
+    assert_eq!(variants, 2);
+}
+
+#[test]
+fn as_pattern_binds_whole_value_before_body() {
+    let output = lower(
+        r#"
+        module test.fir_as_pattern;
+        struct Point { x: i32; y: i32; }
+        fn choose(point: Point) -> i32 {
+            return match (point) {
+                whole @ Point{x, y} => whole.x + x + y,
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(
+        instructions(&output)
+            .filter(|op| matches!(op, FirInstructionKind::Store { .. }))
+            .count()
+            >= 3
+    );
 }
