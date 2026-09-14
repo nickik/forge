@@ -56,6 +56,40 @@ jobs:
           python3 -m py_compile scripts/metadata_model_once.py
       - name: Apply metadata model migration
         run: python3 scripts/metadata_model_once.py
+      - name: Update positive metadata fixtures
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("examples/conformance/parse/05-resolved-v1-syntax.fg")
+          text = path.read_text()
+          text = text.replace(
+              "type Percentage = u8 @range(0..=100);",
+              "@range(0..=100)\ntype Percentage = u8;",
+          )
+          text = text.replace(
+              "    val unchecked = point.x @unchecked;",
+              "    val field = point.x;",
+          ).replace(
+              "return inc(add_x(result + unchecked));",
+              "return inc(add_x(result + field));",
+          )
+          path.write_text(text)
+
+          path = Path("examples/conformance/parse/07-declarations-types.fg")
+          text = path.read_text().replace(
+              "type Percentage = u8 @range(0..=100);",
+              "@range(0..=100)\ntype Percentage = u8;",
+          )
+          path.write_text(text)
+
+          path = Path("examples/conformance/parse/17-postfix-chains.fg")
+          text = path.read_text().replace(
+              "    val unchecked = values[index] @unchecked;",
+              "    val indexed = values[index];",
+          )
+          path.write_text(text)
+          PY
       - run: cargo fmt --all
       - run: cargo fmt --all -- --check
       - run: cargo check --workspace --locked
