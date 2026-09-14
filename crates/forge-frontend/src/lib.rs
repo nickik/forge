@@ -4,6 +4,8 @@ pub mod ast;
 pub mod body_hir;
 #[path = "fir_v1.rs"]
 pub mod fir;
+#[path = "fir_boundary_v1.rs"]
+pub mod fir_boundary;
 #[path = "hir_v1.rs"]
 pub mod hir;
 pub mod lexer;
@@ -37,10 +39,10 @@ pub use typecheck::{
 };
 
 pub use fir::{
-    lower_fir, verify_fir_function, FirBasicBlock, FirBlockId, FirConst, FirDiagnostic,
-    FirFunction, FirGlobal, FirGlobalInitializer, FirInstruction, FirInstructionKind, FirLocal,
-    FirLocalId, FirModule, FirOutput, FirPlace, FirSelectCase, FirTerminator, FirUnaryOp,
-    FirValueId, OverflowMode,
+    verify_fir_function, FirBasicBlock, FirBlockId, FirConst, FirDiagnostic, FirFunction, FirGlobal,
+    FirGlobalInitializer, FirInstruction, FirInstructionKind, FirLocal, FirLocalId, FirModule,
+    FirOutput, FirPlace, FirSelectCase, FirTerminator, FirUnaryOp, FirValueId, OverflowMode,
 };
+pub use fir_boundary::{dump_fir_module, lower_fir, verify_fir_boundary, verify_fir_module};
 
 pub use typecheck::{RuntimeOperationId, TypedSelectArm, TypedSelectPlan};
