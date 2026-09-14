@@ -1,0 +1,45 @@
+module std.collections.string_map;
+
+import core;
+
+// Bootstrap string-to-string hash map used by CKV. This concrete map exists so
+// useful hosted programs do not have to wait for the final generic collection
+// surface. It should later be implemented in Forge over the allocator APIs.
+pub struct StringMap {
+    handle: usize;
+}
+
+nfn __forge_string_map_create() -> StringMap {
+}
+
+nfn __forge_string_map_put(map: StringMap, key: str, value: str) -> void {
+}
+
+nfn __forge_string_map_contains(map: StringMap, key: str) -> bool {
+}
+
+nfn __forge_string_map_get(map: StringMap, key: str) -> str {
+}
+
+nfn __forge_string_map_count(map: StringMap) -> usize {
+}
+
+pub fn create() -> StringMap {
+    return __forge_string_map_create();
+}
+
+pub fn put(map: StringMap, key: str, value: str) -> void {
+    __forge_string_map_put(map, key, value);
+}
+
+pub fn contains(map: StringMap, key: str) -> bool {
+    return __forge_string_map_contains(map, key);
+}
+
+pub fn get(map: StringMap, key: str) -> str {
+    return __forge_string_map_get(map, key);
+}
+
+pub fn count(map: StringMap) -> usize {
+    return __forge_string_map_count(map);
+}
