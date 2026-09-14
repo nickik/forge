@@ -1,0 +1,36 @@
+name: fir-step7-once
+
+on:
+  push:
+    branches:
+      - agent/fir-steps5-8-work
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fir-steps5-8-work
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Apply Step 7
+        run: python3 -B scripts/fir_step7_once.py
+      - run: cargo fmt --all
+      - run: cargo fmt --all -- --check
+      - run: cargo check --workspace --locked
+      - run: cargo test --workspace --locked
+      - run: cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings -A unused_mut -A clippy::collapsible_match -A clippy::large-enum-variant -A clippy::only-used-in-recursion
+      - name: Commit validated Step 7
+        run: |
+          git config user.name forge-ci
+          git config user.email forge-ci@users.noreply.github.com
+          git add -A
+          git commit -m "Unify match usefulness analysis"
+          git push origin HEAD:agent/fir-steps5-8-work
