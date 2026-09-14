@@ -10,6 +10,7 @@
 
 ## Standard library design
 
+- [Standard Library TODO](standard-library-todo.md) — staged roadmap from `core` through freestanding companions, hosted `std`, platform providers, and Cosmic integration gates.
 - [Library Model](library-model.md) — design rationale and bootstrap module/library graph.
 - [Core Library](core-library.md) — freestanding facilities shared by kernel and user mode.
 - [Core Allocation Architecture](core-allocation.md) — explicit provider capabilities, variable-sized allocators, fixed-size object caches, reclaim, and kernel/user reuse.
