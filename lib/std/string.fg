@@ -2,9 +2,19 @@ module std.string;
 
 import core;
 
-// Small hosted/string bootstrap surface used by real integration programs.
-// These operations are intended to become ordinary Forge implementations as
-// the String/collection substrate matures.
+// Small hosted/string bootstrap surface used by integration programs.
+//
+// IMPORTANT: these functions operate on bootstrap `str` values supplied by the
+// current host/runtime and are not the final owning dynamic-String API. They do
+// not establish hidden durable-allocation semantics.
+//
+// The final owning String representation stores only its owned storage plus
+// length/capacity metadata. It NEVER retains an Allocator capability. Every
+// operation that allocates, grows, clones, or frees owning String storage takes
+// an explicit `&mut core.Allocator` argument at that call site.
+//
+// Portable string algorithms should move into ordinary Forge source as the
+// byte-buffer and allocator-backed collection substrate matures.
 nfn __forge_string_concat(a: str, b: str) -> str {
 }
 
