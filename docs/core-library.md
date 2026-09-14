@@ -8,10 +8,12 @@
 
 1. The same fundamental code must work in kernel and user mode.
 2. Allocation is explicit and fallible.
-3. Environment-specific resources enter through explicit capability objects.
-4. Fixed-size object allocation is first-class, while arbitrary-size allocation remains fully supported.
-5. Panic/trap handling must remain usable before an allocator, scheduler, console, or filesystem exists.
-6. `core` must not require libc, a process-global heap, or a conventional `main()`.
+3. Every ordinary durable allocate/grow/free operation receives its allocator explicitly at the call site.
+4. Ordinary values and collections do not retain allocator capabilities merely to allocate later.
+5. Environment-specific resources enter through explicit capability objects.
+6. Fixed-size object allocation is first-class, while arbitrary-size allocation remains fully supported.
+7. Panic/trap handling must remain usable before an allocator, scheduler, console, or filesystem exists.
+8. `core` must not require libc, a process-global heap, or a conventional `main()`.
 
 The allocation design is intentionally similar in spirit to Solaris slab/UMEM: object-cache algorithms are reusable while the environment supplies backing memory. It is also data-oriented/ECS-inspired in the limited sense that homogeneous object shapes can receive dedicated storage and lifecycle policy; `ObjectCache` itself is not an ECS.
 
@@ -43,6 +45,8 @@ Arena
 It is intentionally equivalent to explicit C-style dictionary/vtable passing, but there is no hidden object header, RTTI, inheritance, implicit allocation, or language-defined dynamic dispatch.
 
 The pattern is suitable for other low-level abstractions such as `Writer`, `Clock`, interrupt controllers, or entropy sources when dynamic substitution is genuinely required. Static concrete calls remain preferable when the provider type is already known.
+
+`Arena`, `Allocator`, `ObjectCache`, slab allocators, and explicit pool/memory-domain managers are special because they *implement memory domains*. They may retain the lower-level provider state needed to perform that job. This does not authorize ordinary strings, lists, maps, sets, buffers, or application values to retain allocator capabilities for later convenience.
 
 ## Panic in freestanding environments
 
@@ -112,6 +116,32 @@ This is the traditional malloc-like workload without a hidden global heap. Reque
 
 A concrete general allocator may itself be implemented over an `Arena`, may use object caches as size classes, or may use another policy entirely.
 
+Ordinary clients pass the allocator to each operation that can allocate, resize, or free:
+
+```forge
+list_u8_push(&mut bytes, &mut allocator, value)?;
+list_u8_try_reserve(&mut bytes, &mut allocator, 4096)?;
+list_u8_destroy(&mut bytes, &mut allocator);
+```
+
+The corresponding ordinary value stores only its own storage and metadata:
+
+```forge
+struct ListU8 {
+    block: MemoryBlock?;
+    len: usize;
+    capacity: usize;
+}
+```
+
+There is no standard `ManagedList`/`ManagedString` pattern whose purpose is to retain an allocator and hide that argument from later calls.
+
+### Allocator-domain provenance
+
+A block belongs to the allocator domain that produced it. Later resize/free calls must receive the same domain, or an explicitly compatible provider.
+
+The owning value does not retain allocator identity. The caller therefore carries the provenance obligation. Debug/reference allocators should detect foreign-domain resize/free where practical. A failed growth operation must leave the original value and its backing block valid.
+
 ### Fixed-size ObjectCache
 
 `ObjectCacheSpec` describes one repeated object shape:
@@ -144,6 +174,8 @@ Typical direct users include process/thread records, VFS nodes, packet descripto
 
 A general allocator may also use several `ObjectCache` instances internally as size classes.
 
+`ObjectCache` is an explicit memory-domain manager, so retaining its backing Arena is intentional and does not weaken the ordinary-value allocation rule.
+
 ## Kernel/user sharing rule
 
 > Algorithms and policy-neutral mechanisms belong in `core`; acquisition of pages/address space and scheduler/platform integration belong to the environment.
@@ -158,11 +190,13 @@ fixed deterministic test provider
 
 Provider identity must not affect cache semantics.
 
+The explicit allocator call-site discipline is the same in kernel and user mode. Hosted code does not gain an implicit/default allocator shortcut.
+
 ## Concurrency
 
 The first implementation prioritizes correctness. Synchronization is not hidden inside the basic provider contract.
 
-Later implementations may add environment-specific synchronization and Solaris-style per-CPU/per-thread magazines:
+Later allocator implementations may add environment-specific synchronization and Solaris-style per-CPU/per-thread magazines:
 
 ```text
 per-CPU/thread magazine
@@ -171,7 +205,7 @@ per-CPU/thread magazine
         -> Arena
 ```
 
-This must not alter the public object-cache contract.
+This is internal allocator policy. It must not become a thread-local/global allocator fallback for ordinary APIs and must not alter the public object-cache contract.
 
 ## OS-foundation facilities that belong in `core`
 
@@ -204,6 +238,9 @@ These are mechanism libraries shared by kernels, embedded targets, drivers, and 
 - OOM as an error rather than panic;
 - `NoWait` propagation;
 - free and resize dispatch;
+- foreign/wrong allocator-domain detection where practical;
+- ordinary dynamic collection layouts containing no allocator capability;
+- explicit allocator arguments on durable allocate/grow/free APIs;
 - object uniqueness while live;
 - object free/reuse;
 - slab growth;
