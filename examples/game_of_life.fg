@@ -36,11 +36,11 @@ fn main() -> i32 {
                     console.write(".");
                 }
 
-                x += 1;
+                x = x + 1;
             }
 
             console.write("\n");
-            y += 1;
+            y = y + 1;
         }
 
         console.write("\n");
@@ -66,14 +66,14 @@ fn main() -> i32 {
                             val neighbor_mask: u64 = 1 << neighbor_index;
 
                             if ((board & neighbor_mask) != 0) {
-                                neighbors += 1;
+                                neighbors = neighbors + 1;
                             }
                         }
 
-                        dx += 1;
+                        dx = dx + 1;
                     }
 
-                    dy += 1;
+                    dy = dy + 1;
                 }
 
                 val cell_index: u64 = (cy * 8) + cx;
@@ -90,14 +90,14 @@ fn main() -> i32 {
                     }
                 }
 
-                cx += 1;
+                cx = cx + 1;
             }
 
-            cy += 1;
+            cy = cy + 1;
         }
 
         board = next;
-        generation += 1;
+        generation = generation + 1;
     }
 
     return 0;
