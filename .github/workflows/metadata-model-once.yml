@@ -29,6 +29,18 @@ jobs:
               'syntax = read("docs/forge-v1-syntax-decisions.md")nstart =',
               'syntax = read("docs/forge-v1-syntax-decisions.md")\nstart =',
           )
+          marker = "# ---------------------------------------------------------------------------\n# Body HIR: remove expression/type annotation wrapper nodes.\n"
+          insertion = '''replace_once(
+              "crates/forge-frontend/src/parser_v1.rs",
+              """        ExprKind::Annotated { value, .. } => validate_expr(value, diagnostics),\\n""",
+              "",
+          )
+
+          '''
+          if insertion not in text:
+              if marker not in text:
+                  raise SystemExit("parser/body HIR insertion marker missing")
+              text = text.replace(marker, insertion + marker, 1)
           path.write_text(text)
           PY
           python3 -m py_compile scripts/metadata_model_once.py
