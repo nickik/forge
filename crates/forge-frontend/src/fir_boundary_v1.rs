@@ -75,7 +75,7 @@ fn verify_expr_kind(
             )),
             _ => {}
         },
-        TypedExprKind::ResolvedCall { .. } if !matches!(hir.kind, HirExprKind::Call { .. }) => {
+        TypedExprKind::ResolvedCall { .. } if !matches!(&hir.kind, HirExprKind::Call { .. }) => {
             diagnostics.push(diagnostic(
                 expression.span,
                 "fir/boundary-shape",
@@ -83,7 +83,7 @@ fn verify_expr_kind(
             ));
         }
         TypedExprKind::ResolvedClosure { .. }
-            if !matches!(hir.kind, HirExprKind::Closure { .. }) =>
+            if !matches!(&hir.kind, HirExprKind::Closure { .. }) =>
         {
             diagnostics.push(diagnostic(
                 expression.span,
@@ -92,7 +92,7 @@ fn verify_expr_kind(
             ));
         }
         TypedExprKind::ResolvedContext { .. }
-            if !matches!(hir.kind, HirExprKind::Context { .. }) =>
+            if !matches!(&hir.kind, HirExprKind::Context { .. }) =>
         {
             diagnostics.push(diagnostic(
                 expression.span,
@@ -100,14 +100,14 @@ fn verify_expr_kind(
                 "resolved context slot is not backed by context HIR",
             ));
         }
-        TypedExprKind::ResolvedTry { .. } if !matches!(hir.kind, HirExprKind::Try { .. }) => {
+        TypedExprKind::ResolvedTry { .. } if !matches!(&hir.kind, HirExprKind::Try { .. }) => {
             diagnostics.push(diagnostic(
                 expression.span,
                 "fir/boundary-shape",
                 "resolved try is not backed by try HIR",
             ));
         }
-        TypedExprKind::ResolvedMatch { .. } if !matches!(hir.kind, HirExprKind::Match { .. }) => {
+        TypedExprKind::ResolvedMatch { .. } if !matches!(&hir.kind, HirExprKind::Match { .. }) => {
             diagnostics.push(diagnostic(
                 expression.span,
                 "fir/boundary-shape",
@@ -115,7 +115,7 @@ fn verify_expr_kind(
             ));
         }
         TypedExprKind::ResolvedBitField { .. }
-            if !matches!(hir.kind, HirExprKind::Member { .. }) =>
+            if !matches!(&hir.kind, HirExprKind::Member { .. }) =>
         {
             diagnostics.push(diagnostic(
                 expression.span,
@@ -125,7 +125,7 @@ fn verify_expr_kind(
         }
         TypedExprKind::UnsafeOperation { .. }
             if !matches!(
-                hir.kind,
+                &hir.kind,
                 HirExprKind::Unary { .. }
                     | HirExprKind::Binary { .. }
                     | HirExprKind::TypeCall { .. }
@@ -246,10 +246,7 @@ pub fn verify_fir_boundary(
     diagnostics
 }
 
-fn verify_no_poison(
-    function: &fir::FirFunction,
-    diagnostics: &mut Vec<FirDiagnostic>,
-) {
+fn verify_no_poison(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
     for block in &function.blocks {
         for instruction in &block.instructions {
             if matches!(instruction.kind, FirInstructionKind::Poison) {
