@@ -3,8 +3,14 @@
 ## Normative
 
 - [Forge v1 Language Specification](forge-v1-spec.md) — source syntax and semantics.
+- [Forge v1 Library and Execution Environment Specification](forge-v1-library-spec.md) — `core`, `std`, freestanding/hosted builds, runtime ABI boundary, and compilation-unit model.
 - [FDN v1 Specification](fdn-v1-spec.md) — universal structured-data notation.
 - [Compatibility Contract](compatibility.md) — what v1 promises long-term.
+
+## Standard library design
+
+- [Library Model](library-model.md) — design rationale and bootstrap module/library graph.
+- [Core Library](core-library.md) — freestanding facilities and allocator/object-cache architecture shared by kernel and user mode.
 
 ## Implementation
 
