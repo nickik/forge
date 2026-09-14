@@ -1,6 +1,6 @@
 # CKV integration application
 
-CKV is the first non-trivial hosted Forge application intended to exercise the compiler, build system, standard library, runtime providers, persistence, locking, timing, allocation and collections together.
+CKV is the first non-trivial hosted Forge application intended to exercise the compiler, build system, standard library, runtime providers, persistence, locking, timing and collections together.
 
 The initial implementation is deliberately simple. There is no on-disk index. Every command opens/locks the database, reads the complete file, rebuilds an in-memory hash map, performs a normal hash lookup/update, and then releases the lock.
 
@@ -35,9 +35,9 @@ The complete file is an append log. Loading applies records from first to last, 
 
 This is intentionally not an indexed database. The first goal is integration coverage, not storage efficiency.
 
-## Canonical implementation
+## Canonical application and bootstrap boundary
 
-The application is Forge source, not Clojure:
+The application algorithm is Forge source, not Clojure:
 
 ```text
 examples/ckv/
@@ -51,7 +51,27 @@ examples/ckv/
 
 `src/main.fg` contains argument handling, console output and timing. `ckv-core/src/lib.fg` contains the database algorithm. `ckv-core` is a real local-path dependency resolved by the Forge build system.
 
-The older CForge CKV implementation is only a reference/oracle used for differential and provider testing. Application behavior must be implemented in Forge source.
+For CForge execution only, `ckv-core` currently imports the explicitly named `forge-collections-bootstrap` package. That package uses CForge raw-storage handles and is not the production collection ABI.
+
+The production collection package is `forge-collections-native`. Its ordinary collection values never retain allocator capabilities. Operations that allocate/grow/free receive an explicit `core.Allocator` argument.
+
+The acceptance path is therefore:
+
+```text
+current bootstrap:
+CKV Forge algorithm
+    -> forge-collections-bootstrap
+    -> CForge raw storage emulator
+
+final/native:
+CKV Forge algorithm
+    -> forge-collections-native HashMapStringString
+    -> explicit allocator argument on create/grow/put/destroy paths
+    -> core.Allocator / MemoryBlock
+    -> hosted or Cosmic provider
+```
+
+The older CForge CKV implementation remains only a reference/oracle for differential/provider testing.
 
 ## Implementation stages
 
@@ -63,64 +83,47 @@ The older CForge CKV implementation is only a reference/oracle used for differen
 - [x] Append a SET record on mutation.
 - [x] Measure each access using a monotonic clock.
 - [x] Hold a file lock across load + operation + persistence.
-- [x] Make file, lock, clock and map implementations replaceable providers in CForge.
+- [x] Make file, lock, clock and bootstrap map implementations replaceable providers in CForge.
 - [x] Test provider substitution and lock release on exceptions.
 
 ### Stage 1 — hosted Forge APIs required by CKV
 
-- [x] `std.args` bootstrap API
-  - [x] argument count
-  - [x] indexed argument access
-  - [x] `--` program-argument forwarding through `forge run`
-  - [x] provider/bounds tests
-- [x] `std.fs` bootstrap text API
-  - [x] read whole text file
-  - [x] write whole text file
-  - [x] append text
-  - [x] real filesystem/provider tests
-  - [ ] explicit flush/sync semantics
-  - [ ] structured filesystem errors/metadata/open handles
-- [x] `std.lock` bootstrap API
-  - [x] exclusive file lock
-  - [x] real CForge/Unix-host lock provider
-  - [x] provider substitution/release tests
-  - [ ] release via Forge `defer` on every error path
-  - [ ] two-process exclusion test
-- [x] `std.time` bootstrap API
-  - [x] monotonic microsecond timestamp
-  - [x] elapsed-time arithmetic in Forge
-  - [x] provider substitution tests
-  - [ ] richer `Instant`/`Duration` types
-- [x] `std.string` CKV bootstrap helpers
-  - [x] concatenation
-  - [x] line iteration helpers
-  - [x] tab delimiter parsing
-  - [x] integer-to-string formatting for timing
-  - [ ] migrate portable operations from runtime hooks into Forge implementations
-  - [ ] general UTF-8/string API
-- [x] `std.collections.string_map` bootstrap API
-  - [x] create
-  - [x] put/replace
-  - [x] contains/get
-  - [x] count
-  - [x] provider behavior tests
-  - [ ] implement the hash table itself in Forge over allocator/array primitives
-  - [ ] collision/growth/allocation-failure tests for the eventual Forge implementation
+- [x] `std.args` bootstrap API and program-argument forwarding.
+- [x] `std.fs` bootstrap text read/write/append provider.
+- [x] `std.lock` bootstrap exclusive file lock.
+- [x] `std.time` monotonic microsecond clock.
+- [x] `std.string` CKV parsing/formatting helpers.
+- [x] `forge-collections-bootstrap` provides executable CForge hash-map semantics.
+- [x] legacy `std.collections.string_map` production-facing file removed.
+- [x] ambiguous `forge-collections` raw-handle package removed.
+- [ ] migrate portable string helpers from runtime hooks into Forge.
+- [ ] native Unix/Cosmic providers for hosted services.
 
-`std.fs`, `std.lock`, `std.time` and `std.args` are expected to terminate in platform providers. The current `StringMap` provider is a bootstrap implementation only; collections should eventually be portable Forge code rather than host-provided behavior.
+`std.fs`, `std.lock`, `std.time` and `std.args` legitimately terminate in platform providers. Collections do not: the final hash table algorithm and ownership model are Forge code over explicit allocator/raw-memory primitives.
 
-### Stage 2 — real Forge CKV program
+### Stage 2 — Forge CKV program
 
 - [x] `examples/ckv` is a Forge package with `forge.fdn`.
 - [x] Database logic lives in reusable local-path package `ckv-core`.
 - [x] CLI imports `ckv-core` plus hosted `std` modules.
 - [x] CForge supports real local and cross-package function calls with locals/loops.
 - [x] `forge run ... -- ARGS...` forwards application arguments.
-- [x] CForge runs the canonical Forge CKV program on the JVM through `forge run`.
+- [x] CForge runs the canonical Forge CKV algorithm on the JVM through `forge run`.
 - [x] End-to-end CI performs separate `set`/`get` invocations against a real file.
 - [x] Exact value output is asserted while timing output is pattern-checked.
-- [x] Overwrite is tested and the append log is verified to contain two records.
-- [x] CForge native image runs exactly the same package and source.
+- [x] Overwrite is tested and the append log is verified.
+- [x] CForge native image runs the same CKV source.
+
+### Stage 2b — final collection migration
+
+Before CKV is considered a native collection acceptance test:
+
+- [ ] create/select a hosted `core.Allocator` explicitly in CKV/application startup.
+- [ ] pass the allocator explicitly to `HashMapStringString` operations that allocate/grow/free.
+- [ ] do not store the allocator inside `HashMapStringString` or another ordinary wrapper.
+- [ ] preserve allocator-domain provenance through the lifetime of each map.
+- [ ] destroy/free map storage using the same or explicitly compatible allocator domain.
+- [ ] run unchanged persistence behavior through production Forge backend.
 
 ### Stage 3 — stronger persistence semantics
 
@@ -140,7 +143,7 @@ The older CForge CKV implementation is only a reference/oracle used for differen
 - [ ] Native Unix Forge platform provider.
 - [x] CForge hosted reference provider on JVM and GraalVM native image.
 - [ ] Cosmic userspace provider.
-- [ ] Same `ckv-core` source passes persistence tests on native Unix Forge and Cosmic.
+- [ ] Same `ckv-core` database semantics pass persistence tests on native Unix Forge and Cosmic using explicit allocator calls.
 
 ## Architecture
 
@@ -150,39 +153,38 @@ ckv CLI (Forge)
    v
 ckv-core (Forge local package)
    |
-   +-- std.collections.string_map
+   +-- current: forge-collections-bootstrap
+   +-- target:  forge-collections-native + explicit Allocator
    +-- std.string
    +-- std.fs
    +-- std.lock
    +-- std.time
    |
    v
-std platform/provider boundary
-   |                    |
- CForge/Unix host      Cosmic
+platform/provider boundary only for actual platform services
 ```
 
-`ckv-core` must not call Java, Unix, CForge or Cosmic APIs directly. Environment-specific file, lock, clock and process-argument behavior belongs behind the standard-library platform-provider boundary.
+`ckv-core` must not call Java, Unix, CForge or Cosmic APIs directly. File, lock, clock and process-argument behavior belongs behind hosted platform providers. Collection allocation is not a hidden platform service: native CKV passes its allocator explicitly.
 
 ## Integration tests
 
-The CKV suite is intended to become one of the required Forge/Cosmic integration gates:
-
 - [x] hosted service/provider unit tests
-- [x] Forge source calls the hosted std APIs
+- [x] Forge source calls hosted std APIs
 - [x] real local and cross-package function-call tests
-- [x] create/set/get persistence using canonical Forge CKV
+- [x] create/set/get persistence using canonical Forge CKV algorithm
 - [x] overwrite a key and observe the latest value
 - [x] every CKV command reloads the complete file by design
 - [x] real file locking exercised by Forge source
-- [x] access timing produced by the monotonic provider
+- [x] access timing produced by monotonic provider
 - [x] separate process invocations for set/get in CI
-- [x] same CKV sequence through the GraalVM-native CForge executable
+- [x] same CKV sequence through GraalVM-native CForge
+- [ ] final explicit-allocator HashMapStringString path
+- [ ] allocation failure injection on map growth/rehash
+- [ ] wrong allocator-domain detection in debug/reference provider
 - [ ] simultaneous writers serialize correctly
 - [ ] shared-reader/exclusive-writer policy
 - [ ] large database (10k+ keys)
-- [ ] hash collision stress once the map itself is Forge code
-- [ ] allocator failure injection once the map itself is Forge code
+- [ ] hash collision stress
 - [ ] truncated final record recovery
 - [ ] native Forge compiler execution
 - [ ] Cosmic execution
