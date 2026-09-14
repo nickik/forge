@@ -2,9 +2,8 @@ module core;
 
 // Forge freestanding standard library bootstrap.
 //
-// core must remain usable without an OS, libc, process heap, filesystem,
-// threads, or a conventional program entry point. Environment-specific
-// behavior enters through explicit providers and the Forge runtime ABI.
+// core is usable without an OS, libc, process heap, filesystem, scheduler,
+// conventional main(), or hosted panic implementation.
 
 pub enum PanicKind {
     Explicit,
@@ -29,6 +28,13 @@ pub struct PanicInfo {
     location: PanicLocation?;
 }
 
+// Panic dispatch is provided by the final environment through the runtime ABI:
+//
+//   __forge_panic(info: &PanicInfo) -> never
+//
+// core defines the information and may raise panic paths, but does not decide
+// whether a process exits, a kernel halts, firmware resets, or a debugger runs.
+
 pub enum AllocError {
     OutOfMemory,
     InvalidSize,
@@ -48,55 +54,74 @@ pub struct AllocRequest {
     wait: AllocWait;
 }
 
-// Describes one variable-sized allocation. This is the portable building
-// block for malloc-like allocators without requiring hidden boundary tags.
+// Arbitrary-size allocation result. This is the malloc-like path: callers may
+// request any supported size/alignment. Forge does not require hidden boundary
+// tags or a process-global allocator.
 pub struct MemoryBlock {
     data: *byte;
     size: usize;
     align: usize;
 }
 
-// Configuration for a fixed-size object cache. The actual cache state is
-// implementation-private and will be introduced when opaque/library-private
-// representation support is executable.
+// Environment-neutral backing resource. Cosmic may back this with kernel VM;
+// hosted std may back it with mmap/platform VM; firmware may use static RAM.
+pub struct Arena {
+    provider: *void;
+}
+
+// General allocator for variable-size allocations.
+pub struct Allocator {
+    arena: &mut Arena;
+}
+
+// Fixed-size object-cache configuration. Object caches are optimized for
+// repeated allocation of one object shape and are intentionally separate from
+// the arbitrary-size Allocator interface.
 pub struct ObjectCacheSpec {
     object_size: usize;
     object_align: usize;
     slab_size: usize;
 }
 
+pub struct ObjectCacheStats {
+    allocations: u64;
+    frees: u64;
+    allocation_failures: u64;
+    objects_in_use: usize;
+    objects_free: usize;
+    slabs_total: usize;
+    slabs_empty: usize;
+    bytes_backing: usize;
+    reclaims: u64;
+}
+
+pub struct ObjectCache {
+    arena: &mut Arena;
+    spec: ObjectCacheSpec;
+}
+
 pub fn min_i32(a: i32, b: i32) -> i32 {
-    if (a < b) {
-        return a;
-    }
+    if (a < b) { return a; }
     return b;
 }
 
 pub fn max_i32(a: i32, b: i32) -> i32 {
-    if (a > b) {
-        return a;
-    }
+    if (a > b) { return a; }
     return b;
 }
 
 pub fn min_u32(a: u32, b: u32) -> u32 {
-    if (a < b) {
-        return a;
-    }
+    if (a < b) { return a; }
     return b;
 }
 
 pub fn max_u32(a: u32, b: u32) -> u32 {
-    if (a > b) {
-        return a;
-    }
+    if (a > b) { return a; }
     return b;
 }
 
 pub fn is_power_of_two_usize(value: usize) -> bool {
-    if (value == 0) {
-        return false;
-    }
+    if (value == 0) { return false; }
     return (value & (value - 1)) == 0;
 }
 
@@ -104,17 +129,49 @@ pub fn valid_alignment(align: usize) -> bool {
     return is_power_of_two_usize(align);
 }
 
-// Planned provider-backed allocation surface, specified in
-// docs/core-library.md and docs/runtime-abi.md:
+pub fn align_up_usize(value: usize, align: usize) -> usize {
+    // Invalid alignment is a caller contract violation; checked arithmetic
+    // retains Forge overflow semantics.
+    return (value + (align - 1)) & ~(align - 1);
+}
+
+pub fn valid_alloc_request(request: &AllocRequest) -> bool {
+    if (request.size == 0) { return false; }
+    return valid_alignment(request.align);
+}
+
+pub fn valid_object_cache_spec(spec: &ObjectCacheSpec) -> bool {
+    if (spec.object_size == 0) { return false; }
+    if (!valid_alignment(spec.object_align)) { return false; }
+    if (!valid_alignment(spec.slab_size)) { return false; }
+    if (spec.slab_size < spec.object_size) { return false; }
+
+    val stride: usize = align_up_usize(spec.object_size, spec.object_align);
+    return stride <= spec.slab_size;
+}
+
+pub fn object_stride(spec: &ObjectCacheSpec) -> usize {
+    return align_up_usize(spec.object_size, spec.object_align);
+}
+
+pub fn objects_per_slab(spec: &ObjectCacheSpec) -> usize {
+    return spec.slab_size / object_stride(spec);
+}
+
+// Provider-backed operations. Their semantics are normative even while the
+// bootstrap compiler does not yet execute the complete implementation.
 //
-//   Arena
-//   Allocator
-//   ObjectCache
-//   arena_alloc / arena_free
-//   alloc / free
-//   object_cache_create / object_cache_alloc / object_cache_free
-//   object_cache_reclaim
+// Arbitrary-size / malloc-like path:
+//   allocator_alloc(allocator, request) -> Result[MemoryBlock, AllocError]
+//   allocator_free(allocator, block) -> void
+//   allocator_resize(allocator, block, new_size) -> Result[MemoryBlock, AllocError]
 //
-// These are not stubbed with fake semantics. The shared algorithms will be
-// added once library-private state, pointer operations, and Result execution
-// are implemented.
+// Fixed-size cache path:
+//   object_cache_create(arena, spec) -> Result[ObjectCache, AllocError]
+//   object_cache_alloc(cache, wait) -> Result[*byte, AllocError]
+//   object_cache_free(cache, object) -> void
+//   object_cache_reclaim(cache) -> usize
+//   object_cache_stats(cache) -> ObjectCacheStats
+//
+// Primitive allocation never implicitly panics on OutOfMemory. A caller may
+// deliberately convert AllocError into PanicKind::AllocationFailure.
