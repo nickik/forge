@@ -1,0 +1,67 @@
+module ckv_core;
+
+import std.fs;
+import std.lock;
+import std.string;
+import std.collections.string_map;
+
+// CKV bootstrap storage format: one UTF-8 key/value record per line:
+//
+//   key<TAB>value<LF>
+//
+// Every operation deliberately reads and parses the complete file into a fresh
+// hash map. There is no persistent index in this first implementation.
+
+pub fn get(database_file: str, key: str) -> str {
+    val file_lock: std.lock.FileLock = lock.acquire_exclusive(database_file);
+    val contents: str = fs.read_text(database_file);
+    val records: std.collections.string_map.StringMap = string_map.create();
+    val lines: usize = string.line_count(contents);
+    var index: usize = 0;
+
+    while (index < lines) {
+        val line: str = string.line_at(contents, index);
+        if (string.has_tab(line)) {
+            val record_key: str = string.before_tab(line);
+            val record_value: str = string.after_tab(line);
+            string_map.put(records, record_key, record_value);
+        }
+        index = index + 1;
+    }
+
+    var value: str = "";
+    if (string_map.contains(records, key)) {
+        value = string_map.get(records, key);
+    }
+
+    lock.release(file_lock);
+    return value;
+}
+
+pub fn set(database_file: str, key: str, value: str) -> void {
+    val file_lock: std.lock.FileLock = lock.acquire_exclusive(database_file);
+    val contents: str = fs.read_text(database_file);
+    val records: std.collections.string_map.StringMap = string_map.create();
+    val lines: usize = string.line_count(contents);
+    var index: usize = 0;
+
+    // Rebuild the whole in-memory map on every mutation as well. The map is not
+    // persisted; the file remains an append-only log in this bootstrap version.
+    while (index < lines) {
+        val line: str = string.line_at(contents, index);
+        if (string.has_tab(line)) {
+            val record_key: str = string.before_tab(line);
+            val record_value: str = string.after_tab(line);
+            string_map.put(records, record_key, record_value);
+        }
+        index = index + 1;
+    }
+
+    string_map.put(records, key, value);
+    val key_tab: str = string.concat(key, "\t");
+    val key_value: str = string.concat(key_tab, value);
+    val record: str = string.concat(key_value, "\n");
+    fs.append_text(database_file, record);
+
+    lock.release(file_lock);
+}
