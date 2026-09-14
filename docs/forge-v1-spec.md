@@ -352,24 +352,9 @@ type ByteCount = usize;
 
 Unlike `distinct`, aliases do not create a new nominal type.
 
-## 15. Range-constrained types
+## 15. Constrained types
 
-```forge
-@range(0..=100)
-type Percentage = u8;
-```
-
-Construction from an arbitrary integer checks range:
-
-```forge
-val p: Percentage = Percentage(value); // traps on invalid value
-```
-
-Fallible conversion:
-
-```forge
-val p: Percentage? = Percentage.try(value);
-```
+Constrained/refined scalar types are deferred beyond Forge v1. A v1 type alias remains transparent and does not impose runtime range checks. Metadata named `@range` may be carried as ordinary tool metadata, but it has no standardized v1 type-system meaning.
 
 ## 16. Fixed arrays
 
@@ -1235,7 +1220,6 @@ V1 standardized metadata includes at least:
 @repr(u8)
 @repr(tag: u8)
 @align(N)
-@range(...)
 @overflow(wrap|checked)
 @inline
 @cold

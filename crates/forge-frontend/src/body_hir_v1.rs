@@ -29,6 +29,7 @@ impl<T> HirNode<T> {
 pub struct HirBody {
     pub owner: DefId,
     pub params: Vec<(LocalId, HirType)>,
+    pub param_defaults: BTreeMap<LocalId, HirExpr>,
     pub return_type: Option<HirType>,
     pub locals: Vec<HirLocalDecl>,
     pub block: HirBlock,
@@ -45,7 +46,24 @@ pub struct HirGlobalBody {
 pub struct BodyHirOutput {
     pub functions: BTreeMap<DefId, HirBody>,
     pub globals: BTreeMap<DefId, HirGlobalBody>,
+    pub field_defaults: Vec<HirTypedDeclExpr>,
+    pub enum_values: Vec<HirEnumValueExpr>,
     pub diagnostics: Vec<HirDiagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HirTypedDeclExpr {
+    pub owner: DefId,
+    pub label: String,
+    pub expected: HirType,
+    pub value: HirExpr,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HirEnumValueExpr {
+    pub owner: DefId,
+    pub variant: String,
+    pub value: HirExpr,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -386,9 +404,17 @@ pub fn lower_resolved_bodies(source: &ast::SourceFile, module: &HirModule) -> Bo
                 let mut lowerer = Lowerer::new(module, &imports, &mut output.diagnostics);
                 lowerer.push_scope();
                 let mut params = Vec::new();
+                let mut param_defaults = BTreeMap::new();
                 for parameter in &function.params {
                     let ty = lowerer.lower_type(&parameter.ty);
+                    let default = parameter
+                        .default
+                        .as_ref()
+                        .map(|value| lowerer.lower_expr(value));
                     let id = lowerer.define_local(parameter.ty.span, false, true, &parameter.name);
+                    if let Some(default) = default {
+                        param_defaults.insert(id, default);
+                    }
                     params.push((id, ty));
                 }
                 let return_type = function
@@ -402,6 +428,7 @@ pub fn lower_resolved_bodies(source: &ast::SourceFile, module: &HirModule) -> Bo
                     HirBody {
                         owner,
                         params,
+                        param_defaults,
                         return_type,
                         locals,
                         block,
@@ -420,6 +447,90 @@ pub fn lower_resolved_bodies(source: &ast::SourceFile, module: &HirModule) -> Bo
                         value: expr,
                     },
                 );
+            }
+            ast::DeclKind::Struct(value) => {
+                for field in &value.fields {
+                    if let Some(default) = &field.default {
+                        let mut lowerer = Lowerer::new(module, &imports, &mut output.diagnostics);
+                        output.field_defaults.push(HirTypedDeclExpr {
+                            owner,
+                            label: field.name.clone(),
+                            expected: lowerer.lower_type(&field.ty),
+                            value: lowerer.lower_expr(default),
+                        });
+                    }
+                }
+            }
+            ast::DeclKind::Tagged(value) => {
+                for variant in &value.variants {
+                    for field in &variant.fields {
+                        if let Some(default) = &field.default {
+                            let mut lowerer =
+                                Lowerer::new(module, &imports, &mut output.diagnostics);
+                            output.field_defaults.push(HirTypedDeclExpr {
+                                owner,
+                                label: format!("{}::{}", variant.name, field.name),
+                                expected: lowerer.lower_type(&field.ty),
+                                value: lowerer.lower_expr(default),
+                            });
+                        }
+                    }
+                }
+            }
+            ast::DeclKind::Enum(value) => {
+                for variant in &value.variants {
+                    if let Some(explicit) = &variant.value {
+                        let mut lowerer = Lowerer::new(module, &imports, &mut output.diagnostics);
+                        output.enum_values.push(HirEnumValueExpr {
+                            owner,
+                            variant: variant.name.clone(),
+                            value: lowerer.lower_expr(explicit),
+                        });
+                    }
+                }
+            }
+            ast::DeclKind::Impl(value) => {
+                let method_defs = module
+                    .methods
+                    .iter()
+                    .filter(|method| method.impl_owner == owner)
+                    .collect::<Vec<_>>();
+                for (method, method_def) in value.methods.iter().zip(method_defs) {
+                    let mut lowerer = Lowerer::new(module, &imports, &mut output.diagnostics);
+                    lowerer.push_scope();
+                    let mut params = Vec::new();
+                    let mut param_defaults = BTreeMap::new();
+                    for parameter in &method.function.params {
+                        let ty = lowerer.lower_type(&parameter.ty);
+                        let default = parameter
+                            .default
+                            .as_ref()
+                            .map(|value| lowerer.lower_expr(value));
+                        let id =
+                            lowerer.define_local(parameter.ty.span, false, true, &parameter.name);
+                        if let Some(default) = default {
+                            param_defaults.insert(id, default);
+                        }
+                        params.push((id, ty));
+                    }
+                    let return_type = method
+                        .function
+                        .return_type
+                        .as_ref()
+                        .map(|ty| lowerer.lower_type(ty));
+                    let block = lowerer.lower_block(&method.function.body, false);
+                    output.functions.insert(
+                        method_def.id,
+                        HirBody {
+                            owner: method_def.id,
+                            params,
+                            param_defaults,
+                            return_type,
+                            locals: lowerer.locals,
+                            block,
+                        },
+                    );
+                }
             }
             _ => {}
         }

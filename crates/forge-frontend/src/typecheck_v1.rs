@@ -61,6 +61,7 @@ pub enum Ty {
     },
     Array {
         element: Box<Ty>,
+        length: Option<u64>,
     },
     Result {
         ok: Box<Ty>,
@@ -94,8 +95,17 @@ pub struct TypedExpr {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "expr", rename_all = "snake_case")]
 pub enum TypedExprKind {
-    Source { hir: HirExpr },
-    OptionalPromote { value: Box<TypedExpr> },
+    Source {
+        hir: HirExpr,
+    },
+    ResolvedCall {
+        target: DefId,
+        method: bool,
+        hir: HirExpr,
+    },
+    OptionalPromote {
+        value: Box<TypedExpr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -165,7 +175,39 @@ pub fn type_check_module(
         metadata: module.metadata.clone(),
         ..TypeCheckOutput::default()
     };
+    validate_declaration_array_lengths(source, &mut output.diagnostics);
     let env = ModuleTypeEnv::build(source, module);
+
+    for default in &bodies.field_defaults {
+        let mut checker = BodyChecker::new(&env, Ty::Void, &mut output.diagnostics);
+        let expected = env.lower_hir_type(&default.expected);
+        let actual = checker.check_expr(&default.value, Some(&expected));
+        checker.require_assignable(
+            default.value.span,
+            &expected,
+            &actual,
+            "type/declaration-default",
+        );
+    }
+
+    for explicit in &bodies.enum_values {
+        let mut checker = BodyChecker::new(&env, Ty::Void, &mut output.diagnostics);
+        let actual = checker.check_expr(&explicit.value, None);
+        if !is_integer_like(&actual) {
+            checker.diagnostic(
+                explicit.value.span,
+                "type/enum-value",
+                format!("enum value must be an integer constant, found {actual:?}"),
+            );
+        }
+        if eval_const_int_hir(&explicit.value).is_none() {
+            checker.diagnostic(
+                explicit.value.span,
+                "type/enum-value",
+                "enum value must be a compile-time integer expression",
+            );
+        }
+    }
 
     for (owner, body) in &bodies.functions {
         let expected_return = env
@@ -175,7 +217,24 @@ pub fn type_check_module(
             .unwrap_or(Ty::Unknown);
         let mut checker = BodyChecker::new(&env, expected_return, &mut output.diagnostics);
         for (local, ty) in &body.params {
-            checker.local_types.insert(*local, env.lower_hir_type(ty));
+            let param_ty = env.lower_hir_type(ty);
+            if array_type_has_unknown_length(&param_ty) {
+                checker.diagnostic(
+                    ty.span,
+                    "type/array-length",
+                    "array length must be a non-negative compile-time integer",
+                );
+            }
+            if let Some(default) = body.param_defaults.get(local) {
+                let actual = checker.check_expr(default, Some(&param_ty));
+                checker.require_assignable(
+                    default.span,
+                    &param_ty,
+                    &actual,
+                    "type/declaration-default",
+                );
+            }
+            checker.local_types.insert(*local, param_ty);
         }
         checker.check_block(&body.block);
         output.functions.insert(
@@ -207,6 +266,7 @@ pub fn type_check_module(
 struct ModuleTypeEnv {
     types: BTreeMap<DefId, TypeInfo>,
     functions: BTreeMap<DefId, FunctionSig>,
+    methods: BTreeMap<(DefId, String), DefId>,
 }
 
 impl ModuleTypeEnv {
@@ -214,6 +274,7 @@ impl ModuleTypeEnv {
         let mut env = Self {
             types: BTreeMap::new(),
             functions: BTreeMap::new(),
+            methods: BTreeMap::new(),
         };
 
         // Establish all nominal identities first so aliases/signatures can refer forward.
@@ -366,6 +427,55 @@ impl ModuleTypeEnv {
                 );
             }
         }
+
+        for (index, declaration) in source.declarations.iter().enumerate() {
+            let impl_owner = DefId(index as u32);
+            let DeclKind::Impl(value) = &declaration.kind.kind else {
+                continue;
+            };
+            let Some(target_name) = value.target.segments.first() else {
+                continue;
+            };
+            let Some(target_id) = module.symbols.get(target_name).and_then(|set| set.type_def)
+            else {
+                continue;
+            };
+            let method_defs = module
+                .methods
+                .iter()
+                .filter(|method| method.impl_owner == impl_owner)
+                .collect::<Vec<_>>();
+            for (method, method_def) in value.methods.iter().zip(method_defs) {
+                let params = method
+                    .function
+                    .params
+                    .iter()
+                    .map(|p| ParamSig {
+                        name: p.name.clone(),
+                        ty: env.lower_ast_type(&p.ty, module),
+                        has_default: p.default.is_some(),
+                    })
+                    .collect::<Vec<_>>();
+                let result = method
+                    .function
+                    .return_type
+                    .as_ref()
+                    .map(|t| env.lower_ast_type(t, module))
+                    .unwrap_or(Ty::Void);
+                env.functions.insert(
+                    method_def.id,
+                    FunctionSig {
+                        params: params.clone(),
+                        result,
+                        named_arguments: method.function.named_arguments,
+                    },
+                );
+                if params.first().is_some_and(|param| param.name == "self") {
+                    env.methods
+                        .insert((target_id, method.function.name.clone()), method_def.id);
+                }
+            }
+        }
         env
     }
 
@@ -405,8 +515,9 @@ impl ModuleTypeEnv {
                 mutable: *mutable,
                 element: Box::new(self.lower_ast_type(element, module)),
             },
-            ast::TypeKind::Array { element, .. } => Ty::Array {
+            ast::TypeKind::Array { element, length } => Ty::Array {
                 element: Box::new(self.lower_ast_type(element, module)),
+                length: eval_const_usize_ast(length),
             },
             ast::TypeKind::Result { ok, error } => Ty::Result {
                 ok: Box::new(self.lower_ast_type(ok, module)),
@@ -448,8 +559,9 @@ impl ModuleTypeEnv {
                 mutable: *mutable,
                 element: Box::new(self.lower_hir_type(element)),
             },
-            HirTypeKind::Array { element, .. } => Ty::Array {
+            HirTypeKind::Array { element, length } => Ty::Array {
                 element: Box::new(self.lower_hir_type(element)),
+                length: eval_const_usize_hir(length),
             },
             HirTypeKind::Result { ok, error } => Ty::Result {
                 ok: Box::new(self.lower_hir_type(ok)),
@@ -508,6 +620,19 @@ impl ModuleTypeEnv {
             Ty::Unknown | Ty::Error => MemberLookup::Unknown,
             _ => MemberLookup::Unsupported,
         }
+    }
+
+    fn lookup_method(&self, ty: &Ty, name: &str) -> Option<(DefId, &FunctionSig)> {
+        let id = match ty {
+            Ty::Reference { inner, .. } => match inner.as_ref() {
+                Ty::Nominal(id) => *id,
+                _ => return None,
+            },
+            Ty::Nominal(id) => *id,
+            _ => return None,
+        };
+        let method = *self.methods.get(&(id, name.to_owned()))?;
+        self.functions.get(&method).map(|sig| (method, sig))
     }
 
     fn distinct_underlying(&self, id: DefId) -> Option<&Ty> {
@@ -659,7 +784,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             } => {
                 let iter_ty = self.check_expr(iterable, None);
                 let element = match iter_ty {
-                    Ty::Array { element } | Ty::Slice { element, .. } => *element,
+                    Ty::Array { element, .. } | Ty::Slice { element, .. } => *element,
                     _ => Ty::Unknown,
                 };
                 self.check_pattern(pattern, &element);
@@ -704,6 +829,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
     }
 
     fn check_expr(&mut self, expr: &HirExpr, expected: Option<&Ty>) -> Ty {
+        let mut resolved_call: Option<(DefId, bool)> = None;
         let mut ty = match &expr.kind {
             HirExprKind::Integer { text } => integer_literal_ty(text),
             HirExprKind::Float { text } => float_literal_ty(text),
@@ -741,6 +867,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 }
                 Ty::Array {
                     element: Box::new(element),
+                    length: Some(items.len() as u64),
                 }
             }
             HirExprKind::StructInit {
@@ -759,7 +886,11 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             HirExprKind::Binary { op, left, right } => {
                 self.check_binary(expr.span, *op, left, right, expected)
             }
-            HirExprKind::Call { callee, args } => self.check_call(expr.span, callee, args),
+            HirExprKind::Call { callee, args } => {
+                let (result, target) = self.check_call(expr.span, callee, args);
+                resolved_call = target;
+                result
+            }
             HirExprKind::TypeCall { target, args } => self.check_type_call(expr.span, target, args),
             HirExprKind::Index { base, index } => {
                 let base_ty = self.check_expr(base, None);
@@ -773,7 +904,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     self.check_expr(index, None);
                 }
                 match base_ty {
-                    Ty::Array { element } | Ty::Slice { element, .. } => *element,
+                    Ty::Array { element, .. } | Ty::Slice { element, .. } => *element,
                     _ => Ty::Unknown,
                 }
             }
@@ -833,7 +964,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         crate::body_hir::HirMatchBody::Expr(e) => self.check_expr(
                             e,
                             if result == Ty::Unknown {
-                                None
+                                expected
                             } else {
                                 Some(&result)
                             },
@@ -849,6 +980,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         self.require_assignable(expr.span, &result, &arm_ty, "type/mismatch");
                     }
                 }
+                self.check_match_exhaustiveness(expr.span, &matched, arms);
                 result
             }
             HirExprKind::Error => Ty::Error,
@@ -861,10 +993,17 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 ty = expected.clone();
             }
         }
+        let kind = resolved_call
+            .map(|(target, method)| TypedExprKind::ResolvedCall {
+                target,
+                method,
+                hir: expr.clone(),
+            })
+            .unwrap_or_else(|| TypedExprKind::Source { hir: expr.clone() });
         self.expressions.push(TypedExpr {
             span: expr.span,
             ty: ty.clone(),
-            kind: TypedExprKind::Source { hir: expr.clone() },
+            kind,
         });
         ty
     }
@@ -962,9 +1101,9 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 }
             }
             HirExprKind::Index { base, .. } => match self.place_type(base) {
-                Ty::Array { element } | Ty::Slice { element, .. } => *element,
+                Ty::Array { element, .. } | Ty::Slice { element, .. } => *element,
                 Ty::Reference { inner, .. } => match *inner {
-                    Ty::Array { element } | Ty::Slice { element, .. } => *element,
+                    Ty::Array { element, .. } | Ty::Slice { element, .. } => *element,
                     _ => Ty::Unknown,
                 },
                 _ => Ty::Unknown,
@@ -1165,12 +1304,31 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         }
     }
 
-    fn check_call(&mut self, span: Span, callee: &HirExpr, args: &[HirCallArg]) -> Ty {
+    fn check_call(
+        &mut self,
+        span: Span,
+        callee: &HirExpr,
+        args: &[HirCallArg],
+    ) -> (Ty, Option<(DefId, bool)>) {
+        if let HirExprKind::Member { base, name } = &callee.kind {
+            let receiver_ty = self.check_expr(base, None);
+            if let Some((method_id, sig)) = self.env.lookup_method(&receiver_ty, name) {
+                let sig = sig.clone();
+                self.check_method_receiver(base, &receiver_ty, &sig);
+                let reduced = FunctionSig {
+                    params: sig.params.iter().skip(1).cloned().collect(),
+                    result: sig.result.clone(),
+                    named_arguments: sig.named_arguments,
+                };
+                self.check_function_args(span, &reduced, args);
+                return (sig.result, Some((method_id, true)));
+            }
+        }
         if let HirExprKind::Name { reference } = &callee.kind {
             if let ResolvedName::Def(id) = reference.root {
                 if let Some(sig) = self.env.functions.get(&id).cloned() {
                     self.check_function_args(span, &sig, args);
-                    return sig.result;
+                    return (sig.result, Some((id, false)));
                 }
             }
         }
@@ -1182,10 +1340,76 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     let actual = self.check_expr(value, Some(param));
                     self.require_assignable(value.span, param, &actual, "type/mismatch");
                 }
-                *result
+                (*result, None)
             }
-            Ty::Error => Ty::Error,
-            _ => Ty::Unknown,
+            Ty::Error => (Ty::Error, None),
+            _ => (Ty::Unknown, None),
+        }
+    }
+
+    fn check_method_receiver(&mut self, receiver: &HirExpr, actual: &Ty, sig: &FunctionSig) {
+        let Some(self_param) = sig.params.first() else {
+            self.diagnostic(
+                receiver.span,
+                "method/receiver",
+                "method call target has no `self` parameter",
+            );
+            return;
+        };
+        match &self_param.ty {
+            Ty::Reference { mutable, inner } => {
+                let compatible = match actual {
+                    Ty::Reference {
+                        mutable: actual_mutable,
+                        inner: actual_inner,
+                    } => actual_inner.as_ref() == inner.as_ref() && (!*mutable || *actual_mutable),
+                    other => other == inner.as_ref(),
+                };
+                if !compatible {
+                    self.diagnostic(
+                        receiver.span,
+                        "method/receiver",
+                        format!(
+                            "method receiver expects {:?}, found {:?}",
+                            self_param.ty, actual
+                        ),
+                    );
+                } else if *mutable
+                    && !matches!(actual, Ty::Reference { mutable: true, .. })
+                    && !self.is_mutable_place(receiver)
+                {
+                    self.diagnostic(
+                        receiver.span,
+                        "method/immutable-receiver",
+                        "method requires a mutable receiver",
+                    );
+                }
+            }
+            expected => self.require_assignable(receiver.span, expected, actual, "method/receiver"),
+        }
+    }
+
+    fn is_mutable_place(&self, expr: &HirExpr) -> bool {
+        match &expr.kind {
+            HirExprKind::Name { reference } => match reference.root {
+                ResolvedName::Local(id) => self.mutable_locals.contains(&id),
+                _ => false,
+            },
+            HirExprKind::Member { base, .. } | HirExprKind::Index { base, .. } => {
+                match self.place_type(base) {
+                    Ty::Reference { mutable, .. } => mutable,
+                    Ty::Slice { mutable, .. } => mutable,
+                    _ => self.is_mutable_place(base),
+                }
+            }
+            HirExprKind::Unary {
+                op: UnaryOp::Deref,
+                value,
+            } => matches!(
+                self.place_type(value),
+                Ty::Reference { mutable: true, .. } | Ty::Pointer { .. }
+            ),
+            _ => false,
         }
     }
 
@@ -1523,14 +1747,139 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             HirPatternKind::Or { patterns } => patterns
                 .iter()
                 .any(|branch| self.pattern_is_irrefutable(branch, ty)),
-            // Length-sensitive sequence declarations require fixed-array length to be
-            // retained in Ty. Until then, sequence declarations cannot be proven safe.
-            HirPatternKind::Sequence { .. }
-            | HirPatternKind::Map { .. }
+            HirPatternKind::Sequence { items, rest } => match ty {
+                Ty::Array {
+                    element,
+                    length: Some(length),
+                } => {
+                    let enough = if rest.is_some() {
+                        *length >= items.len() as u64
+                    } else {
+                        *length == items.len() as u64
+                    };
+                    enough
+                        && items
+                            .iter()
+                            .all(|item| self.pattern_is_irrefutable(item, element))
+                }
+                _ => false,
+            },
+            HirPatternKind::Map { .. }
             | HirPatternKind::Literal { .. }
             | HirPatternKind::Range { .. }
             | HirPatternKind::None { .. }
             | HirPatternKind::Some { .. } => false,
+        }
+    }
+
+    fn check_match_exhaustiveness(
+        &mut self,
+        span: Span,
+        ty: &Ty,
+        arms: &[crate::body_hir::HirMatchArm],
+    ) {
+        let Some(required) = self.finite_match_cases(ty) else {
+            return;
+        };
+        let mut covered = BTreeSet::new();
+        for arm in arms {
+            if arm.guard.is_some() {
+                continue;
+            }
+            covered.extend(self.pattern_match_cases(&arm.pattern, ty, &required));
+        }
+        let missing = required.difference(&covered).cloned().collect::<Vec<_>>();
+        if !missing.is_empty() {
+            self.diagnostic(
+                span,
+                "match/non-exhaustive",
+                format!("non-exhaustive match; missing {}", missing.join(", ")),
+            );
+        }
+    }
+
+    fn finite_match_cases(&self, ty: &Ty) -> Option<BTreeSet<String>> {
+        match ty {
+            Ty::Bool => Some(
+                ["false".to_owned(), "true".to_owned()]
+                    .into_iter()
+                    .collect(),
+            ),
+            Ty::Optional { .. } => {
+                Some(["None".to_owned(), "Some".to_owned()].into_iter().collect())
+            }
+            Ty::Nominal(id) => match self.env.types.get(id).map(|info| &info.kind) {
+                Some(TypeInfoKind::Enum(variants)) => Some(variants.clone()),
+                Some(TypeInfoKind::Tagged(variants)) => Some(variants.keys().cloned().collect()),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn pattern_match_cases(
+        &self,
+        pattern: &HirPattern,
+        ty: &Ty,
+        required: &BTreeSet<String>,
+    ) -> BTreeSet<String> {
+        if self.pattern_is_irrefutable(pattern, ty) {
+            return required.clone();
+        }
+        match &pattern.kind {
+            HirPatternKind::Or { patterns } => patterns
+                .iter()
+                .flat_map(|pattern| self.pattern_match_cases(pattern, ty, required))
+                .collect(),
+            HirPatternKind::As { pattern, .. } => self.pattern_match_cases(pattern, ty, required),
+            HirPatternKind::Literal {
+                value: ast::PatternLiteral::Bool { value },
+            } if matches!(ty, Ty::Bool) => [value.to_string()].into_iter().collect(),
+            HirPatternKind::None { .. } if matches!(ty, Ty::Optional { .. }) => {
+                ["None".to_owned()].into_iter().collect()
+            }
+            HirPatternKind::Some { value } => match ty {
+                Ty::Optional { inner } if self.pattern_is_irrefutable(value, inner) => {
+                    ["Some".to_owned()].into_iter().collect()
+                }
+                _ => BTreeSet::new(),
+            },
+            HirPatternKind::Variant {
+                namespace,
+                name,
+                fields,
+                ..
+            } => {
+                let expected = self.env.ty_from_ref(namespace);
+                if &expected != ty || !required.contains(name) {
+                    return BTreeSet::new();
+                }
+                let covers = match ty {
+                    Ty::Nominal(id) => match self.env.types.get(id).map(|info| &info.kind) {
+                        Some(TypeInfoKind::Enum(_)) => fields.is_empty(),
+                        Some(TypeInfoKind::Tagged(variants)) => {
+                            variants.get(name).is_some_and(|defs| {
+                                fields.iter().all(|field| {
+                                    let Some(info) = defs.get(&field.name) else {
+                                        return false;
+                                    };
+                                    field.pattern.as_ref().is_none_or(|pattern| {
+                                        self.pattern_is_irrefutable(pattern, &info.ty)
+                                    })
+                                })
+                            })
+                        }
+                        _ => false,
+                    },
+                    _ => false,
+                };
+                if covers {
+                    [name.clone()].into_iter().collect()
+                } else {
+                    BTreeSet::new()
+                }
+            }
+            _ => BTreeSet::new(),
         }
     }
 
@@ -1595,7 +1944,9 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             }
             HirPatternKind::Sequence { items, rest } => {
                 let element = match ty {
-                    Ty::Array { element } | Ty::Slice { element, .. } => element.as_ref().clone(),
+                    Ty::Array { element, .. } | Ty::Slice { element, .. } => {
+                        element.as_ref().clone()
+                    }
                     Ty::Unknown | Ty::Error => Ty::Unknown,
                     _ => {
                         self.diagnostic(
@@ -1932,6 +2283,184 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         }
         false
     }
+}
+
+fn array_type_has_unknown_length(ty: &Ty) -> bool {
+    match ty {
+        Ty::Array { element, length } => length.is_none() || array_type_has_unknown_length(element),
+        Ty::Pointer { inner, .. } | Ty::Reference { inner, .. } | Ty::Optional { inner } => {
+            array_type_has_unknown_length(inner)
+        }
+        Ty::Slice { element, .. } => array_type_has_unknown_length(element),
+        Ty::Result { ok, error } => {
+            array_type_has_unknown_length(ok) || array_type_has_unknown_length(error)
+        }
+        Ty::Function { params, result, .. } | Ty::Closure { params, result } => {
+            params.iter().any(array_type_has_unknown_length)
+                || array_type_has_unknown_length(result)
+        }
+        _ => false,
+    }
+}
+
+fn validate_declaration_array_lengths(
+    source: &ast::SourceFile,
+    diagnostics: &mut Vec<TypeDiagnostic>,
+) {
+    fn validate_type(ty: &ast::TypeNode, diagnostics: &mut Vec<TypeDiagnostic>) {
+        match &ty.kind {
+            ast::TypeKind::Array { element, length } => {
+                if eval_const_usize_ast(length).is_none() {
+                    diagnostics.push(TypeDiagnostic {
+                        span: length.span,
+                        code: "type/array-length".into(),
+                        message: "array length must be a non-negative compile-time integer".into(),
+                    });
+                }
+                validate_type(element, diagnostics);
+            }
+            ast::TypeKind::Pointer { inner, .. }
+            | ast::TypeKind::Reference { inner, .. }
+            | ast::TypeKind::Optional { inner } => validate_type(inner, diagnostics),
+            ast::TypeKind::Slice { element, .. } => validate_type(element, diagnostics),
+            ast::TypeKind::Result { ok, error } => {
+                validate_type(ok, diagnostics);
+                validate_type(error, diagnostics);
+            }
+            ast::TypeKind::Function { params, result }
+            | ast::TypeKind::Closure { params, result } => {
+                for param in params {
+                    validate_type(param, diagnostics);
+                }
+                validate_type(result, diagnostics);
+            }
+            ast::TypeKind::Named { .. } => {}
+        }
+    }
+
+    for declaration in &source.declarations {
+        match &declaration.kind.kind {
+            DeclKind::Function(function) => {
+                for param in &function.params {
+                    validate_type(&param.ty, diagnostics);
+                }
+                if let Some(result) = &function.return_type {
+                    validate_type(result, diagnostics);
+                }
+            }
+            DeclKind::Struct(value) => {
+                for field in &value.fields {
+                    validate_type(&field.ty, diagnostics);
+                }
+            }
+            DeclKind::Tagged(value) => {
+                for variant in &value.variants {
+                    for field in &variant.fields {
+                        validate_type(&field.ty, diagnostics);
+                    }
+                }
+            }
+            DeclKind::BitStruct(value) => validate_type(&value.storage, diagnostics),
+            DeclKind::Distinct(value) => validate_type(&value.underlying, diagnostics),
+            DeclKind::TypeAlias(value) => validate_type(&value.target, diagnostics),
+            DeclKind::Impl(value) => {
+                for method in &value.methods {
+                    for param in &method.function.params {
+                        validate_type(&param.ty, diagnostics);
+                    }
+                    if let Some(result) = &method.function.return_type {
+                        validate_type(result, diagnostics);
+                    }
+                }
+            }
+            DeclKind::Global(value) => {
+                if let Some(ty) = &value.ty {
+                    validate_type(ty, diagnostics);
+                }
+            }
+            DeclKind::Enum(_) => {}
+        }
+    }
+}
+
+fn parse_integer_value(text: &str) -> Option<i128> {
+    let mut raw = text.replace('_', "");
+    for suffix in [
+        "usize", "isize", "u64", "i64", "u32", "i32", "u16", "i16", "u8", "i8",
+    ] {
+        if raw.ends_with(suffix) {
+            raw.truncate(raw.len() - suffix.len());
+            break;
+        }
+    }
+    let (radix, digits) = if let Some(rest) = raw.strip_prefix("0x") {
+        (16, rest)
+    } else if let Some(rest) = raw.strip_prefix("0b") {
+        (2, rest)
+    } else if let Some(rest) = raw.strip_prefix("0o") {
+        (8, rest)
+    } else {
+        (10, raw.as_str())
+    };
+    i128::from_str_radix(digits, radix).ok()
+}
+
+fn eval_const_binary(op: BinaryOp, left: i128, right: i128) -> Option<i128> {
+    match op {
+        BinaryOp::Add => left.checked_add(right),
+        BinaryOp::Sub => left.checked_sub(right),
+        BinaryOp::Mul => left.checked_mul(right),
+        BinaryOp::Div => left.checked_div(right),
+        BinaryOp::Rem => left.checked_rem(right),
+        BinaryOp::BitAnd => Some(left & right),
+        BinaryOp::BitXor => Some(left ^ right),
+        BinaryOp::BitOr => Some(left | right),
+        BinaryOp::ShiftLeft => u32::try_from(right)
+            .ok()
+            .and_then(|shift| left.checked_shl(shift)),
+        BinaryOp::ShiftRight => u32::try_from(right)
+            .ok()
+            .and_then(|shift| left.checked_shr(shift)),
+        _ => None,
+    }
+}
+
+fn eval_const_int_ast(expr: &ast::Expr) -> Option<i128> {
+    match &expr.kind {
+        ast::ExprKind::Integer { text } => parse_integer_value(text),
+        ast::ExprKind::Unary { op, value } => match op {
+            UnaryOp::Neg => eval_const_int_ast(value)?.checked_neg(),
+            UnaryOp::BitNot => Some(!eval_const_int_ast(value)?),
+            _ => None,
+        },
+        ast::ExprKind::Binary { op, left, right } => {
+            eval_const_binary(*op, eval_const_int_ast(left)?, eval_const_int_ast(right)?)
+        }
+        _ => None,
+    }
+}
+
+fn eval_const_int_hir(expr: &HirExpr) -> Option<i128> {
+    match &expr.kind {
+        HirExprKind::Integer { text } => parse_integer_value(text),
+        HirExprKind::Unary { op, value } => match op {
+            UnaryOp::Neg => eval_const_int_hir(value)?.checked_neg(),
+            UnaryOp::BitNot => Some(!eval_const_int_hir(value)?),
+            _ => None,
+        },
+        HirExprKind::Binary { op, left, right } => {
+            eval_const_binary(*op, eval_const_int_hir(left)?, eval_const_int_hir(right)?)
+        }
+        _ => None,
+    }
+}
+
+fn eval_const_usize_ast(expr: &ast::Expr) -> Option<u64> {
+    u64::try_from(eval_const_int_ast(expr)?).ok()
+}
+
+fn eval_const_usize_hir(expr: &HirExpr) -> Option<u64> {
+    u64::try_from(eval_const_int_hir(expr)?).ok()
 }
 
 fn arg_value(arg: &HirCallArg) -> &HirExpr {

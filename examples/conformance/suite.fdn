@@ -133,5 +133,7 @@
     {:path #path "negative/14-pattern-type-mismatch.fg" :kind :negative :expect :pattern/type}
     {:path #path "negative/15-or-pattern-binding-type.fg" :kind :negative :expect :pattern/or-binding-type}
     {:path #path "negative/16-refutable-destructuring-binding.fg" :kind :negative :expect :pattern/refutable-binding}
+    {:path #path "negative/17-declaration-default-type.fg" :kind :negative :expect :type/declaration-default}
+    {:path #path "negative/18-non-exhaustive-match.fg" :kind :negative :expect :match/non-exhaustive}
   ]
 }

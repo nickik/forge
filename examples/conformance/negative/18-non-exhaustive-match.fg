@@ -1,0 +1,9 @@
+module examples.conformance.non_exhaustive_match;
+
+enum Color { Red, Green }
+
+fn read(color: Color) -> i32 {
+    return match (color) {
+        Color::Red => 1,
+    };
+}

@@ -19,10 +19,6 @@ pub enum MetadataTarget {
         variant: Option<String>,
         name: String,
     },
-    ImplMethod {
-        owner: DefId,
-        name: String,
-    },
 }
 
 pub type MetadataTable = BTreeMap<MetadataTarget, Vec<ast::Metadata>>;
@@ -60,7 +56,41 @@ pub struct HirModule {
     pub imports: Vec<ast::Path>,
     pub items: Vec<HirItem>,
     pub symbols: BTreeMap<String, SymbolSet>,
+    pub methods: Vec<HirMethod>,
     pub metadata: MetadataTable,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HirMethod {
+    pub id: DefId,
+    pub impl_owner: DefId,
+    pub target: ast::Path,
+    pub name: String,
+}
+
+pub trait MetadataTableExt {
+    fn for_target(&self, target: &MetadataTarget) -> &[ast::Metadata];
+    fn named<'a>(
+        &'a self,
+        target: &MetadataTarget,
+        name: &'a str,
+    ) -> impl Iterator<Item = &'a ast::Metadata>;
+}
+
+impl MetadataTableExt for MetadataTable {
+    fn for_target(&self, target: &MetadataTarget) -> &[ast::Metadata] {
+        self.get(target).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    fn named<'a>(
+        &'a self,
+        target: &MetadataTarget,
+        name: &'a str,
+    ) -> impl Iterator<Item = &'a ast::Metadata> {
+        self.for_target(target)
+            .iter()
+            .filter(move |metadata| metadata.name.as_deref() == Some(name))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -74,15 +104,35 @@ pub struct HirItem {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "item", rename_all = "snake_case")]
 pub enum HirItemKind {
-    Function { name: String, named_arguments: bool },
-    Struct { name: String },
-    Enum { name: String },
-    Tagged { name: String },
-    BitStruct { name: String },
-    Distinct { name: String },
-    TypeAlias { name: String },
-    Impl { target: ast::Path },
-    Global { bindings: Vec<String> },
+    Function {
+        name: String,
+        named_arguments: bool,
+    },
+    Struct {
+        name: String,
+    },
+    Enum {
+        name: String,
+    },
+    Tagged {
+        name: String,
+    },
+    BitStruct {
+        name: String,
+    },
+    Distinct {
+        name: String,
+    },
+    TypeAlias {
+        name: String,
+    },
+    Impl {
+        target: ast::Path,
+        methods: Vec<DefId>,
+    },
+    Global {
+        bindings: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -103,9 +153,11 @@ pub fn lower_module(source: &ast::SourceFile) -> HirOutput {
         imports: source.imports.clone(),
         items: Vec::with_capacity(source.declarations.len()),
         symbols: BTreeMap::new(),
+        methods: Vec::new(),
         metadata: BTreeMap::new(),
     };
     let mut diagnostics = Vec::new();
+    let mut next_method_id = source.declarations.len() as u32;
 
     for (index, declaration) in source.declarations.iter().enumerate() {
         let id = DefId(index as u32);
@@ -226,18 +278,26 @@ pub fn lower_module(source: &ast::SourceFile) -> HirOutput {
                 }
             }
             DeclKind::Impl(value) => {
+                let mut methods = Vec::with_capacity(value.methods.len());
                 for method in &value.methods {
+                    let method_id = DefId(next_method_id);
+                    next_method_id += 1;
                     record_metadata(
                         &mut module.metadata,
-                        MetadataTarget::ImplMethod {
-                            owner: id,
-                            name: method.function.name.clone(),
-                        },
+                        MetadataTarget::Item { owner: method_id },
                         &method.metadata,
                     );
+                    module.methods.push(HirMethod {
+                        id: method_id,
+                        impl_owner: id,
+                        target: value.target.clone(),
+                        name: method.function.name.clone(),
+                    });
+                    methods.push(method_id);
                 }
                 HirItemKind::Impl {
                     target: value.target.clone(),
+                    methods,
                 }
             }
             DeclKind::Global(value) => {

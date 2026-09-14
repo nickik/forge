@@ -1,0 +1,5 @@
+module examples.conformance.bad_default_type;
+
+struct Config { retries: u8 = true; }
+
+fn main() -> i32 { return 0; }

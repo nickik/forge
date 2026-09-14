@@ -133,3 +133,17 @@ Never let C backend undefined behavior leak into Forge semantics: emit defensive
 - differential execution between C and native backends;
 - FDN round-trip/canonicalization tests;
 - fuzz lexer/parser after stable core exists.
+
+
+## Semantic cleanup notes
+
+- Fixed-array length is part of semantic `Ty::Array` and must survive into typed HIR/FIR.
+- Impl methods receive real `DefId`s; typed calls resolve directly to the method/function `DefId`.
+- Declaration-owned default expressions are typechecked before FIR and accumulate diagnostics with ordinary body errors.
+- Exhaustiveness for finite built-in/nominal sums (`bool`, optionals, enums, tagged unions) belongs in semantic type checking because this is the first layer with both resolved type identity and typed patterns. More advanced pattern-matrix optimization can remain a later pass.
+- Map/collection pattern typing is deliberately deferred until Forge has a collection-pattern protocol. Preserve the HIR pattern shape; do not invent `Unknown`-driven semantics in FIR.
+- Metadata remains one target-keyed table. Use the generic metadata query API instead of adding one field per attribute.
+
+### Bitstruct v1 proposal (not yet normative)
+
+Keep bitstructs simple: restrict storage to unsigned fixed-width integers; map each field to the smallest ordinary unsigned integer type that can hold its declared width; never create source-level 3-bit/5-bit integer types; compile-time-known out-of-range writes are errors and dynamic writes are checked rather than truncated. Field ordering and bit numbering still need an explicit language decision before implementation.

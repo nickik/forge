@@ -10,5 +10,4 @@ fn checked(value: u32) -> u32 {
     return value + 1u32;
 }
 
-@range(0..=100)
 type Percent = u8;

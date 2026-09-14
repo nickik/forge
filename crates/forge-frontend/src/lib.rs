@@ -17,8 +17,8 @@ pub use body_hir::{
     HirLocalDecl, HirPattern, HirPatternKind, HirStmt, HirStmtKind, HirType, HirTypeKind,
 };
 pub use hir::{
-    lower_module, DefId, HirDiagnostic, HirModule, HirOutput, MetadataTable, MetadataTarget,
-    Namespace,
+    lower_module, DefId, HirDiagnostic, HirMethod, HirModule, HirOutput, MetadataTable,
+    MetadataTableExt, MetadataTarget, Namespace,
 };
 pub use parser::{parse_source, Diagnostic, ParseOutput};
 pub use resolution::{

@@ -717,3 +717,140 @@ fn typed_hir_preserves_generic_metadata_table() {
         .iter()
         .any(|m| m.name.as_deref() == Some("overflow")));
 }
+
+#[test]
+fn fixed_array_length_is_preserved_and_used_for_irrefutable_patterns() {
+    let output = check(
+        r#"
+        module test.array_length;
+        fn head(pair: [u32; 2]) -> u32 {
+            val [left, right] = pair;
+            return left + right;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let body = output.functions.values().next().unwrap();
+    assert!(body.local_types.values().any(|ty| matches!(
+        ty,
+        Ty::Array {
+            length: Some(2),
+            ..
+        }
+    )));
+}
+
+#[test]
+fn declaration_defaults_are_checked_early() {
+    let output = check(
+        r#"
+        module test.bad_default;
+        struct Config { retries: u8 = true; }
+        nfn connect(port: u16 = false) -> bool { return true; }
+        fn main() -> i32 { return 0; }
+        "#,
+    );
+    assert!(
+        output
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == "type/declaration-default")
+            .count()
+            >= 2,
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
+fn method_calls_resolve_to_method_defids() {
+    let output = check(
+        r#"
+        module test.method_defid;
+        struct Point { x: i32; }
+        impl Point {
+            fn get(self: &Point) -> i32 { return self.x; }
+            fn set(self: &mut Point, x: i32) -> void { self.x = x; }
+        }
+        fn main() -> i32 {
+            var p = Point{x: 1};
+            p.set(2);
+            return p.get();
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let mut method_targets = output
+        .functions
+        .values()
+        .flat_map(|body| body.expressions.iter())
+        .filter_map(|expr| match &expr.kind {
+            forge_frontend::TypedExprKind::ResolvedCall {
+                target,
+                method: true,
+                ..
+            } => Some(*target),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    method_targets.sort();
+    method_targets.dedup();
+    assert_eq!(method_targets.len(), 2, "{method_targets:?}");
+}
+
+#[test]
+fn mutable_method_rejects_immutable_receiver() {
+    let output = check(
+        r#"
+        module test.method_mutability;
+        struct Point { x: i32; }
+        impl Point {
+            fn set(self: &mut Point, x: i32) -> void { self.x = x; }
+        }
+        fn main() -> i32 {
+            val p = Point{x: 1};
+            p.set(2);
+            return 0;
+        }
+        "#,
+    );
+    assert!(
+        has(&output, "method/immutable-receiver"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
+fn finite_matches_are_checked_for_exhaustiveness() {
+    let output = check(
+        r#"
+        module test.exhaustive;
+        enum Color { Red, Green }
+        fn bad(color: Color) -> i32 {
+            return match (color) {
+                Color::Red => 1,
+            };
+        }
+        "#,
+    );
+    assert!(
+        has(&output, "match/non-exhaustive"),
+        "{:?}",
+        output.diagnostics
+    );
+
+    let ok = check(
+        r#"
+        module test.exhaustive_ok;
+        enum Color { Red, Green }
+        fn good(color: Color) -> i32 {
+            return match (color) {
+                Color::Red => 1,
+                Color::Green => 2,
+            };
+        }
+        "#,
+    );
+    assert!(ok.diagnostics.is_empty(), "{:?}", ok.diagnostics);
+}

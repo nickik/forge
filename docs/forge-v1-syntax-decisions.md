@@ -178,7 +178,6 @@ struct Header {
     sequence: u32;
 }
 
-@range(0..=100)
 type Percentage = u8;
 
 @overflow(wrap)
@@ -192,7 +191,7 @@ Metadata is structured data attached to a semantic target. The compiler preserve
 Postfix type/expression metadata is not part of v1. These forms are rejected:
 
 ```forge
-type Percentage = u8 @range(0..=100);
+type Percentage = u8 @range(0..=100); // rejected: postfix metadata
 val x = values[i] @unchecked;
 val y = @wrap(a + b);
 ```

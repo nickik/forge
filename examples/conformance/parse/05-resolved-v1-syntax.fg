@@ -2,7 +2,6 @@ module examples.conformance.resolved_v1;
 
 import std.io, std.mem;
 
-@range(0..=100)
 type Percentage = u8;
 
 struct Point {

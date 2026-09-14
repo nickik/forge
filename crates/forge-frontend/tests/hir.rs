@@ -154,13 +154,12 @@ fn preserves_metadata_by_semantic_target() {
         .iter()
         .any(|m| m.name.as_deref() == Some("overflow")));
 
+    assert_eq!(output.module.methods.len(), 1);
+    assert_eq!(output.module.methods[0].id, DefId(3));
     let method = output
         .module
         .metadata
-        .get(&MetadataTarget::ImplMethod {
-            owner: DefId(2),
-            name: "get".into(),
-        })
+        .get(&MetadataTarget::Item { owner: DefId(3) })
         .expect("impl method metadata");
     assert!(method.iter().any(|m| m.name.as_deref() == Some("inline")));
 }

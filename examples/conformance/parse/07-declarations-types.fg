@@ -30,7 +30,6 @@ bitstruct Status: u16 {
 
 distinct UserId: u32;
 type ByteCount = usize;
-@range(0..=100)
 type Percentage = u8;
 
 const PAGE_SIZE: usize = 4096;

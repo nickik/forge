@@ -145,19 +145,42 @@ pub fn resolve_module_bodies(source: &ast::SourceFile, module: &HirModule) -> Bo
             DeclKind::TypeAlias(value) => resolver.resolve_type(&value.target),
             DeclKind::Impl(value) => {
                 resolver.resolve_type_path(&value.target, declaration.span);
-                for method in &value.methods {
-                    resolver.push_scope();
+                drop(resolver);
+                let method_defs = module
+                    .methods
+                    .iter()
+                    .filter(|method| method.impl_owner == owner)
+                    .collect::<Vec<_>>();
+                for (method, method_def) in value.methods.iter().zip(method_defs) {
+                    let mut method_resolver = Resolver::new(
+                        method_def.id,
+                        module,
+                        &imports,
+                        &qualified_only_variants,
+                        &mut output.diagnostics,
+                    );
+                    method_resolver.push_scope();
                     for parameter in &method.function.params {
-                        resolver.resolve_type(&parameter.ty);
-                        resolver.define_local(&parameter.name, parameter.ty.span, false, true);
+                        method_resolver.resolve_type(&parameter.ty);
+                        if let Some(default) = &parameter.default {
+                            method_resolver.resolve_expr(default);
+                        }
+                        method_resolver.define_local(
+                            &parameter.name,
+                            parameter.ty.span,
+                            false,
+                            true,
+                        );
                     }
                     if let Some(return_type) = &method.function.return_type {
-                        resolver.resolve_type(return_type);
+                        method_resolver.resolve_type(return_type);
                     }
-                    resolver.resolve_block(&method.function.body, false);
-                    resolver.pop_scope();
+                    method_resolver.resolve_block(&method.function.body, false);
+                    method_resolver.pop_scope();
+                    output
+                        .bodies
+                        .insert(method_def.id, method_resolver.finish());
                 }
-                output.bodies.insert(owner, resolver.finish());
             }
         }
     }
