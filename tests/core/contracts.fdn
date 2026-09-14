@@ -24,6 +24,20 @@
      :area :panic :kind :run :expect :panic :panic-kind :DivideByZero}
     {:id :panic/invalid-shift-maps-kind
      :area :panic :kind :run :expect :panic :panic-kind :InvalidShift}
+
+    {:id :arena/explicit-context-and-ops
+     :area :arena :kind :contract :expect :pass}
+    {:id :arena/kernel-provider
+     :area :arena :kind :run :expect :pass}
+    {:id :arena/hosted-provider
+     :area :arena :kind :run :expect :pass}
+    {:id :arena/provider-independent-algorithm
+     :area :arena :kind :run :expect :pass}
+    {:id :arena/nowait-propagated
+     :area :arena :kind :run :expect :pass}
+    {:id :arena/reclaim-dispatch
+     :area :arena :kind :run :expect :pass}
+
     {:id :alloc/oom-is-result
      :area :allocator :kind :run :expect :error :error :OutOfMemory}
     {:id :alloc/arbitrary-size-supported
@@ -36,6 +50,7 @@
      :area :allocator :kind :run :expect :error :error :InvalidAlignment}
     {:id :alloc/resize-supported
      :area :allocator :kind :contract :expect :pass}
+
     {:id :cache/24-byte-object-4k-slab
      :area :object-cache :kind :run :expect :pass :stride 24 :objects-per-slab 170}
     {:id :cache/33-byte-object-align16
@@ -46,12 +61,21 @@
      :area :object-cache :kind :run :expect :error :error :InvalidAlignment}
     {:id :cache/object-larger-than-slab-invalid
      :area :object-cache :kind :run :expect :error :error :InvalidSize}
+    {:id :cache/free-reuse
+     :area :object-cache :kind :run :expect :pass}
+    {:id :cache/unique-live-objects
+     :area :object-cache :kind :run :expect :pass}
+    {:id :cache/slab-growth
+     :area :object-cache :kind :run :expect :pass}
+    {:id :cache/reclaim-empty-slabs-only
+     :area :object-cache :kind :run :expect :pass}
     {:id :cache/reclaim-explicit
      :area :object-cache :kind :contract :expect :pass}
     {:id :cache/stats-observable
      :area :object-cache :kind :contract :expect :pass}
     {:id :cache/nowait-never-sleeps
      :area :object-cache :kind :contract :expect :pass}
+
     {:id :sharing/same-core-kernel-hosted
      :area :sharing :kind :contract :expect :pass}
     {:id :sharing/environment-supplies-arena-provider
