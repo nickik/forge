@@ -249,7 +249,7 @@ pub fn verify_fir_boundary(
 fn verify_no_poison(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
     for block in &function.blocks {
         for instruction in &block.instructions {
-            if matches!(instruction.kind, FirInstructionKind::Poison) {
+            if matches!(&instruction.kind, FirInstructionKind::Poison) {
                 diagnostics.push(diagnostic(
                     instruction.span,
                     "fir/verify-poison",
