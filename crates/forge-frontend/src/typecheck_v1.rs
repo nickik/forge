@@ -299,6 +299,30 @@ pub struct TypedUnsafeScope {
     pub span: Span,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypedBitField {
+    pub name: String,
+    pub offset: u32,
+    pub width: u32,
+    pub ty: Ty,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypedBitStruct {
+    pub owner: DefId,
+    pub storage: Ty,
+    pub storage_bits: u32,
+    pub fields: BTreeMap<String, TypedBitField>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypedBitFieldAccess {
+    pub owner: DefId,
+    pub storage: Ty,
+    pub storage_bits: u32,
+    pub field: TypedBitField,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "source", rename_all = "snake_case")]
 pub enum ResolvedCallArgument {
@@ -341,6 +365,10 @@ pub enum TypedExprKind {
         provenance: UnsafeProvenance,
         hir: HirExpr,
     },
+    ResolvedBitField {
+        access: TypedBitFieldAccess,
+        hir: HirExpr,
+    },
     OptionalPromote {
         source_type: Ty,
         inner: Box<TypedExprKind>,
@@ -375,6 +403,7 @@ pub struct TypeCheckOutput {
     pub global_types: BTreeMap<DefId, Ty>,
     pub constants: BTreeMap<DefId, ConstValue>,
     pub enum_values: BTreeMap<DefId, BTreeMap<String, i128>>,
+    pub bitstructs: BTreeMap<DefId, TypedBitStruct>,
     pub metadata: MetadataTable,
     pub diagnostics: Vec<TypeDiagnostic>,
 }
@@ -412,6 +441,7 @@ enum TypeInfoKind {
     Struct(BTreeMap<String, FieldInfo>),
     Enum(BTreeSet<String>),
     Tagged(BTreeMap<String, BTreeMap<String, FieldInfo>>),
+    BitStruct(TypedBitStruct),
     Nominal,
 }
 
@@ -437,7 +467,21 @@ pub fn type_check_module(
     output.constants = constant_values.clone();
     output.diagnostics.extend(constant_diagnostics);
     validate_declaration_array_lengths(source, module, &constant_values, &mut output.diagnostics);
-    let env = ModuleTypeEnv::build(source, module, &constant_values, bodies);
+    let env = ModuleTypeEnv::build(
+        source,
+        module,
+        &constant_values,
+        bodies,
+        &mut output.diagnostics,
+    );
+    output.bitstructs = env
+        .types
+        .iter()
+        .filter_map(|(id, info)| match &info.kind {
+            TypeInfoKind::BitStruct(layout) => Some((*id, layout.clone())),
+            _ => None,
+        })
+        .collect();
 
     for default in &bodies.field_defaults {
         let mut checker = BodyChecker::new(&env, Ty::Void, &mut output.diagnostics);
@@ -557,6 +601,7 @@ impl ModuleTypeEnv {
         module: &HirModule,
         constants: &BTreeMap<DefId, ConstValue>,
         bodies: &BodyHirOutput,
+        diagnostics: &mut Vec<TypeDiagnostic>,
     ) -> Self {
         let mut env = Self {
             types: BTreeMap::new(),
@@ -682,6 +727,99 @@ impl ModuleTypeEnv {
                         id,
                         TypeInfo {
                             kind: TypeInfoKind::Tagged(variants),
+                        },
+                    );
+                }
+                DeclKind::BitStruct(value) => {
+                    let storage = env.lower_ast_type(&value.storage, module);
+                    let Some(storage_bits) = unsigned_storage_bits(&storage) else {
+                        diagnostics.push(TypeDiagnostic {
+                            span: declaration.span,
+                            code: "bitstruct/storage".into(),
+                            message: format!(
+                                "bitstruct storage must be u8, u16, u32, or u64; found {storage:?}"
+                            ),
+                        });
+                        env.types.insert(
+                            id,
+                            TypeInfo {
+                                kind: TypeInfoKind::BitStruct(TypedBitStruct {
+                                    owner: id,
+                                    storage,
+                                    storage_bits: 0,
+                                    fields: BTreeMap::new(),
+                                }),
+                            },
+                        );
+                        continue;
+                    };
+                    let mut offset = 0u32;
+                    let mut fields = BTreeMap::new();
+                    for field in &value.fields {
+                        if field.width == 0 {
+                            diagnostics.push(TypeDiagnostic {
+                                span: declaration.span,
+                                code: "bitstruct/width".into(),
+                                message: format!(
+                                    "bitstruct field `{}` must have a non-zero width",
+                                    field.name
+                                ),
+                            });
+                            continue;
+                        }
+                        if fields.contains_key(&field.name) {
+                            diagnostics.push(TypeDiagnostic {
+                                span: declaration.span,
+                                code: "bitstruct/duplicate-field".into(),
+                                message: format!(
+                                    "bitstruct field `{}` is declared more than once",
+                                    field.name
+                                ),
+                            });
+                            continue;
+                        }
+                        let Some(end) = offset.checked_add(field.width) else {
+                            diagnostics.push(TypeDiagnostic {
+                                span: declaration.span,
+                                code: "bitstruct/width".into(),
+                                message: "bitstruct field layout overflows its storage width"
+                                    .into(),
+                            });
+                            continue;
+                        };
+                        if end > storage_bits {
+                            diagnostics.push(TypeDiagnostic {
+                                span: declaration.span,
+                                code: "bitstruct/width".into(),
+                                message: format!(
+                                    "bitstruct field `{}` ends at bit {end}, beyond {storage_bits}-bit storage",
+                                    field.name
+                                ),
+                            });
+                            offset = end;
+                            continue;
+                        }
+                        let ty = bitfield_value_type(field.width);
+                        fields.insert(
+                            field.name.clone(),
+                            TypedBitField {
+                                name: field.name.clone(),
+                                offset,
+                                width: field.width,
+                                ty,
+                            },
+                        );
+                        offset = end;
+                    }
+                    env.types.insert(
+                        id,
+                        TypeInfo {
+                            kind: TypeInfoKind::BitStruct(TypedBitStruct {
+                                owner: id,
+                                storage,
+                                storage_bits,
+                                fields,
+                            }),
                         },
                     );
                 }
@@ -932,6 +1070,7 @@ impl ModuleTypeEnv {
             | Some(TypeInfoKind::Struct(_))
             | Some(TypeInfoKind::Enum(_))
             | Some(TypeInfoKind::Tagged(_))
+            | Some(TypeInfoKind::BitStruct(_))
             | Some(TypeInfoKind::Nominal) => Ty::Nominal(id),
             None => Ty::Unknown,
         }
@@ -942,6 +1081,11 @@ impl ModuleTypeEnv {
             Ty::Reference { inner, .. } => self.lookup_member(inner, name),
             Ty::Nominal(id) => match self.types.get(id).map(|info| &info.kind) {
                 Some(TypeInfoKind::Struct(fields)) => fields
+                    .get(name)
+                    .map(|field| MemberLookup::Field(field.ty.clone()))
+                    .unwrap_or(MemberLookup::MissingField),
+                Some(TypeInfoKind::BitStruct(layout)) => layout
+                    .fields
                     .get(name)
                     .map(|field| MemberLookup::Field(field.ty.clone()))
                     .unwrap_or(MemberLookup::MissingField),
@@ -956,6 +1100,35 @@ impl ModuleTypeEnv {
             }
             Ty::Unknown | Ty::Error => MemberLookup::Unknown,
             _ => MemberLookup::Unsupported,
+        }
+    }
+
+    fn bitfield_access(&self, ty: &Ty, name: &str) -> Option<TypedBitFieldAccess> {
+        let id = match ty {
+            Ty::Reference { inner, .. } => match inner.as_ref() {
+                Ty::Nominal(id) => *id,
+                _ => return None,
+            },
+            Ty::Nominal(id) => *id,
+            _ => return None,
+        };
+        let TypeInfoKind::BitStruct(layout) = &self.types.get(&id)?.kind else {
+            return None;
+        };
+        let field = layout.fields.get(name)?.clone();
+        Some(TypedBitFieldAccess {
+            owner: id,
+            storage: layout.storage.clone(),
+            storage_bits: layout.storage_bits,
+            field,
+        })
+    }
+
+    fn bitstruct_layout(&self, ty: &Ty) -> Option<&TypedBitStruct> {
+        let Ty::Nominal(id) = ty else { return None };
+        match self.types.get(id).map(|info| &info.kind) {
+            Some(TypeInfoKind::BitStruct(layout)) => Some(layout),
+            _ => None,
         }
     }
 
@@ -1331,6 +1504,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         let mut resolved_call: Option<ResolvedCallInfo> = None;
         let mut resolved_closure: Option<TypedClosurePlan> = None;
         let mut resolved_context: Option<ContextSlot> = None;
+        let mut resolved_bitfield: Option<TypedBitFieldAccess> = None;
         let mut resolved_try: Option<(Ty, Ty)> = None;
         let mut resolved_match: Option<TypedMatchPlan> = None;
         let mut resolved_unsafe: Option<(UnsafeOperationKind, UnsafeProvenance)> = None;
@@ -1451,7 +1625,13 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             }
             HirExprKind::Member { base, name } => {
                 let base_ty = self.check_expr(base, None);
-                self.check_member(expr.span, &base_ty, name)
+                if let Some(access) = self.env.bitfield_access(&base_ty, name) {
+                    let ty = access.field.ty.clone();
+                    resolved_bitfield = Some(access);
+                    ty
+                } else {
+                    self.check_member(expr.span, &base_ty, name)
+                }
             }
             HirExprKind::Try { value } => match self.check_expr(value, None) {
                 Ty::Result { ok, error } => {
@@ -1685,7 +1865,12 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 ty = expected.clone();
             }
         }
-        let base_kind = if let Some((operation, provenance)) = resolved_unsafe {
+        let base_kind = if let Some(access) = resolved_bitfield {
+            TypedExprKind::ResolvedBitField {
+                access,
+                hir: expr.clone(),
+            }
+        } else if let Some((operation, provenance)) = resolved_unsafe {
             TypedExprKind::UnsafeOperation {
                 operation,
                 provenance,
@@ -2346,7 +2531,18 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
 
         match &target_ty {
             Ty::Nominal(id) => {
-                if let Some(underlying) = self.env.distinct_underlying(*id) {
+                if let Some(layout) = self.env.bitstruct_layout(&target_ty) {
+                    if !self.is_assignable(&layout.storage, &source) {
+                        self.diagnostic(
+                            span,
+                            "bitstruct/storage-conversion",
+                            format!(
+                                "bitstruct construction requires {:?} storage, found {source:?}",
+                                layout.storage
+                            ),
+                        );
+                    }
+                } else if let Some(underlying) = self.env.distinct_underlying(*id) {
                     if !self.is_explicitly_convertible(underlying, &source) {
                         self.diagnostic(
                             span,
@@ -4395,6 +4591,54 @@ fn parse_integer_value(text: &str) -> Option<i128> {
 fn arg_value(arg: &HirCallArg) -> &HirExpr {
     match arg {
         HirCallArg::Positional { value } | HirCallArg::Named { value, .. } => value,
+    }
+}
+
+fn unsigned_storage_bits(ty: &Ty) -> Option<u32> {
+    match ty {
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W8,
+        } => Some(8),
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W16,
+        } => Some(16),
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W32,
+        } => Some(32),
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W64,
+        } => Some(64),
+        _ => None,
+    }
+}
+
+fn bitfield_value_type(width: u32) -> Ty {
+    if width == 1 {
+        Ty::Bool
+    } else if width <= 8 {
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W8,
+        }
+    } else if width <= 16 {
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W16,
+        }
+    } else if width <= 32 {
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W32,
+        }
+    } else {
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W64,
+        }
     }
 }
 

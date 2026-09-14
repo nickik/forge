@@ -983,3 +983,84 @@ fn ordinary_reference_deref_remains_safe_fir_deref() {
         }
     )));
 }
+
+#[test]
+fn bitstruct_read_lowers_to_storage_shift_and_mask() {
+    let output = lower(
+        r#"
+        module test.fir_bitstruct_read;
+        bitstruct Status: u16 { ready: 1; error: 1; mode: 3; code: 5; reserved: 6; }
+        fn mode(status: Status) -> u8 { return status.mode; }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(
+        instructions(&output).any(|op| matches!(op, FirInstructionKind::BitStructStorage { .. }))
+    );
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Binary {
+            op: forge_frontend::ast::BinaryOp::ShiftRight,
+            ..
+        }
+    )));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Binary {
+            op: forge_frontend::ast::BinaryOp::BitAnd,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn bitstruct_write_is_checked_and_uses_read_modify_write_masks() {
+    let output = lower(
+        r#"
+        module test.fir_bitstruct_write;
+        bitstruct Status: u16 { ready: 1; error: 1; mode: 3; code: 5; reserved: 6; }
+        fn update() -> u8 {
+            var status: Status = Status(0u16);
+            status.mode = 7u8;
+            return status.mode;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output)
+        .any(|op| matches!(op, FirInstructionKind::BitFieldCheck { width: 3, .. })));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Binary {
+            op: forge_frontend::ast::BinaryOp::ShiftLeft,
+            ..
+        }
+    )));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Binary {
+            op: forge_frontend::ast::BinaryOp::BitOr,
+            ..
+        }
+    )));
+    assert!(instructions(&output)
+        .any(|op| matches!(op, FirInstructionKind::BitStructFromStorage { .. })));
+}
+
+#[test]
+fn one_bit_bitstruct_field_is_bool_and_needs_no_range_check() {
+    let output = lower(
+        r#"
+        module test.fir_bitstruct_bool;
+        bitstruct Flags: u8 { ready: 1; reserved: 7; }
+        fn update() -> bool {
+            var flags: Flags = Flags(0u8);
+            flags.ready = true;
+            return flags.ready;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(!instructions(&output)
+        .any(|op| matches!(op, FirInstructionKind::BitFieldCheck { width: 1, .. })));
+}

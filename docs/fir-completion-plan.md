@@ -132,3 +132,14 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Raw pointer loads/stores use `FirPlace::RawDeref` with provenance; reference loads/stores continue to use `FirPlace::Deref`.
 - FIR validates that provenance refers to a typed unsafe scope enclosing the source operation before emitting a raw operation.
 - Entering `unsafe` does not disable array/slice bounds checks, checked arithmetic, or ordinary type checking.
+
+
+## Step 13 acceptance tests
+
+- Bitstruct storage is restricted to `u8`, `u16`, `u32`, or `u64`; zero-width and overflowing fields are semantic errors.
+- Fields are assigned monotonically from bit 0 in declaration order (LSB-first).
+- A one-bit field has ordinary Forge type `bool`; wider fields use the smallest ordinary unsigned integer type that can hold their declared width.
+- Member access carries a resolved bit-field layout in typed HIR; FIR never recomputes offsets from source declarations.
+- Reads expose storage, shift right by the resolved offset, mask to the resolved width, then convert to the ordinary field type.
+- Writes perform an explicit range check when the ordinary field type admits values wider than the field, then use mask/shift read-modify-write and rebuild the nominal bitstruct.
+- Explicit bitstruct construction requires exactly its declared storage type.

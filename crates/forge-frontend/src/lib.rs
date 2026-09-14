@@ -30,9 +30,10 @@ pub use resolution::{
 pub use typecheck::{
     type_check_module, CaptureMode, ConstValue, ContextSlot, IntWidth, MatchCondition,
     MatchProjection, MatchScalar, MatchTest, ResolvedCallArgument, ResolvedReceiver, Ty,
-    TypeCheckOutput, TypeDiagnostic, TypedBody, TypedCapture, TypedClosurePlan,
-    TypedContextOverride, TypedContextScope, TypedExpr, TypedExprKind, TypedMatchArmPlan,
-    TypedMatchBinding, TypedMatchPlan, TypedUnsafeScope, UnsafeOperationKind, UnsafeProvenance,
+    TypeCheckOutput, TypeDiagnostic, TypedBitField, TypedBitFieldAccess, TypedBitStruct, TypedBody,
+    TypedCapture, TypedClosurePlan, TypedContextOverride, TypedContextScope, TypedExpr,
+    TypedExprKind, TypedMatchArmPlan, TypedMatchBinding, TypedMatchPlan, TypedUnsafeScope,
+    UnsafeOperationKind, UnsafeProvenance,
 };
 
 pub use fir::{
