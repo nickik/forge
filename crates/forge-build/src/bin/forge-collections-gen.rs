@@ -160,7 +160,7 @@ fn emit_list_stub(out: &mut String, ty: TypeSpec) {
     writeln!(out, "nfn list_{name}_swap_remove(list: &mut List{}, index: usize) -> {} {{ }}", ty.suffix, ty.forge).unwrap();
     writeln!(out, "nfn list_{name}_clear(list: &mut List{}) -> void {{ }}", ty.suffix).unwrap();
     writeln!(out, "nfn list_{name}_truncate(list: &mut List{}, len: usize) -> void {{ }}", ty.suffix).unwrap();
-    writeln!(out, "nfn list_{name}_destroy(list: &mut List{}, allocator: &mut core.Allocator) -> void {{ }}\n", ty.suffix).unwrap();
+    writeln!(out, "nfn list_{name}_destroy(list: &mut List{}, allocator: &mut core.Allocator) -> Result[void, core.AllocError] {{ }}\n", ty.suffix).unwrap();
 }
 
 #[rustfmt::skip]
@@ -264,14 +264,15 @@ fn emit_list_u64(out: &mut String) {
     writeln!(out, "pub fn list_u64_truncate(list: &mut ListU64, len: usize) -> void {{").unwrap();
     writeln!(out, "    if (len < list.len) {{ list.len = len; }}").unwrap();
     writeln!(out, "}}").unwrap();
-    writeln!(out, "pub fn list_u64_destroy(list: &mut ListU64, allocator: &mut core.Allocator) -> void {{").unwrap();
+    writeln!(out, "pub fn list_u64_destroy(list: &mut ListU64, allocator: &mut core.Allocator) -> Result[void, core.AllocError] {{").unwrap();
     writeln!(out, "    if (list.capacity != 0) {{").unwrap();
     writeln!(out, "        val block: core.MemoryBlock = memory_block_value(list.block);").unwrap();
-    writeln!(out, "        core.allocator_free(allocator, block);").unwrap();
+    writeln!(out, "        core.allocator_free(allocator, block)?;").unwrap();
     writeln!(out, "    }}").unwrap();
     writeln!(out, "    list.block = memory_block_none();").unwrap();
     writeln!(out, "    list.len = 0;").unwrap();
     writeln!(out, "    list.capacity = 0;").unwrap();
+    writeln!(out, "    return result_void_ok();").unwrap();
     writeln!(out, "}}\n").unwrap();
 }
 
@@ -292,7 +293,7 @@ fn emit_set(out: &mut String, ty: TypeSpec) {
     writeln!(out, "nfn hash_set_{name}_remove(set: &mut HashSet{}, value: {}) -> bool {{ }}", ty.suffix, ty.forge).unwrap();
     writeln!(out, "nfn hash_set_{name}_try_reserve(set: &mut HashSet{}, allocator: &mut core.Allocator, capacity: usize) -> Result[void, core.AllocError] {{ }}", ty.suffix).unwrap();
     writeln!(out, "nfn hash_set_{name}_clear(set: &mut HashSet{}) -> void {{ }}", ty.suffix).unwrap();
-    writeln!(out, "nfn hash_set_{name}_destroy(set: &mut HashSet{}, allocator: &mut core.Allocator) -> void {{ }}\n", ty.suffix).unwrap();
+    writeln!(out, "nfn hash_set_{name}_destroy(set: &mut HashSet{}, allocator: &mut core.Allocator) -> Result[void, core.AllocError] {{ }}\n", ty.suffix).unwrap();
 }
 
 #[rustfmt::skip]
@@ -316,7 +317,7 @@ fn emit_map(out: &mut String, spec: MapSpec) {
     writeln!(out, "nfn hash_map_{key_name}_{value_name}_remove(map: &mut HashMap{suffix}, key: {}) -> bool {{ }}", spec.key.forge).unwrap();
     writeln!(out, "nfn hash_map_{key_name}_{value_name}_try_reserve(map: &mut HashMap{suffix}, allocator: &mut core.Allocator, capacity: usize) -> Result[void, core.AllocError] {{ }}").unwrap();
     writeln!(out, "nfn hash_map_{key_name}_{value_name}_clear(map: &mut HashMap{suffix}) -> void {{ }}").unwrap();
-    writeln!(out, "nfn hash_map_{key_name}_{value_name}_destroy(map: &mut HashMap{suffix}, allocator: &mut core.Allocator) -> void {{ }}\n").unwrap();
+    writeln!(out, "nfn hash_map_{key_name}_{value_name}_destroy(map: &mut HashMap{suffix}, allocator: &mut core.Allocator) -> Result[void, core.AllocError] {{ }}\n").unwrap();
 }
 
 fn generate() -> String {
@@ -377,9 +378,10 @@ mod tests {
         assert!(source.contains("pub fn list_u64_push("));
         assert!(source.contains("pub fn list_u64_insert("));
         assert!(source.contains("pub fn list_u64_remove("));
-        assert!(source.contains("core.allocator_free(allocator, block);"));
+        assert!(source.contains("core.allocator_free(allocator, block)?;"));
         assert!(!source.contains("nfn list_u64_push"));
         assert!(!source.contains("nfn list_u64_try_reserve"));
+        assert!(!source.contains("nfn list_u64_destroy"));
     }
 
     #[test]
