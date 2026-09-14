@@ -1,0 +1,37 @@
+module core.hash;
+
+// Stable, non-cryptographic hashing primitives for in-memory tables.
+// These values are not a persistent/on-disk ABI.
+
+pub const FNV64_OFFSET: u64 = 14695981039346656037;
+pub const FNV64_PRIME: u64 = 1099511628211;
+
+pub fn hash_init() -> u64 {
+    return FNV64_OFFSET;
+}
+
+pub fn hash_byte(state: u64, value: u8) -> u64 {
+    return (state ^ value) * FNV64_PRIME;
+}
+
+pub fn hash_u64(value: u64) -> u64 {
+    var state: u64 = hash_init();
+    var shift: u64 = 0;
+    while (shift < 64) {
+        val byte_value: u8 = ((value >> shift) & 255) as u8;
+        state = hash_byte(state, byte_value);
+        shift = shift + 8;
+    }
+    return state;
+}
+
+pub fn hash_usize(value: usize) -> u64 {
+    return hash_u64(value as u64);
+}
+
+// Finalize a byte-at-a-time hash stream. Keeping this separate allows strings,
+// byte slices and protocol buffers to share the same table hash without making
+// core.hash depend on hosted String support.
+pub fn hash_finish(state: u64) -> u64 {
+    return state;
+}
