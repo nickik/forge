@@ -42,7 +42,7 @@ const STRING: TypeSpec = TypeSpec {
     align: 8,
 };
 
-const LISTS: &[TypeSpec] = &[U8, U64, USIZE, STRING];
+const LISTS: &[TypeSpec] = &[U8, USIZE, STRING];
 const SETS: &[TypeSpec] = &[U64, STRING];
 const MAPS: &[MapSpec] = &[
     MapSpec {
@@ -87,16 +87,24 @@ fn emit_header(out: &mut String) {
     writeln!(out, "import core.hash;").unwrap();
     writeln!(out, "import std.string;\n").unwrap();
 
-    writeln!(out, "// Native boundary: typed access to allocator-owned MemoryBlock storage.").unwrap();
-    writeln!(out, "// Collection policy stays in generated Forge code; these are raw storage operations.").unwrap();
-    writeln!(out, "nfn storage_load_u8(block: &core.MemoryBlock, index: usize) -> u8 {{ }}").unwrap();
-    writeln!(out, "nfn storage_store_u8(block: &mut core.MemoryBlock, index: usize, value: u8) -> void {{ }}").unwrap();
-    writeln!(out, "nfn storage_load_u64(block: &core.MemoryBlock, index: usize) -> u64 {{ }}").unwrap();
-    writeln!(out, "nfn storage_store_u64(block: &mut core.MemoryBlock, index: usize, value: u64) -> void {{ }}").unwrap();
-    writeln!(out, "nfn storage_load_usize(block: &core.MemoryBlock, index: usize) -> usize {{ }}").unwrap();
-    writeln!(out, "nfn storage_store_usize(block: &mut core.MemoryBlock, index: usize, value: usize) -> void {{ }}").unwrap();
-    writeln!(out, "nfn storage_load_string(block: &core.MemoryBlock, index: usize) -> str {{ }}").unwrap();
-    writeln!(out, "nfn storage_store_string(block: &mut core.MemoryBlock, index: usize, value: str) -> void {{ }}\n").unwrap();
+    writeln!(out, "// Temporary compiler/backend boundary for compiler-defined Option/Result construction").unwrap();
+    writeln!(out, "// and typed access to allocator-owned MemoryBlock storage. Collection policy must").unwrap();
+    writeln!(out, "// not migrate into these primitives.").unwrap();
+    writeln!(out, "nfn memory_block_none() -> core.MemoryBlock? {{ }}").unwrap();
+    writeln!(out, "nfn memory_block_some(block: core.MemoryBlock) -> core.MemoryBlock? {{ }}").unwrap();
+    writeln!(out, "nfn memory_block_value(block: core.MemoryBlock?) -> core.MemoryBlock {{ }}").unwrap();
+    writeln!(out, "nfn result_void_ok() -> Result[void, core.AllocError] {{ }}").unwrap();
+    writeln!(out, "nfn option_u64_none() -> u64? {{ }}").unwrap();
+    writeln!(out, "nfn option_u64_some(value: u64) -> u64? {{ }}").unwrap();
+    writeln!(out, "nfn collection_bounds_fail() -> never {{ }}").unwrap();
+    writeln!(out, "nfn storage_load_u8(block: core.MemoryBlock?, index: usize) -> u8 {{ }}").unwrap();
+    writeln!(out, "nfn storage_store_u8(block: core.MemoryBlock?, index: usize, value: u8) -> void {{ }}").unwrap();
+    writeln!(out, "nfn storage_load_u64(block: core.MemoryBlock?, index: usize) -> u64 {{ }}").unwrap();
+    writeln!(out, "nfn storage_store_u64(block: core.MemoryBlock?, index: usize, value: u64) -> void {{ }}").unwrap();
+    writeln!(out, "nfn storage_load_usize(block: core.MemoryBlock?, index: usize) -> usize {{ }}").unwrap();
+    writeln!(out, "nfn storage_store_usize(block: core.MemoryBlock?, index: usize, value: usize) -> void {{ }}").unwrap();
+    writeln!(out, "nfn storage_load_string(block: core.MemoryBlock?, index: usize) -> str {{ }}").unwrap();
+    writeln!(out, "nfn storage_store_string(block: core.MemoryBlock?, index: usize, value: str) -> void {{ }}\n").unwrap();
 
     writeln!(out, "pub const COLLECTION_INITIAL_CAPACITY: usize = 8;").unwrap();
     writeln!(out, "pub const COLLECTION_LOAD_NUMERATOR: usize = 7;").unwrap();
@@ -128,7 +136,7 @@ fn emit_header(out: &mut String) {
 }
 
 #[rustfmt::skip]
-fn emit_list(out: &mut String, ty: TypeSpec) {
+fn emit_list_stub(out: &mut String, ty: TypeSpec) {
     let name = snake(ty.suffix);
     writeln!(out, "// List{}: contiguous growable vector.", ty.suffix).unwrap();
     writeln!(out, "// element_size={} element_align={}", ty.size, ty.align).unwrap();
@@ -153,6 +161,118 @@ fn emit_list(out: &mut String, ty: TypeSpec) {
     writeln!(out, "nfn list_{name}_clear(list: &mut List{}) -> void {{ }}", ty.suffix).unwrap();
     writeln!(out, "nfn list_{name}_truncate(list: &mut List{}, len: usize) -> void {{ }}", ty.suffix).unwrap();
     writeln!(out, "nfn list_{name}_destroy(list: &mut List{}, allocator: &mut core.Allocator) -> void {{ }}\n", ty.suffix).unwrap();
+}
+
+#[rustfmt::skip]
+fn emit_list_u64(out: &mut String) {
+    writeln!(out, "// ListU64: first fully Forge-implemented dynamic collection.").unwrap();
+    writeln!(out, "// Only Option/Result construction and typed MemoryBlock access remain backend primitives.").unwrap();
+    writeln!(out, "pub struct ListU64 {{").unwrap();
+    writeln!(out, "    block: core.MemoryBlock?;").unwrap();
+    writeln!(out, "    len: usize;").unwrap();
+    writeln!(out, "    capacity: usize;").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out, "nfn result_list_u64_ok(value: ListU64) -> Result[ListU64, core.AllocError] {{ }}").unwrap();
+    writeln!(out, "pub fn list_u64_create() -> ListU64 {{").unwrap();
+    writeln!(out, "    return ListU64{{block: memory_block_none(), len: 0, capacity: 0}};").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out, "pub fn list_u64_with_capacity(allocator: &mut core.Allocator, capacity: usize) -> Result[ListU64, core.AllocError] {{").unwrap();
+    writeln!(out, "    if (capacity == 0) {{ return result_list_u64_ok(list_u64_create()); }}").unwrap();
+    writeln!(out, "    val bytes: usize = capacity * 8;").unwrap();
+    writeln!(out, "    val request: core.AllocRequest = core.AllocRequest{{size: bytes, align: 8, wait: core.AllocWait.MayWait}};").unwrap();
+    writeln!(out, "    val block: core.MemoryBlock = core.allocator_alloc(allocator, request)?;").unwrap();
+    writeln!(out, "    val list: ListU64 = ListU64{{block: memory_block_some(block), len: 0, capacity: capacity}};").unwrap();
+    writeln!(out, "    return result_list_u64_ok(list);").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out, "pub fn list_u64_len(list: &ListU64) -> usize {{ return list.len; }}").unwrap();
+    writeln!(out, "pub fn list_u64_capacity(list: &ListU64) -> usize {{ return list.capacity; }}").unwrap();
+    writeln!(out, "pub fn list_u64_is_empty(list: &ListU64) -> bool {{ return list.len == 0; }}").unwrap();
+    writeln!(out, "pub fn list_u64_try_reserve(list: &mut ListU64, allocator: &mut core.Allocator, requested: usize) -> Result[void, core.AllocError] {{").unwrap();
+    writeln!(out, "    if (requested <= list.capacity) {{ return result_void_ok(); }}").unwrap();
+    writeln!(out, "    val replacement_capacity: usize = next_capacity(list.capacity, requested);").unwrap();
+    writeln!(out, "    val replacement_bytes: usize = replacement_capacity * 8;").unwrap();
+    writeln!(out, "    var replacement: core.MemoryBlock;").unwrap();
+    writeln!(out, "    if (list.capacity == 0) {{").unwrap();
+    writeln!(out, "        val request: core.AllocRequest = core.AllocRequest{{size: replacement_bytes, align: 8, wait: core.AllocWait.MayWait}};").unwrap();
+    writeln!(out, "        replacement = core.allocator_alloc(allocator, request)?;").unwrap();
+    writeln!(out, "    }} else {{").unwrap();
+    writeln!(out, "        val old_block: core.MemoryBlock = memory_block_value(list.block);").unwrap();
+    writeln!(out, "        replacement = core.allocator_resize(allocator, old_block, replacement_bytes)?;").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out, "    list.block = memory_block_some(replacement);").unwrap();
+    writeln!(out, "    list.capacity = replacement_capacity;").unwrap();
+    writeln!(out, "    return result_void_ok();").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out, "pub fn list_u64_push(list: &mut ListU64, allocator: &mut core.Allocator, value: u64) -> Result[void, core.AllocError] {{").unwrap();
+    writeln!(out, "    if (list.len == list.capacity) {{ list_u64_try_reserve(list, allocator, list.len + 1)?; }}").unwrap();
+    writeln!(out, "    storage_store_u64(list.block, list.len, value);").unwrap();
+    writeln!(out, "    list.len = list.len + 1;").unwrap();
+    writeln!(out, "    return result_void_ok();").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out, "pub fn list_u64_insert(list: &mut ListU64, allocator: &mut core.Allocator, index: usize, value: u64) -> Result[void, core.AllocError] {{").unwrap();
+    writeln!(out, "    if (index > list.len) {{ collection_bounds_fail(); }}").unwrap();
+    writeln!(out, "    if (list.len == list.capacity) {{ list_u64_try_reserve(list, allocator, list.len + 1)?; }}").unwrap();
+    writeln!(out, "    var cursor: usize = list.len;").unwrap();
+    writeln!(out, "    while (cursor > index) {{").unwrap();
+    writeln!(out, "        val moved: u64 = storage_load_u64(list.block, cursor - 1);").unwrap();
+    writeln!(out, "        storage_store_u64(list.block, cursor, moved);").unwrap();
+    writeln!(out, "        cursor = cursor - 1;").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out, "    storage_store_u64(list.block, index, value);").unwrap();
+    writeln!(out, "    list.len = list.len + 1;").unwrap();
+    writeln!(out, "    return result_void_ok();").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out, "pub fn list_u64_pop(list: &mut ListU64) -> u64? {{").unwrap();
+    writeln!(out, "    if (list.len == 0) {{ return option_u64_none(); }}").unwrap();
+    writeln!(out, "    val index: usize = list.len - 1;").unwrap();
+    writeln!(out, "    val value: u64 = storage_load_u64(list.block, index);").unwrap();
+    writeln!(out, "    list.len = index;").unwrap();
+    writeln!(out, "    return option_u64_some(value);").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out, "pub fn list_u64_get(list: &ListU64, index: usize) -> u64 {{").unwrap();
+    writeln!(out, "    if (index >= list.len) {{ collection_bounds_fail(); }}").unwrap();
+    writeln!(out, "    return storage_load_u64(list.block, index);").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out, "pub fn list_u64_set(list: &mut ListU64, index: usize, value: u64) -> void {{").unwrap();
+    writeln!(out, "    if (index >= list.len) {{ collection_bounds_fail(); }}").unwrap();
+    writeln!(out, "    storage_store_u64(list.block, index, value);").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out, "pub fn list_u64_remove(list: &mut ListU64, index: usize) -> u64 {{").unwrap();
+    writeln!(out, "    if (index >= list.len) {{ collection_bounds_fail(); }}").unwrap();
+    writeln!(out, "    val removed: u64 = storage_load_u64(list.block, index);").unwrap();
+    writeln!(out, "    var cursor: usize = index;").unwrap();
+    writeln!(out, "    while ((cursor + 1) < list.len) {{").unwrap();
+    writeln!(out, "        val moved: u64 = storage_load_u64(list.block, cursor + 1);").unwrap();
+    writeln!(out, "        storage_store_u64(list.block, cursor, moved);").unwrap();
+    writeln!(out, "        cursor = cursor + 1;").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out, "    list.len = list.len - 1;").unwrap();
+    writeln!(out, "    return removed;").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out, "pub fn list_u64_swap_remove(list: &mut ListU64, index: usize) -> u64 {{").unwrap();
+    writeln!(out, "    if (index >= list.len) {{ collection_bounds_fail(); }}").unwrap();
+    writeln!(out, "    val removed: u64 = storage_load_u64(list.block, index);").unwrap();
+    writeln!(out, "    val last_index: usize = list.len - 1;").unwrap();
+    writeln!(out, "    if (index != last_index) {{").unwrap();
+    writeln!(out, "        val last: u64 = storage_load_u64(list.block, last_index);").unwrap();
+    writeln!(out, "        storage_store_u64(list.block, index, last);").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out, "    list.len = last_index;").unwrap();
+    writeln!(out, "    return removed;").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out, "pub fn list_u64_clear(list: &mut ListU64) -> void {{ list.len = 0; }}").unwrap();
+    writeln!(out, "pub fn list_u64_truncate(list: &mut ListU64, len: usize) -> void {{").unwrap();
+    writeln!(out, "    if (len < list.len) {{ list.len = len; }}").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out, "pub fn list_u64_destroy(list: &mut ListU64, allocator: &mut core.Allocator) -> void {{").unwrap();
+    writeln!(out, "    if (list.capacity != 0) {{").unwrap();
+    writeln!(out, "        val block: core.MemoryBlock = memory_block_value(list.block);").unwrap();
+    writeln!(out, "        core.allocator_free(allocator, block);").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out, "    list.block = memory_block_none();").unwrap();
+    writeln!(out, "    list.len = 0;").unwrap();
+    writeln!(out, "    list.capacity = 0;").unwrap();
+    writeln!(out, "}}\n").unwrap();
 }
 
 #[rustfmt::skip]
@@ -203,8 +323,9 @@ fn generate() -> String {
     let mut out = String::new();
     emit_header(&mut out);
     for ty in LISTS {
-        emit_list(&mut out, *ty);
+        emit_list_stub(&mut out, *ty);
     }
+    emit_list_u64(&mut out);
     for ty in SETS {
         emit_set(&mut out, *ty);
     }
@@ -244,6 +365,21 @@ mod tests {
         assert!(source.contains(
             "hash_map_u64_u64_put(map: &mut HashMapU64U64, allocator: &mut core.Allocator"
         ));
+    }
+
+    #[test]
+    fn list_u64_policy_is_forge_code_not_collection_intrinsics() {
+        let source = generate();
+        assert!(source.contains("pub fn list_u64_create() -> ListU64"));
+        assert!(source.contains("pub fn list_u64_try_reserve("));
+        assert!(source.contains("core.allocator_alloc(allocator, request)?"));
+        assert!(source.contains("core.allocator_resize(allocator, old_block, replacement_bytes)?"));
+        assert!(source.contains("pub fn list_u64_push("));
+        assert!(source.contains("pub fn list_u64_insert("));
+        assert!(source.contains("pub fn list_u64_remove("));
+        assert!(source.contains("core.allocator_free(allocator, block);"));
+        assert!(!source.contains("nfn list_u64_push"));
+        assert!(!source.contains("nfn list_u64_try_reserve"));
     }
 
     #[test]
