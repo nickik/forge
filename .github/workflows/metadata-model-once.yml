@@ -19,6 +19,19 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Repair and validate migration script
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("scripts/metadata_model_once.py")
+          text = path.read_text()
+          text = text.replace(
+              'syntax = read("docs/forge-v1-syntax-decisions.md")nstart =',
+              'syntax = read("docs/forge-v1-syntax-decisions.md")\nstart =',
+          )
+          path.write_text(text)
+          PY
+          python3 -m py_compile scripts/metadata_model_once.py
       - name: Apply metadata model migration
         run: python3 scripts/metadata_model_once.py
       - run: cargo fmt --all
