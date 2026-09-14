@@ -86,15 +86,25 @@ pub fn string_validate(
     return result_void_ok();
 }
 
-pub fn string_destroy(
-    value: &mut String,
+// Release backing storage without rewriting the String value. This is useful
+// when an owning container is discarding a temporary copy of the element and
+// will immediately forget that slot. The caller must not use `value` again.
+pub fn string_release(
+    value: &String,
     allocator: &mut core.Allocator
 ) -> Result[void, core.AllocError] {
     if (value.capacity != 0) {
         val block: core.MemoryBlock = memory_block_value(value.block);
         core.allocator_free(allocator, block)?;
     }
+    return result_void_ok();
+}
 
+pub fn string_destroy(
+    value: &mut String,
+    allocator: &mut core.Allocator
+) -> Result[void, core.AllocError] {
+    string_release(value, allocator)?;
     value.block = memory_block_none();
     value.len = 0;
     value.capacity = 0;
