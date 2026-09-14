@@ -85,6 +85,7 @@ pub struct HirBlock {
 pub enum HirStmtKind {
     Value {
         mutable: bool,
+        constant: bool,
         pattern: HirPattern,
         ty: Option<HirType>,
         value: HirExpr,
@@ -719,9 +720,11 @@ impl<'a, 'd> Lowerer<'a, 'd> {
                 let ty = value.ty.as_ref().map(|t| self.lower_type(t));
                 let expr = self.lower_expr(&value.value);
                 let mutable = matches!(value.binding, ast::BindingKind::Var);
+                let constant = matches!(value.binding, ast::BindingKind::Const);
                 let pattern = self.lower_binding_pattern(&value.pattern, mutable);
                 HirStmtKind::Value {
                     mutable,
+                    constant,
                     pattern,
                     ty,
                     value: expr,
@@ -829,11 +832,13 @@ impl<'a, 'd> Lowerer<'a, 'd> {
                 let ty = value.ty.as_ref().map(|t| self.lower_type(t));
                 let expr = self.lower_expr(&value.value);
                 let mutable = matches!(value.binding, ast::BindingKind::Var);
+                let constant = matches!(value.binding, ast::BindingKind::Const);
                 let pattern = self.lower_binding_pattern(&value.pattern, mutable);
                 HirNode::new(
                     span,
                     HirStmtKind::Value {
                         mutable,
+                        constant,
                         pattern,
                         ty,
                         value: expr,

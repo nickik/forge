@@ -59,7 +59,7 @@ No C-style numeric promotions. Contextual typing of untyped literals is permitte
 
 Postfix `?` is resolved during type checking: its operand must be `Result[T, Ein]`, the enclosing function or closure must return `Result[R, Eout]`, and `Ein` must be assignable to `Eout`. Typed HIR records the resolved propagation edge explicitly so FIR never has to reconstruct `?` semantics from syntax.
 
-Compile-time constants use a deliberately restricted semantic evaluator over pure literal/unary/binary expressions and references to module `const` definitions. Evaluation is memoized by `DefId`, detects dependency cycles, and produces retained `ConstValue`s used by array lengths and explicit enum discriminants. Forge v1 does not execute arbitrary functions at compile time and has no general comptime interpreter.
+Compile-time constants use a deliberately restricted semantic evaluator over pure literal/unary/binary expressions and references to compile-time `const` bindings. Module constants are memoized by `DefId` with dependency-cycle detection; local constants are retained by `LocalId` in typed bodies. These retained `ConstValue`s feed array lengths and explicit enum discriminants, so FIR never re-evaluates source expressions. Forge v1 does not execute arbitrary functions at compile time and has no general comptime interpreter.
 
 ## Patterns
 

@@ -1070,3 +1070,48 @@ fn array_length_rejects_non_const_global() {
         output.diagnostics
     );
 }
+
+#[test]
+fn local_consts_are_checked_retained_and_usable_in_array_lengths() {
+    let output = check(
+        r#"
+        module test.local_const;
+        fn main() -> u32 {
+            const WIDTH: usize = 2;
+            const COUNT: usize = WIDTH * 2;
+            val values: [u32; COUNT] = [1u32, 2u32, 3u32, 4u32];
+            val [a, b, c, d] = values;
+            return a + b + c + d;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let body = output.functions.get(&DefId(0)).expect("main body");
+    assert!(body
+        .local_constants
+        .values()
+        .any(|value| *value == forge_frontend::ConstValue::Integer { value: 2 }));
+    assert!(body
+        .local_constants
+        .values()
+        .any(|value| *value == forge_frontend::ConstValue::Integer { value: 4 }));
+    assert!(body.local_types.values().any(|ty| matches!(
+        ty,
+        Ty::Array {
+            length: Some(4),
+            ..
+        }
+    )));
+
+    let runtime = check(
+        r#"
+        module test.local_const_runtime;
+        fn runtime() -> usize { return 4usize; }
+        fn main() -> i32 {
+            const BAD: usize = runtime();
+            return 0;
+        }
+        "#,
+    );
+    assert!(has(&runtime, "const/eval"), "{:?}", runtime.diagnostics);
+}

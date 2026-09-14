@@ -185,7 +185,7 @@ const PAGE_SIZE: usize = 4096;
 const DOUBLE_PAGE: usize = PAGE_SIZE * 2;
 ```
 
-Forge v1 constant evaluation is intentionally restricted. Constant expressions may use scalar literals, pure unary/binary operators, and references to other module `const` definitions. Constant dependencies may be forward references but cycles are rejected. Arbitrary function calls and general compile-time execution are not part of v1.
+Forge v1 constant evaluation is intentionally restricted. Constant expressions may use scalar literals, pure unary/binary operators, and references to other compile-time `const` bindings. Module constant dependencies may be forward references but cycles are rejected; local constants may refer to earlier local constants in lexical scope. Arbitrary function calls and general compile-time execution are not part of v1. V1 compile-time `const` bindings use a single binding name rather than destructuring patterns.
 
 Local type inference:
 

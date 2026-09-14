@@ -125,6 +125,7 @@ pub enum TypedExprKind {
 pub struct TypedBody {
     pub owner: DefId,
     pub local_types: BTreeMap<LocalId, Ty>,
+    pub local_constants: BTreeMap<LocalId, ConstValue>,
     pub expressions: Vec<TypedExpr>,
 }
 
@@ -269,6 +270,7 @@ pub fn type_check_module(
             TypedBody {
                 owner: *owner,
                 local_types: checker.local_types,
+                local_constants: checker.local_constants,
                 expressions: checker.expressions,
             },
         );
@@ -592,41 +594,55 @@ impl ModuleTypeEnv {
     }
 
     fn lower_hir_type(&self, ty: &HirType) -> Ty {
+        self.lower_hir_type_with_locals(ty, &BTreeMap::new())
+    }
+
+    fn lower_hir_type_with_locals(
+        &self,
+        ty: &HirType,
+        local_constants: &BTreeMap<LocalId, ConstValue>,
+    ) -> Ty {
         match &ty.kind {
             HirTypeKind::Named { reference } => self.ty_from_ref(reference),
             HirTypeKind::Pointer { volatile, inner } => Ty::Pointer {
                 volatile: *volatile,
-                inner: Box::new(self.lower_hir_type(inner)),
+                inner: Box::new(self.lower_hir_type_with_locals(inner, local_constants)),
             },
             HirTypeKind::Reference { mutable, inner } => Ty::Reference {
                 mutable: *mutable,
-                inner: Box::new(self.lower_hir_type(inner)),
+                inner: Box::new(self.lower_hir_type_with_locals(inner, local_constants)),
             },
             HirTypeKind::Optional { inner } => Ty::Optional {
-                inner: Box::new(self.lower_hir_type(inner)),
+                inner: Box::new(self.lower_hir_type_with_locals(inner, local_constants)),
             },
             HirTypeKind::Slice { mutable, element } => Ty::Slice {
                 mutable: *mutable,
-                element: Box::new(self.lower_hir_type(element)),
+                element: Box::new(self.lower_hir_type_with_locals(element, local_constants)),
             },
             HirTypeKind::Array { element, length } => Ty::Array {
-                element: Box::new(self.lower_hir_type(element)),
-                length: eval_const_hir_resolved(length, &self.constants)
+                element: Box::new(self.lower_hir_type_with_locals(element, local_constants)),
+                length: eval_const_hir_with_locals(length, &self.constants, local_constants)
                     .ok()
                     .and_then(const_value_to_u64),
             },
             HirTypeKind::Result { ok, error } => Ty::Result {
-                ok: Box::new(self.lower_hir_type(ok)),
-                error: Box::new(self.lower_hir_type(error)),
+                ok: Box::new(self.lower_hir_type_with_locals(ok, local_constants)),
+                error: Box::new(self.lower_hir_type_with_locals(error, local_constants)),
             },
             HirTypeKind::Function { params, result } => Ty::Function {
-                params: params.iter().map(|p| self.lower_hir_type(p)).collect(),
-                result: Box::new(self.lower_hir_type(result)),
+                params: params
+                    .iter()
+                    .map(|param| self.lower_hir_type_with_locals(param, local_constants))
+                    .collect(),
+                result: Box::new(self.lower_hir_type_with_locals(result, local_constants)),
                 named_arguments: false,
             },
             HirTypeKind::Closure { params, result } => Ty::Closure {
-                params: params.iter().map(|p| self.lower_hir_type(p)).collect(),
-                result: Box::new(self.lower_hir_type(result)),
+                params: params
+                    .iter()
+                    .map(|param| self.lower_hir_type_with_locals(param, local_constants))
+                    .collect(),
+                result: Box::new(self.lower_hir_type_with_locals(result, local_constants)),
             },
         }
     }
@@ -699,6 +715,7 @@ struct BodyChecker<'a, 'd> {
     env: &'a ModuleTypeEnv,
     expected_return: Ty,
     local_types: BTreeMap<LocalId, Ty>,
+    local_constants: BTreeMap<LocalId, ConstValue>,
     mutable_locals: BTreeSet<LocalId>,
     expressions: Vec<TypedExpr>,
     diagnostics: &'d mut Vec<TypeDiagnostic>,
@@ -714,6 +731,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             env,
             expected_return,
             local_types: BTreeMap::new(),
+            local_constants: BTreeMap::new(),
             mutable_locals: BTreeSet::new(),
             expressions: Vec::new(),
             diagnostics,
@@ -738,11 +756,15 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         match &stmt.kind {
             HirStmtKind::Value {
                 mutable,
+                constant,
                 pattern,
                 ty,
                 value,
             } => {
-                let expected = ty.as_ref().map(|t| self.env.lower_hir_type(t));
+                let expected = ty.as_ref().map(|t| {
+                    self.env
+                        .lower_hir_type_with_locals(t, &self.local_constants)
+                });
                 let actual = self.check_expr(value, expected.as_ref());
                 let final_ty = if let Some(expected) = expected {
                     self.require_assignable(value.span, &expected, &actual, "type/mismatch");
@@ -752,6 +774,25 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 };
                 self.check_irrefutable_binding_pattern(pattern, &final_ty);
                 self.check_pattern(pattern, &final_ty);
+                if *constant {
+                    match eval_const_hir_with_locals(
+                        value,
+                        &self.env.constants,
+                        &self.local_constants,
+                    ) {
+                        Ok(const_value) => match &pattern.kind {
+                            HirPatternKind::Binding { local, .. } => {
+                                self.local_constants.insert(*local, const_value);
+                            }
+                            _ => self.diagnostic(
+                                pattern.span,
+                                "const/pattern",
+                                "Forge v1 compile-time `const` bindings require a single name",
+                            ),
+                        },
+                        Err(error) => self.diagnostic(error.span, "const/eval", error.message),
+                    }
+                }
                 if *mutable {
                     self.mark_pattern_mutable(pattern);
                 }
@@ -1013,14 +1054,19 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 let ptys: Vec<Ty> = params
                     .iter()
                     .map(|(id, t)| {
-                        let ty = self.env.lower_hir_type(t);
+                        let ty = self
+                            .env
+                            .lower_hir_type_with_locals(t, &self.local_constants);
                         self.local_types.insert(*id, ty.clone());
                         ty
                     })
                     .collect();
                 let result = return_type
                     .as_ref()
-                    .map(|t| self.env.lower_hir_type(t))
+                    .map(|t| {
+                        self.env
+                            .lower_hir_type_with_locals(t, &self.local_constants)
+                    })
                     .unwrap_or(Ty::Unknown);
                 let old_return = std::mem::replace(&mut self.expected_return, result.clone());
                 self.check_block(body);
@@ -2665,6 +2711,14 @@ fn eval_const_hir_resolved(
     expr: &HirExpr,
     constants: &BTreeMap<DefId, ConstValue>,
 ) -> Result<ConstValue, ConstEvalError> {
+    eval_const_hir_with_locals(expr, constants, &BTreeMap::new())
+}
+
+fn eval_const_hir_with_locals(
+    expr: &HirExpr,
+    constants: &BTreeMap<DefId, ConstValue>,
+    local_constants: &BTreeMap<LocalId, ConstValue>,
+) -> Result<ConstValue, ConstEvalError> {
     match &expr.kind {
         HirExprKind::Integer { text } => parse_integer_value(text)
             .map(|value| ConstValue::Integer { value })
@@ -2679,16 +2733,28 @@ fn eval_const_hir_resolved(
                 span: expr.span,
                 message: format!("definition {id:?} is not an evaluable module `const`"),
             }),
+            ResolvedName::Local(id) => {
+                local_constants
+                    .get(&id)
+                    .cloned()
+                    .ok_or_else(|| ConstEvalError {
+                        span: expr.span,
+                        message: format!("local {id:?} is not a compile-time `const`"),
+                    })
+            }
             _ => Err(ConstEvalError {
                 span: expr.span,
-                message: "constant expression may reference only module `const` definitions".into(),
+                message: "constant expression may reference only compile-time `const` bindings"
+                    .into(),
             }),
         },
-        HirExprKind::Unary { op, value } => {
-            apply_const_unary(expr.span, *op, eval_const_hir_resolved(value, constants)?)
-        }
+        HirExprKind::Unary { op, value } => apply_const_unary(
+            expr.span,
+            *op,
+            eval_const_hir_with_locals(value, constants, local_constants)?,
+        ),
         HirExprKind::Binary { op, left, right } => {
-            let left = eval_const_hir_resolved(left, constants)?;
+            let left = eval_const_hir_with_locals(left, constants, local_constants)?;
             if matches!(op, BinaryOp::LogicalAnd)
                 && matches!(left, ConstValue::Bool { value: false })
             {
@@ -2698,7 +2764,7 @@ fn eval_const_hir_resolved(
             {
                 return Ok(ConstValue::Bool { value: true });
             }
-            let right = eval_const_hir_resolved(right, constants)?;
+            let right = eval_const_hir_with_locals(right, constants, local_constants)?;
             apply_const_binary(expr.span, *op, left, right)
         }
         _ => Err(ConstEvalError {
