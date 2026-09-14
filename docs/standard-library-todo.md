@@ -20,6 +20,16 @@ language/runtime intrinsics
 
 `core` and `core.*` must remain usable without an operating system. `std` is hosted and may depend on a selected platform provider. None of these layers requires traits or interfaces: runtime-pluggable resources use explicit `context + Ops` capability objects, while process-global hosted services use build-selected platform providers.
 
+## Allocation rule used throughout this roadmap
+
+Forge standard-library code follows one rule for durable allocation:
+
+> **Every operation that allocates, reallocates, grows, clones owning storage, or frees durable storage receives an explicit allocator argument at that call. Ordinary values and collections never retain an allocator capability for later use.**
+
+This applies equally to hosted applications, Cosmic userspace, kernels, tests, and generated libraries. `std` may supply allocator implementations and constructors, but there is no implicit/default/global allocator fallback for ordinary APIs.
+
+Specialized memory-management objects such as `Allocator`, `Arena`, `ObjectCache`, slab allocators, and explicit pool managers may retain lower-level provider capabilities because implementing a memory domain is their purpose. This exception does not apply to strings, lists, maps, sets, buffers, parsers, or other ordinary values.
+
 ## Phase 0 — package/module foundation
 
 - [x] `forge.fdn` package manifest.
@@ -61,10 +71,12 @@ language/runtime intrinsics
 - [x] `Allocator` capability for arbitrary-size allocations.
 - [x] `ObjectCache` model for fixed-size objects.
 - [x] Kernel/user provider-equivalence tests.
+- [x] Explicit-allocator call-site rule frozen for ordinary owning values and collections.
+- [ ] Allocator-domain/provenance checks in debug/reference providers.
 - [ ] Forge implementation of slab/object-cache allocation.
 - [ ] General size-class allocator layered on object caches.
 - [ ] Reclaim hooks and pressure accounting.
-- [ ] Optional magazines/per-CPU caches without changing the API.
+- [ ] Optional magazines/per-CPU caches without changing the public explicit-allocation API.
 - [ ] Debug modes: poisoning, red zones, duplicate-free detection.
 
 ## Phase 2 — freestanding `core.*` libraries
@@ -160,6 +172,14 @@ language/runtime intrinsics
 - [ ] atomic-width capabilities.
 - [ ] page-size remains platform/OS policy rather than a universal target fact.
 
+### `core.hash`
+
+- [x] Initial checked-arithmetic-compatible table hash mixer.
+- [ ] byte/slice helpers.
+- [ ] string helpers layered on UTF-8 bytes.
+- [ ] numeric-width specializations.
+- [ ] collision/distribution tests.
+
 ## Phase 3 — minimal hosted `std`
 
 ### `std.console`
@@ -197,6 +217,7 @@ language/runtime intrinsics
 - [x] CForge real-filesystem/provider tests.
 - [ ] structured filesystem errors.
 - [ ] file handles/open/close/read/write.
+- [ ] allocator-taking `read_all`/dynamic-buffer APIs where returned data owns durable memory.
 - [ ] flush/sync semantics.
 - [ ] metadata/stat.
 - [ ] directories.
@@ -219,20 +240,25 @@ language/runtime intrinsics
 - [x] Forge-level behavior tests through CForge.
 - [ ] move portable operations out of runtime hooks and into Forge code.
 - [ ] byte length/slicing/search.
-- [ ] dynamic owning `String` once allocator-backed collections are ready.
+- [ ] dynamic owning `String` whose value stores only its storage/length/capacity, never an allocator.
+- [ ] every operation that grows/clones/frees owning `String` takes an explicit allocator argument.
 - [ ] documented UTF-8 versus byte-oriented operation semantics.
 
 ### `std.collections`
 
 Detailed collection work is tracked in `docs/collections-library-todo.md`.
 
-- [x] bootstrap `std.collections.string_map` API used by CKV.
-- [ ] generated `List*` families.
-- [ ] generated `HashSet*` families.
-- [ ] generated `HashMap*` families.
-- [ ] explicit allocator integration.
+- [x] bootstrap `std.collections.string_map` API used by early CKV work.
+- [x] deterministic generated native type families started.
+- [x] native generated collection layouts do not store allocator capabilities.
+- [x] generator regression test rejects retained allocator fields.
+- [ ] generated `List*` operations implemented in Forge over `MemoryBlock`.
+- [ ] generated `HashSet*` operations implemented in Forge.
+- [ ] generated `HashMap*` operations implemented in Forge.
+- [ ] every allocate/grow/free operation takes explicit allocator argument.
+- [ ] allocator-domain/provenance tests.
 - [ ] collision/growth/removal/allocation-failure tests.
-- [ ] replace CKV bootstrap host map with Forge `HashMapStringString`.
+- [ ] migrate CKV to final explicit-allocator `HashMapStringString` API.
 
 ### `std.transducers`
 
@@ -244,6 +270,8 @@ Purpose: provide source/destination-independent transformation pipelines without
 - [ ] explicit reduced/early-termination representation.
 - [ ] generated/type-specialized transducer composition.
 - [ ] `transduce`, `reduce`, and `into` adapters.
+- [ ] `into`/collect reducers that grow durable collection output require an explicit allocator argument.
+- [ ] transducer values themselves never retain an allocator merely to support collecting output.
 - [ ] stateless: `identity`, `map`, `filter`, `remove`, `keep`, `cat`, `mapcat`, `replace`.
 - [ ] finite/early stop: `take`, `take_while`, `take_nth`, `halt_when`.
 - [ ] stateful: `drop`, `drop_while`, `dedupe`, `distinct`, `map_indexed`, `keep_indexed`, `interpose`.
@@ -259,6 +287,7 @@ Purpose: provide source/destination-independent transformation pipelines without
 
 - [ ] socket-like byte-stream/datagram abstraction for hosted systems.
 - [ ] address parsing/formatting.
+- [ ] receive/read APIs returning owned dynamic buffers take explicit allocator arguments.
 - [ ] DNS/service discovery belongs above primitive networking.
 - [ ] Cosmic provider should map cleanly onto Cosmic/GNet services rather than require Unix internals.
 
@@ -267,28 +296,30 @@ Purpose: provide source/destination-independent transformation pipelines without
 - [ ] hosted thread creation/join.
 - [ ] scheduler-aware mutex/condition primitives.
 - [ ] thread-local storage if required.
+- [ ] thread-local scratch may exist only for non-escaping temporary work; it is not a durable-allocation fallback.
 - [ ] keep atomics/spin primitives in `core`.
 
 ### `std.alloc`
 
-- [ ] hosted process allocator provider.
-- [ ] default/global allocator policy for hosted applications.
+- [ ] hosted allocator provider/construction APIs.
 - [ ] Unix VM-backed Arena.
 - [ ] Cosmic userspace VM-backed Arena.
 - [ ] reuse the same `core` allocator/object-cache algorithms used by the kernel.
+- [x] no default/global allocator policy for ordinary Forge APIs.
+- [x] no thread-local allocator fallback for durable allocation.
 
 ## Phase 4 — common higher-level libraries
 
 These should not block Cosmic kernel bring-up.
 
-- [ ] dynamic `String` and byte buffers using explicit/default allocator policy.
-- [ ] dynamic vector/list.
+- [ ] dynamic `String` and byte buffers using explicit allocator arguments on every allocating/freeing operation.
+- [ ] dynamic vector/list using the same rule.
 - [ ] general hash map/set via generated collection families.
 - [ ] ordered map/set if justified.
 - [ ] sorting/search algorithms.
 - [ ] hashing/checksum primitives.
 - [ ] text/encoding helpers beyond the bootstrap CKV helpers.
-- [ ] parsers/serialization helpers.
+- [ ] parsers/serialization helpers; APIs returning durable owned structures receive explicit allocators.
 - [ ] random/entropy facade in hosted `std`; deterministic PRNG can be freestanding.
 
 ## Phase 5 — Cosmic integration gates
@@ -297,13 +328,15 @@ Before serious Cosmic implementation depends on Forge:
 
 - [x] panic contract tested in freestanding mode.
 - [x] Arena/Allocator/ObjectCache provider model tested with kernel-like and hosted-like providers.
+- [x] explicit allocator call-site rule frozen in language/library/collection specs.
+- [x] generated native collection structs contain no allocator capability fields.
 - [x] freestanding library integration scenario.
 - [x] local Forge package graph drives CForge tests.
 - [x] cross-package public symbol import exercised by a runnable application.
 - [x] general cross-package function-call execution in CForge, including locals/loops.
 - [x] non-trivial Forge CKV application exercises local package, args, files, lock, clock, strings and map on hosted CForge/JVM.
 - [x] same CKV gate green through CForge native image.
-- [ ] Forge `HashMapStringString` replaces CKV bootstrap host map.
+- [ ] CKV uses final explicit-allocator `HashMapStringString` implementation.
 - [ ] at least one generated transducer pipeline executes on CForge JVM + native image and two source collection kinds.
 - [ ] raw memory/compiler primitives execute through native Forge backend.
 - [ ] MMIO and atomics validated in a freestanding/QEMU target.
