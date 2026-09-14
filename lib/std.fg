@@ -9,6 +9,16 @@ import core;
 // behind platform/provider contracts rather than leaking target APIs into
 // portable application code.
 //
-// The first hosted companion module is `std.console` (`lib/std/console.fg`).
-// The root does not implicitly re-export it during the bootstrap: applications
-// import `std.console` explicitly while the module/library graph is refined.
+// Bootstrap hosted modules currently include:
+//   std.console
+//   std.args
+//   std.fs
+//   std.lock
+//   std.time
+//   std.string
+//   std.collections.string_map
+//
+// The root does not implicitly re-export these modules. Applications import
+// only the hosted services they use. File/lock/time/argument operations end in
+// target platform providers; portable collection/string algorithms should move
+// into Forge source as the compiler/runtime substrate becomes capable enough.
