@@ -43,9 +43,12 @@ primary_type    = qualified_name
                 | "closure", "(", [ type_list ], ")", "->", type
                 | "Result", "[", type, ",", type, "]" ;
 
-statement       = value_decl | expression, ";" | block | if_stmt | while_stmt | for_stmt
+statement       = value_decl | assignment_stmt | expression, ";" | block | if_stmt | while_stmt | for_stmt
                 | match_stmt | switch_stmt | defer_stmt | return_stmt | break_stmt
                 | continue_stmt | unsafe_stmt | with_context_stmt | select_stmt ;
+
+(* Forge v1 deliberately has only plain assignment. There are no +=, -=, *=, /= or %= operators. *)
+assignment_stmt = assignable, "=", expression, ";" ;
 
 block           = "{", { statement }, "}" ;
 if_stmt         = "if", "(", expression, ")", block, [ "else", (block | if_stmt) ] ;
@@ -70,7 +73,7 @@ base_pattern    = "_" | literal | identifier
                 | "{", [ map_pattern_items ], "}"
                 | range_pattern ;
 
-expression      = (* parsed using Pratt precedence table *) ;
+expression      = (* parsed using Pratt precedence table; assignment is not an expression *) ;
 
 reader_form     = "#", qualified_name, fdn_value ;
 
@@ -79,5 +82,5 @@ fdn_value       = fdn_scalar | fdn_vector | fdn_list | fdn_map | fdn_set | fdn_t
 fdn_vector      = "[", { fdn_value, [","] }, "]" ;
 fdn_list        = "(", { fdn_value, [","] }, ")" ;
 fdn_map         = "{", { fdn_value, fdn_value, [","] }, "}" ;
-fdn_set         = "#{", { fdn_value, [","] }, "}" ;
+fdn_set         = "#{", { fdn_value, [","] }, "]" ;
 fdn_tagged      = "#", qualified_name, fdn_value ;
