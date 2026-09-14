@@ -17,7 +17,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: Apply Step 16
-        run: python3 tools/fir_step16.py
+        run: python3 tools/fir_step16_apply.py
       - name: Generate FIR golden
         run: UPDATE_FIR_GOLDEN=1 cargo test -p forge-frontend --test fir fir_dump_golden_is_stable -- --nocapture
       - run: cargo fmt --all
