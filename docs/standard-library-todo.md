@@ -226,11 +226,8 @@ language/runtime intrinsics
 
 - [x] concrete string-to-string bootstrap API used by CKV.
 - [x] create/put/replace/contains/get/count provider tests.
-- [ ] implement the hash table itself in Forge once struct/array mutation is executable.
-- [ ] explicit allocator integration.
-- [ ] collision/growth/removal tests.
-- [ ] allocation-failure tests.
-- [ ] replace concrete bootstrap map with/generalize into the final map collection model.
+- [ ] replace bootstrap host/provider implementation with generated Forge `HashMapStringString`.
+- [ ] remove the provider-backed StringMap once CKV passes unchanged on the Forge collection implementation.
 
 ### `std.net`
 
@@ -258,10 +255,15 @@ language/runtime intrinsics
 
 These should not block Cosmic kernel bring-up.
 
+The detailed no-generics collection plan is tracked in [`collections-library-todo.md`](collections-library-todo.md). Forge will generate concrete typed collections rather than use type erasure or wait for language generics.
+
+- [ ] generated typed `List` family (contiguous growable vectors).
+- [ ] generated typed `HashSet` family.
+- [ ] generated typed `HashMap` family.
+- [ ] `HashMapStringString` replaces CKV's bootstrap host map.
 - [ ] dynamic `String` and byte buffers using explicit/default allocator policy.
-- [ ] dynamic vector.
-- [ ] general hash map/set.
-- [ ] ordered map/set if justified.
+- [ ] optional deque/ring deque where concrete use cases justify it.
+- [ ] ordered map/set only if concrete use cases justify them.
 - [ ] sorting/search algorithms.
 - [ ] hashing/checksum primitives.
 - [ ] text/encoding helpers beyond the bootstrap CKV helpers.
@@ -279,7 +281,8 @@ Before serious Cosmic implementation depends on Forge:
 - [x] cross-package public symbol import exercised by a runnable application.
 - [x] general cross-package function-call execution in CForge, including locals/loops.
 - [x] non-trivial Forge CKV application exercises local package, args, files, lock, clock, strings and map on hosted CForge/JVM.
-- [ ] same CKV gate green through CForge native image.
+- [x] same canonical Forge CKV gate green through CForge native image.
+- [ ] CKV runs unchanged on Forge `HashMapStringString` instead of the bootstrap host map.
 - [ ] raw memory/compiler primitives execute through native Forge backend.
 - [ ] MMIO and atomics validated in a freestanding/QEMU target.
 - [ ] non-allocating panic/debug Writer works on a QEMU serial console.
