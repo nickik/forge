@@ -8,7 +8,22 @@ use crate::{
     resolution::{LocalId, ResolvedName},
 };
 
-pub type HirExpr = HirNode<HirExprKind>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+pub struct ExprId(pub u32);
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HirExpr {
+    pub id: ExprId,
+    pub span: Span,
+    pub kind: HirExprKind,
+}
+
+impl HirExpr {
+    fn new(id: ExprId, span: Span, kind: HirExprKind) -> Self {
+        Self { id, span, kind }
+    }
+}
+
 pub type HirStmt = HirNode<HirStmtKind>;
 pub type HirPattern = HirNode<HirPatternKind>;
 pub type HirType = HirNode<HirTypeKind>;
@@ -546,6 +561,7 @@ struct Lowerer<'a, 'd> {
     scopes: Vec<BTreeMap<String, LocalId>>,
     locals: Vec<HirLocalDecl>,
     next_local: u32,
+    next_expr: u32,
 }
 
 impl<'a, 'd> Lowerer<'a, 'd> {
@@ -561,6 +577,7 @@ impl<'a, 'd> Lowerer<'a, 'd> {
             scopes: Vec::new(),
             locals: Vec::new(),
             next_local: 0,
+            next_expr: 0,
         }
     }
 
@@ -1084,7 +1101,9 @@ impl<'a, 'd> Lowerer<'a, 'd> {
                 value: value.clone(),
             },
         };
-        HirNode::new(expr.span, kind)
+        let id = ExprId(self.next_expr);
+        self.next_expr += 1;
+        HirExpr::new(id, expr.span, kind)
     }
 
     fn lower_binding_pattern(&mut self, pattern: &ast::Pattern, mutable: bool) -> HirPattern {

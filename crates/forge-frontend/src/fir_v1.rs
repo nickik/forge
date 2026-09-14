@@ -1,494 +1,12 @@
-from pathlib import Path
-
-
-def replace_once(path: str, old: str, new: str) -> None:
-    p = Path(path)
-    text = p.read_text()
-    if old not in text:
-        raise SystemExit(f"missing replacement in {path}: {old[:160]!r}")
-    p.write_text(text.replace(old, new, 1))
-
-
-# ---------------------------------------------------------------------------
-# Give expressions stable body-local identity. FIR must never recover typed
-# semantics by matching source spans or cloned HIR syntax.
-# ---------------------------------------------------------------------------
-p = Path("crates/forge-frontend/src/body_hir_v1.rs")
-text = p.read_text()
-text = text.replace(
-    "pub type HirExpr = HirNode<HirExprKind>;\npub type HirStmt = HirNode<HirStmtKind>;",
-    '''#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
-pub struct ExprId(pub u32);
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct HirExpr {
-    pub id: ExprId,
-    pub span: Span,
-    pub kind: HirExprKind,
-}
-
-impl HirExpr {
-    fn new(id: ExprId, span: Span, kind: HirExprKind) -> Self {
-        Self { id, span, kind }
-    }
-}
-
-pub type HirStmt = HirNode<HirStmtKind>;''',
-    1,
-)
-text = text.replace(
-    '''    locals: Vec<HirLocalDecl>,
-    next_local: u32,
-}''',
-    '''    locals: Vec<HirLocalDecl>,
-    next_local: u32,
-    next_expr: u32,
-}''',
-    1,
-)
-text = text.replace(
-    '''            locals: Vec::new(),
-            next_local: 0,
-        }''',
-    '''            locals: Vec::new(),
-            next_local: 0,
-            next_expr: 0,
-        }''',
-    1,
-)
-old = '''        HirNode::new(expr.span, kind)
-    }
-
-    fn lower_binding_pattern'''
-new = '''        let id = ExprId(self.next_expr);
-        self.next_expr += 1;
-        HirExpr::new(id, expr.span, kind)
-    }
-
-    fn lower_binding_pattern'''
-if old not in text:
-    raise SystemExit("lower_expr terminator not found")
-text = text.replace(old, new, 1)
-p.write_text(text)
-
-
-# ---------------------------------------------------------------------------
-# Typed HIR: carry expression identity, exact function signature, receiver
-# transformation, named-argument parameter mapping, and real optional promote.
-# ---------------------------------------------------------------------------
-p = Path("crates/forge-frontend/src/typecheck_v1.rs")
-text = p.read_text()
-text = text.replace(
-    '''        BodyHirOutput, HirBlock, HirCallArg, HirExpr, HirExprKind, HirPattern, HirPatternKind,
-        HirStmt, HirStmtKind, HirType, HirTypeKind, HirTypeRef,
-''',
-    '''        BodyHirOutput, ExprId, HirBlock, HirCallArg, HirExpr, HirExprKind, HirPattern,
-        HirPatternKind, HirStmt, HirStmtKind, HirType, HirTypeKind, HirTypeRef,
-''',
-    1,
-)
-text = text.replace(
-    '''pub struct TypedExpr {
-    pub span: Span,
-    pub ty: Ty,
-    pub kind: TypedExprKind,
-}
-''',
-    '''pub struct TypedExpr {
-    pub id: ExprId,
-    pub span: Span,
-    pub ty: Ty,
-    pub kind: TypedExprKind,
-}
-''',
-    1,
-)
-text = text.replace(
-    '''    ResolvedCall {
-        target: DefId,
-        method: bool,
-        hir: HirExpr,
-    },''',
-    '''    ResolvedCall {
-        target: DefId,
-        method: bool,
-        receiver: Option<ResolvedReceiver>,
-        argument_parameters: Vec<usize>,
-        hir: HirExpr,
-    },''',
-    1,
-)
-text = text.replace(
-    '''    OptionalPromote {
-        value: Box<TypedExpr>,
-    },
-}''',
-    '''    OptionalPromote {
-        source_type: Ty,
-        inner: Box<TypedExprKind>,
-        hir: HirExpr,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ResolvedReceiver {
-    Value,
-    SharedReference,
-    MutableReference,
-}''',
-    1,
-)
-text = text.replace(
-    '''pub struct TypedBody {
-    pub owner: DefId,
-    pub local_types: BTreeMap<LocalId, Ty>,
-    pub local_constants: BTreeMap<LocalId, ConstValue>,
-    pub expressions: Vec<TypedExpr>,
-}''',
-    '''pub struct TypedBody {
-    pub owner: DefId,
-    pub params: Vec<(LocalId, Ty)>,
-    pub return_type: Ty,
-    pub local_types: BTreeMap<LocalId, Ty>,
-    pub local_constants: BTreeMap<LocalId, ConstValue>,
-    pub expressions: Vec<TypedExpr>,
-}''',
-    1,
-)
-
-# Function signature retention.
-text = text.replace(
-    '''        let mut checker = BodyChecker::new(&env, expected_return, &mut output.diagnostics);
-        for (local, ty) in &body.params {''',
-    '''        let mut checker =
-            BodyChecker::new(&env, expected_return.clone(), &mut output.diagnostics);
-        let mut typed_params = Vec::with_capacity(body.params.len());
-        for (local, ty) in &body.params {''',
-    1,
-)
-text = text.replace(
-    '''            checker.local_types.insert(*local, param_ty);
-        }
-        checker.check_block(&body.block);''',
-    '''            checker.local_types.insert(*local, param_ty.clone());
-            typed_params.push((*local, param_ty));
-        }
-        checker.check_block(&body.block);''',
-    1,
-)
-text = text.replace(
-    '''            TypedBody {
-                owner: *owner,
-                local_types: checker.local_types,
-                local_constants: checker.local_constants,
-                expressions: checker.expressions,
-            },''',
-    '''            TypedBody {
-                owner: *owner,
-                params: typed_params,
-                return_type: expected_return,
-                local_types: checker.local_types,
-                local_constants: checker.local_constants,
-                expressions: checker.expressions,
-            },''',
-    1,
-)
-
-# Replace the lightweight call resolution tuple with semantic call facts.
-text = text.replace(
-    '''        let mut resolved_call: Option<(DefId, bool)> = None;
-        let mut resolved_try: Option<(Ty, Ty)> = None;''',
-    '''        let mut resolved_call: Option<ResolvedCallInfo> = None;
-        let mut resolved_try: Option<(Ty, Ty)> = None;''',
-    1,
-)
-text = text.replace(
-    '''                let (result, target) = self.check_call(expr.span, callee, args);
-                resolved_call = target;
-                result''',
-    '''                let (result, call) = self.check_call(expr.span, callee, args);
-                resolved_call = call;
-                result''',
-    1,
-)
-
-# Replace final contextual-coercion/typed-expression recording block.
-old = '''        if let Some(expected) = expected {
-            if matches!(ty, Ty::IntLiteral | Ty::FloatLiteral | Ty::NoneLiteral)
-                && self.is_assignable(expected, &ty)
-            {
-                ty = expected.clone();
-            }
-        }
-        let kind = if let Some((source_error, target_error)) = resolved_try {
-            TypedExprKind::ResolvedTry {
-                source_error,
-                target_error,
-                hir: expr.clone(),
-            }
-        } else if let Some((target, method)) = resolved_call {
-            TypedExprKind::ResolvedCall {
-                target,
-                method,
-                hir: expr.clone(),
-            }
-        } else {
-            TypedExprKind::Source { hir: expr.clone() }
-        };
-        self.expressions.push(TypedExpr {
-            span: expr.span,
-            ty: ty.clone(),
-            kind,
-        });
-        ty
-'''
-new = '''        let mut optional_promotion = None;
-        if let Some(expected) = expected {
-            if let Ty::Optional { inner } = expected {
-                if matches!(ty, Ty::NoneLiteral) {
-                    ty = expected.clone();
-                } else if !matches!(ty, Ty::Optional { .. }) && self.is_assignable(inner, &ty) {
-                    let source_type = match &ty {
-                        Ty::IntLiteral | Ty::FloatLiteral => inner.as_ref().clone(),
-                        other => other.clone(),
-                    };
-                    optional_promotion = Some(source_type);
-                    ty = expected.clone();
-                }
-            } else if matches!(ty, Ty::IntLiteral | Ty::FloatLiteral | Ty::NoneLiteral)
-                && self.is_assignable(expected, &ty)
-            {
-                ty = expected.clone();
-            }
-        }
-        let base_kind = if let Some((source_error, target_error)) = resolved_try {
-            TypedExprKind::ResolvedTry {
-                source_error,
-                target_error,
-                hir: expr.clone(),
-            }
-        } else if let Some(call) = resolved_call {
-            TypedExprKind::ResolvedCall {
-                target: call.target,
-                method: call.method,
-                receiver: call.receiver,
-                argument_parameters: call.argument_parameters,
-                hir: expr.clone(),
-            }
-        } else {
-            TypedExprKind::Source { hir: expr.clone() }
-        };
-        let kind = if let Some(source_type) = optional_promotion {
-            TypedExprKind::OptionalPromote {
-                source_type,
-                inner: Box::new(base_kind),
-                hir: expr.clone(),
-            }
-        } else {
-            base_kind
-        };
-        self.expressions.push(TypedExpr {
-            id: expr.id,
-            span: expr.span,
-            ty: ty.clone(),
-            kind,
-        });
-        ty
-'''
-if old not in text:
-    raise SystemExit("typed expression finalization block not found")
-text = text.replace(old, new, 1)
-
-# Internal call resolution record, immediately before BodyChecker.
-marker = "struct BodyChecker<'a, 'd> {"
-insert = '''#[derive(Debug, Clone)]
-struct ResolvedCallInfo {
-    target: DefId,
-    method: bool,
-    receiver: Option<ResolvedReceiver>,
-    argument_parameters: Vec<usize>,
-}
-
-'''
-if marker not in text:
-    raise SystemExit("BodyChecker marker missing")
-text = text.replace(marker, insert + marker, 1)
-
-# check_call signature + returns and argument mapping.
-text = text.replace(
-    ''') -> (Ty, Option<(DefId, bool)>) {''',
-    ''') -> (Ty, Option<ResolvedCallInfo>) {''',
-    1,
-)
-old = '''                self.check_method_receiver(base, &receiver_ty, &sig);
-                let reduced = FunctionSig {
-                    params: sig.params.iter().skip(1).cloned().collect(),
-                    result: sig.result.clone(),
-                    named_arguments: sig.named_arguments,
-                };
-                self.check_function_args(span, &reduced, args);
-                return (sig.result, Some((method_id, true)));
-'''
-new = '''                self.check_method_receiver(base, &receiver_ty, &sig);
-                let receiver = match sig.params.first().map(|param| &param.ty) {
-                    Some(Ty::Reference { mutable: true, .. }) => {
-                        Some(ResolvedReceiver::MutableReference)
-                    }
-                    Some(Ty::Reference { mutable: false, .. }) => {
-                        Some(ResolvedReceiver::SharedReference)
-                    }
-                    Some(_) => Some(ResolvedReceiver::Value),
-                    None => None,
-                };
-                let reduced = FunctionSig {
-                    params: sig.params.iter().skip(1).cloned().collect(),
-                    result: sig.result.clone(),
-                    named_arguments: sig.named_arguments,
-                };
-                let argument_parameters = self.check_function_args(span, &reduced, args);
-                return (
-                    sig.result,
-                    Some(ResolvedCallInfo {
-                        target: method_id,
-                        method: true,
-                        receiver,
-                        argument_parameters,
-                    }),
-                );
-'''
-if old not in text:
-    raise SystemExit("method call resolution block missing")
-text = text.replace(old, new, 1)
-old = '''                if let Some(sig) = self.env.functions.get(&id).cloned() {
-                    self.check_function_args(span, &sig, args);
-                    return (sig.result, Some((id, false)));
-                }
-'''
-new = '''                if let Some(sig) = self.env.functions.get(&id).cloned() {
-                    let argument_parameters = self.check_function_args(span, &sig, args);
-                    return (
-                        sig.result,
-                        Some(ResolvedCallInfo {
-                            target: id,
-                            method: false,
-                            receiver: None,
-                            argument_parameters,
-                        }),
-                    );
-                }
-'''
-if old not in text:
-    raise SystemExit("direct function call resolution block missing")
-text = text.replace(old, new, 1)
-
-# check_function_args now returns semantic parameter index per written argument.
-text = text.replace(
-    '''    fn check_function_args(&mut self, span: Span, sig: &FunctionSig, args: &[HirCallArg]) {''',
-    '''    fn check_function_args(
-        &mut self,
-        span: Span,
-        sig: &FunctionSig,
-        args: &[HirCallArg],
-    ) -> Vec<usize> {''',
-    1,
-)
-# The named-arguments early error previously returned unit.
-text = text.replace(
-    '''                return;
-            }
-            let mut seen = BTreeSet::new();''',
-    '''                return Vec::new();
-            }
-            let mut seen = BTreeSet::new();
-            let mut argument_parameters = Vec::with_capacity(args.len());''',
-    1,
-)
-# Record named index when found.
-text = text.replace(
-    '''                if let Some(param) = sig.params.iter().find(|p| p.name == *name) {
-                    let actual = self.check_expr(value, Some(&param.ty));''',
-    '''                if let Some((parameter, param)) = sig
-                    .params
-                    .iter()
-                    .enumerate()
-                    .find(|(_, p)| p.name == *name)
-                {
-                    argument_parameters.push(parameter);
-                    let actual = self.check_expr(value, Some(&param.ty));''',
-    1,
-)
-# Return named mapping before positional else.
-text = text.replace(
-    '''            for param in &sig.params {
-                if !param.has_default && !seen.contains(&param.name) {
-                    self.diagnostic(
-                        span,
-                        "call/missing-argument",
-                        format!("missing required argument `{}`", param.name),
-                    );
-                }
-            }
-        } else {
-''',
-    '''            for param in &sig.params {
-                if !param.has_default && !seen.contains(&param.name) {
-                    self.diagnostic(
-                        span,
-                        "call/missing-argument",
-                        format!("missing required argument `{}`", param.name),
-                    );
-                }
-            }
-            argument_parameters
-        } else {
-''',
-    1,
-)
-# Positional arm needs final mapping. Locate end of function by a characteristic tail.
-old = '''            for param in sig.params.iter().skip(args.len()) {
-                if !param.has_default {
-                    self.diagnostic(
-                        span,
-                        "call/missing-argument",
-                        format!("missing required argument `{}`", param.name),
-                    );
-                }
-            }
-        }
-    }
-'''
-new = '''            for param in sig.params.iter().skip(args.len()) {
-                if !param.has_default {
-                    self.diagnostic(
-                        span,
-                        "call/missing-argument",
-                        format!("missing required argument `{}`", param.name),
-                    );
-                }
-            }
-            (0..args.len().min(sig.params.len())).collect()
-        }
-    }
-'''
-if old not in text:
-    raise SystemExit("check_function_args tail missing")
-text = text.replace(old, new, 1)
-p.write_text(text)
-
-
-# ---------------------------------------------------------------------------
-# FIR implementation.
-# ---------------------------------------------------------------------------
-fir = r'''use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
 use crate::{
     ast::{BinaryOp, FdnValue, MetadataArg, Span, UnaryOp},
     body_hir::{
-        BodyHirOutput, ExprId, HirBlock, HirCallArg, HirExpr, HirExprKind, HirMatchBody,
-        HirPattern, HirPatternKind, HirStmt, HirStmtKind,
+        BodyHirOutput, ExprId, HirBlock, HirCallArg, HirExpr, HirExprKind, HirPattern,
+        HirPatternKind, HirStmt, HirStmtKind,
     },
     hir::{DefId, MetadataTableExt, MetadataTarget},
     resolution::{LocalId, ResolvedName},
@@ -576,36 +94,77 @@ pub struct FirInstruction {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(tag = "op", rename_all = "snake_case")]
+#[serde(tag = "instruction", rename_all = "snake_case")]
 pub enum FirInstructionKind {
-    Const { value: FirConst },
-    FunctionRef { target: DefId },
-    LoadGlobal { global: DefId },
-    Load { place: FirPlace },
-    Store { place: FirPlace, value: FirValueId },
-    Unary { op: FirUnaryOp, value: FirValueId },
+    Const {
+        value: FirConst,
+    },
+    FunctionRef {
+        target: DefId,
+    },
+    LoadGlobal {
+        global: DefId,
+    },
+    Load {
+        place: FirPlace,
+    },
+    Store {
+        place: FirPlace,
+        value: FirValueId,
+    },
+    Unary {
+        op: FirUnaryOp,
+        value: FirValueId,
+    },
     Binary {
         op: BinaryOp,
         overflow: Option<OverflowMode>,
         left: FirValueId,
         right: FirValueId,
     },
-    Convert { value: FirValueId, target: Ty },
-    MakeArray { items: Vec<FirValueId> },
+    Convert {
+        value: FirValueId,
+        target: Ty,
+    },
+    MakeArray {
+        items: Vec<FirValueId>,
+    },
     MakeAggregate {
         ty: Ty,
         variant: Option<String>,
         fields: Vec<(String, FirValueId)>,
     },
     MakeNone,
-    MakeSome { value: FirValueId },
-    Variant { ty: Ty, name: String },
-    VariantIs { value: FirValueId, name: String },
-    ExtractField { base: FirValueId, field: String },
-    Len { value: FirValueId },
-    BoundsCheck { index: FirValueId, len: FirValueId },
-    IndexUnchecked { base: FirValueId, index: FirValueId },
-    AddressOf { place: FirPlace, mutable: bool },
+    MakeSome {
+        value: FirValueId,
+    },
+    Variant {
+        ty: Ty,
+        name: String,
+    },
+    VariantIs {
+        value: FirValueId,
+        name: String,
+    },
+    ExtractField {
+        base: FirValueId,
+        field: String,
+    },
+    Len {
+        value: FirValueId,
+    },
+    BoundsCheck {
+        index: FirValueId,
+        len: FirValueId,
+    },
+    IndexUnchecked {
+        base: FirValueId,
+        index: FirValueId,
+    },
+    AddressOf {
+        place: FirPlace,
+        mutable: bool,
+    },
     Call {
         target: DefId,
         args: Vec<FirValueId>,
@@ -616,22 +175,44 @@ pub enum FirInstructionKind {
         args: Vec<FirValueId>,
         tail: bool,
     },
-    ResultIsOk { value: FirValueId },
-    ResultUnwrapOk { value: FirValueId },
-    ResultUnwrapErr { value: FirValueId },
-    MakeResultErr { error: FirValueId },
-    OptionIsSome { value: FirValueId },
-    OptionUnwrap { value: FirValueId },
+    ResultIsOk {
+        value: FirValueId,
+    },
+    ResultUnwrapOk {
+        value: FirValueId,
+    },
+    ResultUnwrapErr {
+        value: FirValueId,
+    },
+    MakeResultErr {
+        error: FirValueId,
+    },
+    OptionIsSome {
+        value: FirValueId,
+    },
+    OptionUnwrap {
+        value: FirValueId,
+    },
     Poison,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "place", rename_all = "snake_case")]
 pub enum FirPlace {
-    Local { local: FirLocalId },
-    Field { base: Box<FirPlace>, field: String },
-    Index { base: Box<FirPlace>, index: FirValueId },
-    Deref { address: FirValueId },
+    Local {
+        local: FirLocalId,
+    },
+    Field {
+        base: Box<FirPlace>,
+        field: String,
+    },
+    Index {
+        base: Box<FirPlace>,
+        index: FirValueId,
+    },
+    Deref {
+        address: FirValueId,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -656,13 +237,17 @@ pub enum FirConst {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "term", rename_all = "snake_case")]
 pub enum FirTerminator {
-    Goto { target: FirBlockId },
+    Goto {
+        target: FirBlockId,
+    },
     Branch {
         condition: FirValueId,
         then_block: FirBlockId,
         else_block: FirBlockId,
     },
-    Return { value: Option<FirValueId> },
+    Return {
+        value: Option<FirValueId>,
+    },
     Unreachable,
 }
 
@@ -739,7 +324,6 @@ struct LoopTargets {
 struct FunctionLowerer<'a> {
     body: &'a crate::body_hir::HirBody,
     typed: &'a TypedBody,
-    bodies: &'a BodyHirOutput,
     all_typed: &'a TypeCheckOutput,
     exprs: BTreeMap<ExprId, &'a TypedExpr>,
     local_map: BTreeMap<LocalId, FirLocalId>,
@@ -758,7 +342,7 @@ impl<'a> FunctionLowerer<'a> {
     fn new(
         body: &'a crate::body_hir::HirBody,
         typed: &'a TypedBody,
-        bodies: &'a BodyHirOutput,
+        _bodies: &'a BodyHirOutput,
         all_typed: &'a TypeCheckOutput,
         overflow: OverflowMode,
     ) -> Self {
@@ -781,7 +365,11 @@ impl<'a> FunctionLowerer<'a> {
             value_types: BTreeMap::new(),
         };
         let mut local_map = BTreeMap::new();
-        let param_set = typed.params.iter().map(|(id, _)| *id).collect::<BTreeSet<_>>();
+        let param_set = typed
+            .params
+            .iter()
+            .map(|(id, _)| *id)
+            .collect::<BTreeSet<_>>();
         let mut next_local = 0;
         for local in &body.locals {
             let id = FirLocalId(next_local);
@@ -812,7 +400,6 @@ impl<'a> FunctionLowerer<'a> {
         Self {
             body,
             typed,
-            bodies,
             all_typed,
             exprs,
             local_map,
@@ -1052,7 +639,12 @@ impl<'a> FunctionLowerer<'a> {
         }
     }
 
-    fn lower_if(&mut self, condition: &HirExpr, then_block: &HirBlock, else_stmt: Option<&HirStmt>) {
+    fn lower_if(
+        &mut self,
+        condition: &HirExpr,
+        then_block: &HirBlock,
+        else_stmt: Option<&HirStmt>,
+    ) {
         let condition = self.lower_expr(condition);
         let then_id = self.new_block();
         let else_id = self.new_block();
@@ -1608,19 +1200,20 @@ impl<'a> FunctionLowerer<'a> {
                 typed.ty,
                 tail,
             ),
-            TypedExprKind::OptionalPromote { inner, source_type, .. } => {
+            TypedExprKind::OptionalPromote {
+                inner, source_type, ..
+            } => {
                 let value = self.lower_expr_kind(expr, &inner, source_type);
-                self.emit_value(
-                    expr.span,
-                    typed.ty,
-                    FirInstructionKind::MakeSome { value },
-                )
+                self.emit_value(expr.span, typed.ty, FirInstructionKind::MakeSome { value })
             }
             _ => {
                 let HirExprKind::Call { callee, args } = &expr.kind else {
                     return self.lower_expr(expr);
                 };
-                if args.iter().any(|arg| matches!(arg, HirCallArg::Named { .. })) {
+                if args
+                    .iter()
+                    .any(|arg| matches!(arg, HirCallArg::Named { .. }))
+                {
                     self.diagnostic(
                         expr.span,
                         "fir/indirect-named-call",
@@ -1628,7 +1221,11 @@ impl<'a> FunctionLowerer<'a> {
                     );
                 }
                 let callee = self.lower_expr(callee);
-                let args = args.iter().map(arg_value).map(|arg| self.lower_expr(arg)).collect();
+                let args = args
+                    .iter()
+                    .map(arg_value)
+                    .map(|arg| self.lower_expr(arg))
+                    .collect();
                 self.emit_value(
                     expr.span,
                     typed.ty,
@@ -1638,6 +1235,7 @@ impl<'a> FunctionLowerer<'a> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn lower_resolved_call(
         &mut self,
         expr: &HirExpr,
@@ -1649,7 +1247,11 @@ impl<'a> FunctionLowerer<'a> {
         tail: bool,
     ) -> FirValueId {
         let HirExprKind::Call { callee, args } = &expr.kind else {
-            self.diagnostic(expr.span, "fir/call-shape", "resolved call is not a call HIR node");
+            self.diagnostic(
+                expr.span,
+                "fir/call-shape",
+                "resolved call is not a call HIR node",
+            );
             return self.poison(expr.span, result_ty);
         };
         let Some(target_body) = self.all_typed.functions.get(&target) else {
@@ -1665,7 +1267,11 @@ impl<'a> FunctionLowerer<'a> {
 
         if method {
             let HirExprKind::Member { base, .. } = &callee.kind else {
-                self.diagnostic(expr.span, "fir/method-shape", "resolved method call has no member receiver");
+                self.diagnostic(
+                    expr.span,
+                    "fir/method-shape",
+                    "resolved method call has no member receiver",
+                );
                 return self.poison(expr.span, result_ty);
             };
             let receiver_value = match receiver.unwrap_or(ResolvedReceiver::Value) {
@@ -1685,7 +1291,10 @@ impl<'a> FunctionLowerer<'a> {
                             expected_ref,
                             FirInstructionKind::AddressOf {
                                 place,
-                                mutable: matches!(receiver, Some(ResolvedReceiver::MutableReference)),
+                                mutable: matches!(
+                                    receiver,
+                                    Some(ResolvedReceiver::MutableReference)
+                                ),
                             },
                         )
                     } else {
@@ -1734,11 +1343,7 @@ impl<'a> FunctionLowerer<'a> {
         self.emit_value(
             expr.span,
             result_ty,
-            FirInstructionKind::Call {
-                target,
-                args,
-                tail,
-            },
+            FirInstructionKind::Call { target, args, tail },
         )
     }
 
@@ -1750,7 +1355,11 @@ impl<'a> FunctionLowerer<'a> {
         result_ty: Ty,
     ) -> FirValueId {
         let HirExprKind::Try { value } = &expr.kind else {
-            self.diagnostic(expr.span, "fir/try-shape", "resolved try is not a try HIR node");
+            self.diagnostic(
+                expr.span,
+                "fir/try-shape",
+                "resolved try is not a try HIR node",
+            );
             return self.poison(expr.span, result_ty);
         };
         let source = self.lower_expr(value);
@@ -1952,7 +1561,11 @@ impl<'a> FunctionLowerer<'a> {
     fn lower_place(&mut self, expr: &HirExpr) -> Option<FirPlace> {
         let place = self.try_place(expr);
         if place.is_none() {
-            self.diagnostic(expr.span, "fir/place", "expression is not a lowerable place");
+            self.diagnostic(
+                expr.span,
+                "fir/place",
+                "expression is not a lowerable place",
+            );
         }
         place
     }
@@ -1967,10 +1580,12 @@ impl<'a> FunctionLowerer<'a> {
                     .map(|local| FirPlace::Local { local }),
                 _ => None,
             },
-            HirExprKind::Member { base, name } => self.try_place(base).map(|base| FirPlace::Field {
-                base: Box::new(base),
-                field: name.clone(),
-            }),
+            HirExprKind::Member { base, name } => {
+                self.try_place(base).map(|base| FirPlace::Field {
+                    base: Box::new(base),
+                    field: name.clone(),
+                })
+            }
             HirExprKind::Index { base, index } => {
                 let base_place = self.try_place(base)?;
                 let base_ty = self.expr_ty(base);
@@ -2037,7 +1652,10 @@ impl<'a> FunctionLowerer<'a> {
         match &pattern.kind {
             HirPatternKind::Wildcard => {}
             HirPatternKind::Binding { local, .. } => self.store_local(pattern.span, *local, value),
-            HirPatternKind::As { local, pattern: inner } => {
+            HirPatternKind::As {
+                local,
+                pattern: inner,
+            } => {
                 self.store_local(pattern.span, *local, value);
                 self.bind_irrefutable_pattern(inner, value, ty);
             }
@@ -2047,9 +1665,11 @@ impl<'a> FunctionLowerer<'a> {
                         .shorthand_local
                         .and_then(|id| self.typed.local_types.get(&id).cloned())
                         .or_else(|| {
-                            field.pattern.as_ref().and_then(|p| first_bound_local(p)).and_then(|id| {
-                                self.typed.local_types.get(&id).cloned()
-                            })
+                            field
+                                .pattern
+                                .as_ref()
+                                .and_then(first_bound_local)
+                                .and_then(|id| self.typed.local_types.get(&id).cloned())
                         })
                         .unwrap_or(Ty::Unknown);
                     let field_value = self.emit_value(
@@ -2070,7 +1690,9 @@ impl<'a> FunctionLowerer<'a> {
             }
             HirPatternKind::Sequence { items, rest } => {
                 let element = match ty {
-                    Ty::Array { element, .. } | Ty::Slice { element, .. } => element.as_ref().clone(),
+                    Ty::Array { element, .. } | Ty::Slice { element, .. } => {
+                        element.as_ref().clone()
+                    }
                     _ => Ty::Unknown,
                 };
                 for (index, item) in items.iter().enumerate() {
@@ -2147,7 +1769,11 @@ impl<'a> FunctionLowerer<'a> {
                 },
             );
         } else {
-            self.diagnostic(span, "fir/local", format!("missing local mapping for {source:?}"));
+            self.diagnostic(
+                span,
+                "fir/local",
+                format!("missing local mapping for {source:?}"),
+            );
         }
     }
 
@@ -2160,10 +1786,9 @@ fn first_bound_local(pattern: &HirPattern) -> Option<LocalId> {
     match &pattern.kind {
         HirPatternKind::Binding { local, .. } | HirPatternKind::As { local, .. } => Some(*local),
         HirPatternKind::Some { value } => first_bound_local(value),
-        HirPatternKind::Sequence { items, rest } => items
-            .iter()
-            .find_map(first_bound_local)
-            .or(*rest),
+        HirPatternKind::Sequence { items, rest } => {
+            items.iter().find_map(first_bound_local).or(*rest)
+        }
         _ => None,
     }
 }
@@ -2194,9 +1819,9 @@ fn binary_overflow(op: BinaryOp, mode: OverflowMode) -> Option<OverflowMode> {
 fn fir_type_is_concrete(ty: &Ty) -> bool {
     match ty {
         Ty::Error | Ty::Unknown | Ty::IntLiteral | Ty::FloatLiteral | Ty::NoneLiteral => false,
-        Ty::Pointer { inner, .. }
-        | Ty::Reference { inner, .. }
-        | Ty::Optional { inner } => fir_type_is_concrete(inner),
+        Ty::Pointer { inner, .. } | Ty::Reference { inner, .. } | Ty::Optional { inner } => {
+            fir_type_is_concrete(inner)
+        }
         Ty::Slice { element, .. } => fir_type_is_concrete(element),
         Ty::Array { element, length } => length.is_some() && fir_type_is_concrete(element),
         Ty::Result { ok, error } => fir_type_is_concrete(ok) && fir_type_is_concrete(error),
@@ -2216,7 +1841,10 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
         diagnostics.push(FirDiagnostic {
             span: Span::new(0, 0),
             code: "fir/verify-type".into(),
-            message: format!("non-concrete function return type {:?}", function.return_type),
+            message: format!(
+                "non-concrete function return type {:?}",
+                function.return_type
+            ),
         });
     }
     for local in function.locals.values() {
@@ -2286,7 +1914,8 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
             if let FirTerminator::Return { value } = term {
                 match (value, &function.return_type) {
                     (None, Ty::Void) => {}
-                    (Some(value), expected) if function.value_types.get(value) == Some(expected) => {}
+                    (Some(value), expected)
+                        if function.value_types.get(value) == Some(expected) => {}
                     _ => diagnostics.push(FirDiagnostic {
                         span: Span::new(0, 0),
                         code: "fir/verify-return".into(),
@@ -2301,313 +1930,3 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
     }
     diagnostics
 }
-'''
-Path("crates/forge-frontend/src/fir_v1.rs").write_text(fir)
-
-
-# ---------------------------------------------------------------------------
-# Public API.
-# ---------------------------------------------------------------------------
-p = Path("crates/forge-frontend/src/lib.rs")
-text = p.read_text()
-text = text.replace(
-    '#[path = "hir_v1.rs"]\npub mod hir;\n',
-    '#[path = "hir_v1.rs"]\npub mod hir;\n#[path = "fir_v1.rs"]\npub mod fir;\n',
-    1,
-)
-text = text.replace(
-    '''    lower_resolved_bodies, BodyHirOutput, HirBody, HirExpr, HirExprKind, HirGlobalBody,
-    HirLocalDecl, HirPattern, HirPatternKind, HirStmt, HirStmtKind, HirType, HirTypeKind,
-};''',
-    '''    lower_resolved_bodies, BodyHirOutput, ExprId, HirBody, HirExpr, HirExprKind,
-    HirGlobalBody, HirLocalDecl, HirPattern, HirPatternKind, HirStmt, HirStmtKind, HirType,
-    HirTypeKind,
-};''',
-    1,
-)
-text += '''\npub use fir::{
-    lower_fir, verify_fir_function, FirBasicBlock, FirBlockId, FirConst, FirDiagnostic,
-    FirFunction, FirGlobal, FirInstruction, FirInstructionKind, FirLocal, FirLocalId, FirModule,
-    FirOutput, FirPlace, FirTerminator, FirUnaryOp, FirValueId, OverflowMode,
-};\n'''
-text = text.replace(
-    '''    type_check_module, ConstValue, IntWidth, Ty, TypeCheckOutput, TypeDiagnostic, TypedBody,
-    TypedExpr, TypedExprKind,
-};''',
-    '''    type_check_module, ConstValue, IntWidth, ResolvedReceiver, Ty, TypeCheckOutput,
-    TypeDiagnostic, TypedBody, TypedExpr, TypedExprKind,
-};''',
-    1,
-)
-p.write_text(text)
-
-
-# ---------------------------------------------------------------------------
-# Tests. Keep this first FIR slice focused on invariants at the semantic/FIR
-# boundary, explicit checks, CFG, ? propagation, optional promotion, methods,
-# and defer. Unsupported high-level semantic gaps are tested as diagnostics.
-# ---------------------------------------------------------------------------
-tests = r'''use forge_frontend::{
-    lower_fir, lower_module, lower_resolved_bodies, parse_source, type_check_module, BinaryOp,
-    FirInstructionKind, FirTerminator, OverflowMode, Ty, TypedExprKind,
-};
-
-fn lower(source: &str) -> forge_frontend::FirOutput {
-    let parsed = parse_source(source);
-    assert!(parsed.diagnostics.is_empty(), "parse: {:?}", parsed.diagnostics);
-    let ast = parsed.ast.expect("AST");
-    let hir = lower_module(&ast);
-    assert!(hir.diagnostics.is_empty(), "hir: {:?}", hir.diagnostics);
-    let bodies = lower_resolved_bodies(&ast, &hir.module);
-    assert!(bodies.diagnostics.is_empty(), "body hir: {:?}", bodies.diagnostics);
-    let typed = type_check_module(&ast, &hir.module, &bodies);
-    assert!(typed.diagnostics.is_empty(), "typed: {:?}", typed.diagnostics);
-    lower_fir(&bodies, &typed)
-}
-
-fn instructions(output: &forge_frontend::FirOutput) -> impl Iterator<Item = &FirInstructionKind> {
-    output
-        .module
-        .functions
-        .values()
-        .flat_map(|f| f.blocks.iter())
-        .flat_map(|b| b.instructions.iter())
-        .map(|i| &i.kind)
-}
-
-#[test]
-fn lowers_checked_arithmetic_and_cfg() {
-    let output = lower(
-        r#"
-        module test.fir_arithmetic;
-        fn add(a: u32, b: u32) -> u32 {
-            var x: u32 = a + b;
-            if (x > 10u32) { x = x - 1u32; }
-            while (x < 20u32) { x = x + 1u32; }
-            return x;
-        }
-        "#,
-    );
-    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|op| matches!(
-        op,
-        FirInstructionKind::Binary {
-            op: BinaryOp::Add,
-            overflow: Some(OverflowMode::Checked),
-            ..
-        }
-    )));
-    let function = output.module.functions.values().next().unwrap();
-    assert!(function.blocks.len() >= 6);
-    assert!(function.blocks.iter().all(|b| b.terminator.is_some()));
-}
-
-#[test]
-fn overflow_metadata_selects_wrapping_fir_operation() {
-    let output = lower(
-        r#"
-        module test.fir_wrap;
-        @overflow(wrap)
-        fn add(a: u32, b: u32) -> u32 { return a + b; }
-        "#,
-    );
-    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|op| matches!(
-        op,
-        FirInstructionKind::Binary {
-            op: BinaryOp::Add,
-            overflow: Some(OverflowMode::Wrapping),
-            ..
-        }
-    )));
-}
-
-#[test]
-fn indexing_has_explicit_bounds_check() {
-    let output = lower(
-        r#"
-        module test.fir_bounds;
-        fn read(values: [u32; 4], index: usize) -> u32 { return values[index]; }
-        "#,
-    );
-    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::BoundsCheck { .. })));
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::IndexUnchecked { .. })));
-}
-
-#[test]
-fn result_try_is_explicit_cfg_with_error_return() {
-    let output = lower(
-        r#"
-        module test.fir_try;
-        fn pass(value: Result[u32, u8]) -> Result[u32, u8] {
-            value?;
-            return value;
-        }
-        "#,
-    );
-    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::ResultIsOk { .. })));
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::ResultUnwrapErr { .. })));
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeResultErr { .. })));
-    let function = output.module.functions.values().next().unwrap();
-    assert!(function.blocks.iter().filter(|b| matches!(b.terminator, Some(FirTerminator::Return { .. }))).count() >= 2);
-}
-
-#[test]
-fn optional_promotion_is_retained_and_lowered_to_some() {
-    let parsed = parse_source(
-        r#"
-        module test.fir_optional;
-        fn maybe(value: u32) -> u32? { return value; }
-        "#,
-    );
-    assert!(parsed.diagnostics.is_empty());
-    let ast = parsed.ast.unwrap();
-    let hir = lower_module(&ast);
-    let bodies = lower_resolved_bodies(&ast, &hir.module);
-    let typed = type_check_module(&ast, &hir.module, &bodies);
-    assert!(typed.diagnostics.is_empty(), "{:?}", typed.diagnostics);
-    assert!(typed.functions.values().any(|body| body.expressions.iter().any(|expr| matches!(expr.kind, TypedExprKind::OptionalPromote { .. }))));
-    let output = lower_fir(&bodies, &typed);
-    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeSome { .. })));
-}
-
-#[test]
-fn method_reference_receiver_becomes_explicit_address() {
-    let output = lower(
-        r#"
-        module test.fir_method;
-        struct Point { x: i32; }
-        impl Point {
-            fn get(self: &Point) -> i32 { return self.x; }
-        }
-        fn main() -> i32 {
-            val point = Point{x: 7i32};
-            return point.get();
-        }
-        "#,
-    );
-    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::AddressOf { mutable: false, .. })));
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::Call { args, .. } if !args.is_empty())));
-}
-
-#[test]
-fn defer_call_is_emitted_before_return() {
-    let output = lower(
-        r#"
-        module test.fir_defer;
-        fn cleanup() -> void { return; }
-        fn main() -> i32 {
-            defer cleanup();
-            return 7i32;
-        }
-        "#,
-    );
-    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    let main = output.module.functions.values().find(|f| f.return_type == Ty::Int { signed: true, width: forge_frontend::IntWidth::W32 }).unwrap();
-    let return_block = main.blocks.iter().find(|b| matches!(b.terminator, Some(FirTerminator::Return { .. }))).unwrap();
-    assert!(return_block.instructions.iter().any(|i| matches!(i.kind, FirInstructionKind::Call { .. })));
-}
-
-#[test]
-fn fir_reports_missing_pre_fir_pattern_decision_tree() {
-    let output = lower(
-        r#"
-        module test.fir_match_gap;
-        fn choose(value: bool) -> i32 {
-            return match (value) { true => 1i32, false => 2i32, };
-        }
-        "#,
-    );
-    assert!(output.diagnostics.iter().any(|d| d.code == "fir/pattern-decision-tree-missing"));
-}
-'''
-# BinaryOp is not currently re-exported from root, use ast path in the test.
-tests = tests.replace('type_check_module, BinaryOp,\n', 'type_check_module,\n')
-tests = tests.replace('BinaryOp::', 'forge_frontend::ast::BinaryOp::')
-Path("crates/forge-frontend/tests/fir.rs").write_text(tests)
-
-
-# ---------------------------------------------------------------------------
-# Architecture docs: make the implemented boundary and known pre-FIR gaps
-# explicit so later work does not push semantic reconstruction into FIR.
-# ---------------------------------------------------------------------------
-p = Path("docs/compiler-architecture.md")
-text = p.read_text()
-needle = '''IR should include:
-
-- checked/wrapping arithmetic as distinct operations;'''
-replacement = '''The bootstrap FIR is now implemented in `forge-frontend::fir`. Each HIR expression has a stable body-local `ExprId`, and typed HIR retains exact function signatures, resolved receiver transformations, and named-argument parameter indices. FIR lowering consumes those semantic facts directly; it never matches source spans or re-runs overload/type resolution. FIR includes a verifier that rejects missing terminators, invalid block targets, return-type mismatches, and non-concrete semantic types.
-
-The first lowering slice covers literals, locals/globals, direct and indirect calls, method auto-reference, explicit conversions, aggregates, checked/wrapping arithmetic, short-circuit boolean control flow, safe indexing with explicit bounds checks, assignments/places, `if`, `while`, C-style `for`, `foreach`, `break`/`continue`, `defer`, optional promotion, and `Result` propagation through explicit success/error CFG edges.
-
-FIR deliberately diagnoses rather than guesses when an earlier semantic stage is incomplete. In particular, pattern decision trees, closure-environment semantics, materialized default call arguments, typed context overrides, and typed channel/select operations must be completed before those constructs can cross the FIR boundary.
-
-IR should include:
-
-- checked/wrapping arithmetic as distinct operations;'''
-if needle not in text:
-    raise SystemExit("architecture FIR needle missing")
-text = text.replace(needle, replacement, 1)
-p.write_text(text)
-
-p = Path("docs/frontend-ir.md")
-text = p.read_text()
-text = text.replace(
-    '''FIR does **not** need to be SSA in the first compiler. SSA can later be constructed from FIR as an optimization representation.''',
-    '''FIR does **not** need to be SSA in the first compiler. SSA can later be constructed from FIR as an optimization representation.
-
-The bootstrap implementation uses body-local expression IDs to connect HIR occurrences to typed semantic facts. Function signatures and implicit method receiver transformations are retained in typed HIR, so FIR lowering is not permitted to reconstruct them from syntax. A FIR verifier enforces that concrete types, explicit terminators, valid CFG targets and return types survive the semantic boundary.''',
-    1,
-)
-p.write_text(text)
-
-
-# Add a typechecker regression for semantic facts FIR relies on.
-p = Path("crates/forge-frontend/tests/typecheck.rs")
-text = p.read_text()
-addition = r'''
-
-#[test]
-fn typed_hir_retains_fir_boundary_facts() {
-    let output = check(
-        r#"
-        module test.fir_boundary_facts;
-        struct Point { x: u32; }
-        impl Point { fn get(self: &Point) -> u32 { return self.x; } }
-        nfn combine(left: u32, right: u32) -> u32 { return left + right; }
-        fn maybe(point: Point) -> u32? {
-            val x = combine(:right = 2u32, :left = point.get());
-            return x;
-        }
-        "#,
-    );
-    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    let maybe = output
-        .functions
-        .values()
-        .find(|body| matches!(body.return_type, Ty::Optional { .. }))
-        .expect("maybe body");
-    assert_eq!(maybe.params.len(), 1);
-    assert!(maybe.expressions.iter().all(|expr| expr.id.0 < u32::MAX));
-    assert!(maybe.expressions.iter().any(|expr| matches!(
-        &expr.kind,
-        forge_frontend::TypedExprKind::ResolvedCall {
-            argument_parameters,
-            ..
-        } if argument_parameters == &vec![1, 0]
-    )));
-    assert!(maybe.expressions.iter().any(|expr| matches!(
-        expr.kind,
-        forge_frontend::TypedExprKind::OptionalPromote { .. }
-    )));
-}
-'''
-if "fn typed_hir_retains_fir_boundary_facts()" not in text:
-    text += addition
-p.write_text(text)
-
-print("FIR implementation migration applied")

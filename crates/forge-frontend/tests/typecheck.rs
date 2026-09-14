@@ -1115,3 +1115,38 @@ fn local_consts_are_checked_retained_and_usable_in_array_lengths() {
     );
     assert!(has(&runtime, "const/eval"), "{:?}", runtime.diagnostics);
 }
+
+#[test]
+fn typed_hir_retains_fir_boundary_facts() {
+    let output = check(
+        r#"
+        module test.fir_boundary_facts;
+        struct Point { x: u32; }
+        impl Point { fn get(self: &Point) -> u32 { return self.x; } }
+        nfn combine(left: u32, right: u32) -> u32 { return left + right; }
+        fn maybe(point: Point) -> u32? {
+            val x = combine(:right = 2u32, :left = point.get());
+            return x;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let maybe = output
+        .functions
+        .values()
+        .find(|body| matches!(body.return_type, Ty::Optional { .. }))
+        .expect("maybe body");
+    assert_eq!(maybe.params.len(), 1);
+    assert!(maybe.expressions.iter().all(|expr| expr.id.0 < u32::MAX));
+    assert!(maybe.expressions.iter().any(|expr| matches!(
+        &expr.kind,
+        forge_frontend::TypedExprKind::ResolvedCall {
+            argument_parameters,
+            ..
+        } if argument_parameters == &vec![1, 0]
+    )));
+    assert!(maybe.expressions.iter().any(|expr| matches!(
+        expr.kind,
+        forge_frontend::TypedExprKind::OptionalPromote { .. }
+    )));
+}

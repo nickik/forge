@@ -77,6 +77,12 @@ br %2, bb_true, bb_false
 
 Checks are explicit IR operations so optimizers can prove them redundant without changing source semantics.
 
+The bootstrap FIR is now implemented in `forge-frontend::fir`. Each HIR expression has a stable body-local `ExprId`, and typed HIR retains exact function signatures, resolved receiver transformations, and named-argument parameter indices. FIR lowering consumes those semantic facts directly; it never matches source spans or re-runs overload/type resolution. FIR includes a verifier that rejects missing terminators, invalid block targets, return-type mismatches, and non-concrete semantic types.
+
+The first lowering slice covers literals, locals/globals, direct and indirect calls, method auto-reference, explicit conversions, aggregates, checked/wrapping arithmetic, short-circuit boolean control flow, safe indexing with explicit bounds checks, assignments/places, `if`, `while`, C-style `for`, `foreach`, `break`/`continue`, `defer`, optional promotion, and `Result` propagation through explicit success/error CFG edges.
+
+FIR deliberately diagnoses rather than guesses when an earlier semantic stage is incomplete. In particular, pattern decision trees, closure-environment semantics, materialized default call arguments, typed context overrides, and typed channel/select operations must be completed before those constructs can cross the FIR boundary.
+
 IR should include:
 
 - checked/wrapping arithmetic as distinct operations;

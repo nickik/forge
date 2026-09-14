@@ -2,6 +2,8 @@
 pub mod ast;
 #[path = "body_hir_v1.rs"]
 pub mod body_hir;
+#[path = "fir_v1.rs"]
+pub mod fir;
 #[path = "hir_v1.rs"]
 pub mod hir;
 pub mod lexer;
@@ -13,7 +15,7 @@ pub mod resolution;
 pub mod typecheck;
 
 pub use body_hir::{
-    lower_resolved_bodies, BodyHirOutput, HirBody, HirExpr, HirExprKind, HirGlobalBody,
+    lower_resolved_bodies, BodyHirOutput, ExprId, HirBody, HirExpr, HirExprKind, HirGlobalBody,
     HirLocalDecl, HirPattern, HirPatternKind, HirStmt, HirStmtKind, HirType, HirTypeKind,
 };
 pub use hir::{
@@ -26,6 +28,12 @@ pub use resolution::{
     ResolvedName,
 };
 pub use typecheck::{
-    type_check_module, ConstValue, IntWidth, Ty, TypeCheckOutput, TypeDiagnostic, TypedBody,
-    TypedExpr, TypedExprKind,
+    type_check_module, ConstValue, IntWidth, ResolvedReceiver, Ty, TypeCheckOutput, TypeDiagnostic,
+    TypedBody, TypedExpr, TypedExprKind,
+};
+
+pub use fir::{
+    lower_fir, verify_fir_function, FirBasicBlock, FirBlockId, FirConst, FirDiagnostic,
+    FirFunction, FirGlobal, FirInstruction, FirInstructionKind, FirLocal, FirLocalId, FirModule,
+    FirOutput, FirPlace, FirTerminator, FirUnaryOp, FirValueId, OverflowMode,
 };

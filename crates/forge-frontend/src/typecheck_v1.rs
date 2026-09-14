@@ -5,8 +5,8 @@ use serde::Serialize;
 use crate::{
     ast::{self, BinaryOp, DeclKind, Span, UnaryOp},
     body_hir::{
-        BodyHirOutput, HirBlock, HirCallArg, HirExpr, HirExprKind, HirPattern, HirPatternKind,
-        HirStmt, HirStmtKind, HirType, HirTypeKind, HirTypeRef,
+        BodyHirOutput, ExprId, HirBlock, HirCallArg, HirExpr, HirExprKind, HirPattern,
+        HirPatternKind, HirStmt, HirStmtKind, HirType, HirTypeKind, HirTypeRef,
     },
     hir::{DefId, HirModule, MetadataTable},
     resolution::{LocalId, ResolvedName},
@@ -95,6 +95,7 @@ pub struct TypeDiagnostic {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedExpr {
+    pub id: ExprId,
     pub span: Span,
     pub ty: Ty,
     pub kind: TypedExprKind,
@@ -109,6 +110,8 @@ pub enum TypedExprKind {
     ResolvedCall {
         target: DefId,
         method: bool,
+        receiver: Option<ResolvedReceiver>,
+        argument_parameters: Vec<usize>,
         hir: HirExpr,
     },
     ResolvedTry {
@@ -117,13 +120,25 @@ pub enum TypedExprKind {
         hir: HirExpr,
     },
     OptionalPromote {
-        value: Box<TypedExpr>,
+        source_type: Ty,
+        inner: Box<TypedExprKind>,
+        hir: HirExpr,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResolvedReceiver {
+    Value,
+    SharedReference,
+    MutableReference,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedBody {
     pub owner: DefId,
+    pub params: Vec<(LocalId, Ty)>,
+    pub return_type: Ty,
     pub local_types: BTreeMap<LocalId, Ty>,
     pub local_constants: BTreeMap<LocalId, ConstValue>,
     pub expressions: Vec<TypedExpr>,
@@ -243,7 +258,8 @@ pub fn type_check_module(
             .get(owner)
             .map(|sig| sig.result.clone())
             .unwrap_or(Ty::Unknown);
-        let mut checker = BodyChecker::new(&env, expected_return, &mut output.diagnostics);
+        let mut checker = BodyChecker::new(&env, expected_return.clone(), &mut output.diagnostics);
+        let mut typed_params = Vec::with_capacity(body.params.len());
         for (local, ty) in &body.params {
             let param_ty = env.lower_hir_type(ty);
             if array_type_has_unknown_length(&param_ty) {
@@ -262,13 +278,16 @@ pub fn type_check_module(
                     "type/declaration-default",
                 );
             }
-            checker.local_types.insert(*local, param_ty);
+            checker.local_types.insert(*local, param_ty.clone());
+            typed_params.push((*local, param_ty));
         }
         checker.check_block(&body.block);
         output.functions.insert(
             *owner,
             TypedBody {
                 owner: *owner,
+                params: typed_params,
+                return_type: expected_return,
                 local_types: checker.local_types,
                 local_constants: checker.local_constants,
                 expressions: checker.expressions,
@@ -711,6 +730,14 @@ impl ModuleTypeEnv {
     }
 }
 
+#[derive(Debug, Clone)]
+struct ResolvedCallInfo {
+    target: DefId,
+    method: bool,
+    receiver: Option<ResolvedReceiver>,
+    argument_parameters: Vec<usize>,
+}
+
 struct BodyChecker<'a, 'd> {
     env: &'a ModuleTypeEnv,
     expected_return: Ty,
@@ -922,7 +949,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
     }
 
     fn check_expr(&mut self, expr: &HirExpr, expected: Option<&Ty>) -> Ty {
-        let mut resolved_call: Option<(DefId, bool)> = None;
+        let mut resolved_call: Option<ResolvedCallInfo> = None;
         let mut resolved_try: Option<(Ty, Ty)> = None;
         let mut ty = match &expr.kind {
             HirExprKind::Integer { text } => integer_literal_ty(text),
@@ -981,8 +1008,8 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 self.check_binary(expr.span, *op, left, right, expected)
             }
             HirExprKind::Call { callee, args } => {
-                let (result, target) = self.check_call(expr.span, callee, args);
-                resolved_call = target;
+                let (result, call) = self.check_call(expr.span, callee, args);
+                resolved_call = call;
                 result
             }
             HirExprKind::TypeCall { target, args } => self.check_type_call(expr.span, target, args),
@@ -1112,29 +1139,53 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             HirExprKind::Error => Ty::Error,
         };
 
+        let mut optional_promotion = None;
         if let Some(expected) = expected {
-            if matches!(ty, Ty::IntLiteral | Ty::FloatLiteral | Ty::NoneLiteral)
+            if let Ty::Optional { inner } = expected {
+                if matches!(ty, Ty::NoneLiteral) {
+                    ty = expected.clone();
+                } else if !matches!(ty, Ty::Optional { .. }) && self.is_assignable(inner, &ty) {
+                    let source_type = match &ty {
+                        Ty::IntLiteral | Ty::FloatLiteral => inner.as_ref().clone(),
+                        other => other.clone(),
+                    };
+                    optional_promotion = Some(source_type);
+                    ty = expected.clone();
+                }
+            } else if matches!(ty, Ty::IntLiteral | Ty::FloatLiteral | Ty::NoneLiteral)
                 && self.is_assignable(expected, &ty)
             {
                 ty = expected.clone();
             }
         }
-        let kind = if let Some((source_error, target_error)) = resolved_try {
+        let base_kind = if let Some((source_error, target_error)) = resolved_try {
             TypedExprKind::ResolvedTry {
                 source_error,
                 target_error,
                 hir: expr.clone(),
             }
-        } else if let Some((target, method)) = resolved_call {
+        } else if let Some(call) = resolved_call {
             TypedExprKind::ResolvedCall {
-                target,
-                method,
+                target: call.target,
+                method: call.method,
+                receiver: call.receiver,
+                argument_parameters: call.argument_parameters,
                 hir: expr.clone(),
             }
         } else {
             TypedExprKind::Source { hir: expr.clone() }
         };
+        let kind = if let Some(source_type) = optional_promotion {
+            TypedExprKind::OptionalPromote {
+                source_type,
+                inner: Box::new(base_kind),
+                hir: expr.clone(),
+            }
+        } else {
+            base_kind
+        };
         self.expressions.push(TypedExpr {
+            id: expr.id,
             span: expr.span,
             ty: ty.clone(),
             kind,
@@ -1448,26 +1499,52 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         span: Span,
         callee: &HirExpr,
         args: &[HirCallArg],
-    ) -> (Ty, Option<(DefId, bool)>) {
+    ) -> (Ty, Option<ResolvedCallInfo>) {
         if let HirExprKind::Member { base, name } = &callee.kind {
             let receiver_ty = self.check_expr(base, None);
             if let Some((method_id, sig)) = self.env.lookup_method(&receiver_ty, name) {
                 let sig = sig.clone();
                 self.check_method_receiver(base, &receiver_ty, &sig);
+                let receiver = match sig.params.first().map(|param| &param.ty) {
+                    Some(Ty::Reference { mutable: true, .. }) => {
+                        Some(ResolvedReceiver::MutableReference)
+                    }
+                    Some(Ty::Reference { mutable: false, .. }) => {
+                        Some(ResolvedReceiver::SharedReference)
+                    }
+                    Some(_) => Some(ResolvedReceiver::Value),
+                    None => None,
+                };
                 let reduced = FunctionSig {
                     params: sig.params.iter().skip(1).cloned().collect(),
                     result: sig.result.clone(),
                     named_arguments: sig.named_arguments,
                 };
-                self.check_function_args(span, &reduced, args);
-                return (sig.result, Some((method_id, true)));
+                let argument_parameters = self.check_function_args(span, &reduced, args);
+                return (
+                    sig.result,
+                    Some(ResolvedCallInfo {
+                        target: method_id,
+                        method: true,
+                        receiver,
+                        argument_parameters,
+                    }),
+                );
             }
         }
         if let HirExprKind::Name { reference } = &callee.kind {
             if let ResolvedName::Def(id) = reference.root {
                 if let Some(sig) = self.env.functions.get(&id).cloned() {
-                    self.check_function_args(span, &sig, args);
-                    return (sig.result, Some((id, false)));
+                    let argument_parameters = self.check_function_args(span, &sig, args);
+                    return (
+                        sig.result,
+                        Some(ResolvedCallInfo {
+                            target: id,
+                            method: false,
+                            receiver: None,
+                            argument_parameters,
+                        }),
+                    );
                 }
             }
         }
@@ -1552,7 +1629,12 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         }
     }
 
-    fn check_function_args(&mut self, span: Span, sig: &FunctionSig, args: &[HirCallArg]) {
+    fn check_function_args(
+        &mut self,
+        span: Span,
+        sig: &FunctionSig,
+        args: &[HirCallArg],
+    ) -> Vec<usize> {
         let named = args.iter().any(|a| matches!(a, HirCallArg::Named { .. }));
         if named {
             if !sig.named_arguments {
@@ -1561,9 +1643,10 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     "call/unknown-name",
                     "named arguments require an nfn declaration",
                 );
-                return;
+                return Vec::new();
             }
             let mut seen = BTreeSet::new();
+            let mut argument_parameters = Vec::with_capacity(args.len());
             for arg in args {
                 let HirCallArg::Named { name, value } = arg else {
                     continue;
@@ -1576,7 +1659,10 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     );
                     continue;
                 }
-                if let Some(param) = sig.params.iter().find(|p| p.name == *name) {
+                if let Some((parameter, param)) =
+                    sig.params.iter().enumerate().find(|(_, p)| p.name == *name)
+                {
+                    argument_parameters.push(parameter);
                     let actual = self.check_expr(value, Some(&param.ty));
                     self.require_assignable(value.span, &param.ty, &actual, "type/mismatch");
                 } else {
@@ -1596,6 +1682,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     );
                 }
             }
+            argument_parameters
         } else {
             for (index, arg) in args.iter().enumerate() {
                 let value = arg_value(arg);
@@ -1606,17 +1693,16 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     self.diagnostic(value.span, "call/arity", "too many arguments");
                 }
             }
-            let required = sig.params.iter().filter(|p| !p.has_default).count();
-            if args.len() < required {
-                self.diagnostic(
-                    span,
-                    "call/arity",
-                    format!(
-                        "expected at least {required} arguments, found {}",
-                        args.len()
-                    ),
-                );
+            for param in sig.params.iter().skip(args.len()) {
+                if !param.has_default {
+                    self.diagnostic(
+                        span,
+                        "call/missing-argument",
+                        format!("missing required argument `{}`", param.name),
+                    );
+                }
             }
+            (0..args.len().min(sig.params.len())).collect()
         }
     }
 

@@ -116,6 +116,8 @@ Important distinct operations should include:
 
 FIR does **not** need to be SSA in the first compiler. SSA can later be constructed from FIR as an optimization representation.
 
+The bootstrap implementation uses body-local expression IDs to connect HIR occurrences to typed semantic facts. Function signatures and implicit method receiver transformations are retained in typed HIR, so FIR lowering is not permitted to reconstruct them from syntax. A FIR verifier enforces that concrete types, explicit terminators, valid CFG targets and return types survive the semantic boundary.
+
 ## Parser technology
 
 Initial implementation uses:
