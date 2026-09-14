@@ -11,6 +11,8 @@ Forge `core` supports both:
 
 Neither is a language primitive and neither requires a process-global heap.
 
+The public allocation discipline is explicit: ordinary values do not retain allocator capabilities merely so future operations can allocate. A caller passes the relevant allocator to each operation that allocates, resizes, or frees durable memory.
+
 ## 2. Provider capability boundary
 
 Forge does not require traits/interfaces for allocator polymorphism. The provider boundary is explicit data:
@@ -47,9 +49,11 @@ Arena
 
 The algorithms above the capability boundary must not depend on which provider is selected.
 
+`Arena`, `Allocator`, `ObjectCache`, slab allocators, and explicit pool/memory-domain managers are themselves memory-management objects. They may retain lower-level provider capability state because implementing a memory domain is their purpose. This is distinct from an ordinary collection, string, buffer, parser result, or application value retaining an allocator for later convenience.
+
 ## 3. Variable-sized Allocator
 
-The general allocator is also an explicit capability object:
+The general allocator is an explicit capability object:
 
 ```forge
 pub struct AllocatorOps {
@@ -74,6 +78,46 @@ large requests -> direct Arena extents
 ```
 
 but this is allocator policy, not part of the `Allocator` ABI.
+
+### 3.1 Call-site allocation rule
+
+The allocator is supplied to the operation that actually needs it:
+
+```forge
+list_u8_push(&mut bytes, &mut allocator, value)?;
+list_u8_try_reserve(&mut bytes, &mut allocator, 4096)?;
+list_u8_destroy(&mut bytes, &mut allocator);
+```
+
+The collection contains its own backing block and metadata but not the allocator capability:
+
+```forge
+pub struct ListU8 {
+    block: MemoryBlock?;
+    len: usize;
+    capacity: usize;
+}
+```
+
+Operations that cannot allocate or free do not take the allocator.
+
+There is no fallback to a process-global allocator, thread-local allocator, `context.scratch`, libc heap, or an allocator remembered during construction.
+
+### 3.2 Allocation provenance
+
+A `MemoryBlock` remains associated with the allocator domain that produced it even though the owning collection does not store that allocator capability.
+
+The caller is responsible for supplying the same allocator domain for later `resize` and `free`. A different allocator instance may be used only when its provider explicitly documents that it belongs to the same compatible allocation domain and accepts those blocks.
+
+This contract has several consequences:
+
+- moving a collection transfers the obligation to use a compatible allocator for its backing blocks;
+- swapping collection values does not change block provenance;
+- a collection may receive different compatible allocator handles across operations, but incompatible allocator domains are invalid;
+- debug/reference providers should detect wrong-domain resize/free when practical;
+- allocation failure during growth must leave the original block owned by its original domain and the collection valid.
+
+The collection deliberately does not spend a word retaining allocator identity. Provenance is an API/lifetime responsibility, with optional debug validation by allocator implementations.
 
 ## 4. Fixed-size ObjectCache
 
@@ -106,7 +150,9 @@ stride = align_up(object_size, object_align)
 objects_per_slab = slab_size / stride
 ```
 
-When the free set is empty, the cache requests a new slab from its `Arena` using the caller's wait policy. Completely unused slabs may later be returned to the `Arena` during explicit reclaim.
+When the free set is empty, the cache requests a new slab from its retained backing `Arena` using the caller's wait policy. Completely unused slabs may later be returned to the `Arena` during explicit reclaim.
+
+`ObjectCache` is an explicit memory-domain manager, so retaining its backing Arena capability is intentional and does not weaken the ordinary-value explicit-allocator rule.
 
 ## 5. Wait policy
 
@@ -131,7 +177,7 @@ Primitive allocation never automatically invokes panic. Kernel code can therefor
 
 ## 7. Kernel/user reuse
 
-The essential design requirement is not merely source compatibility: the **same cache algorithm** must run over both kernel-like and hosted-like providers.
+The essential design requirement is not merely source compatibility: the **same allocation and collection algorithms** must run over both kernel-like and hosted-like providers.
 
 Reference tests therefore instantiate equivalent provider capabilities with different identities and run the same sequences against each:
 
@@ -148,6 +194,8 @@ observe provider reclaim calls
 
 Any semantic difference caused only by provider identity is a bug in `core`.
 
+Ordinary library call sites still pass allocators explicitly in both environments; hosted execution does not gain an implicit allocator shortcut.
+
 ## 8. Deterministic reference model
 
 Until the Forge bootstrap can execute all required raw-pointer mutation and private allocator state, CForge contains an executable semantic model of:
@@ -162,11 +210,13 @@ The model represents addresses as integer tokens and deliberately contains no ho
 
 Once the language implementations support the complete Forge allocator source, the same behavioral fixtures must be run against the real `core.fg` implementation and then against bare-metal/QEMU providers.
 
+CForge bootstrap raw-storage helpers must not define a different public ownership model for collections. They are implementation scaffolding only.
+
 ## 9. Concurrency
 
 The initial contract contains no hidden lock. Correct single-threaded/provider semantics come first.
 
-Later scalable implementations may introduce:
+Later scalable allocator implementations may introduce:
 
 ```text
 per-CPU/per-thread magazine
@@ -175,17 +225,24 @@ per-CPU/per-thread magazine
         -> Arena
 ```
 
+That remains internal allocator policy. It does not create a thread-local/default allocator visible to ordinary allocating APIs.
+
 Provider/environment synchronization policy must remain outside the basic allocation ABI.
 
 ## 10. ECS relationship
 
 The allocator is **data-oriented and ECS-compatible**, not an ECS itself. Homogeneous storage, predictable object sizes and bulk lifecycle are common ideas; entity identity, component composition, archetypes, queries and systems are intentionally absent.
 
+An ECS `World` may be an explicit memory-domain manager if that is part of its defined architecture, but ordinary collection fields within it still do not implicitly acquire a global allocator policy. APIs that operate on ordinary collections follow the explicit allocator contract.
+
 ## 11. Test gates before Cosmic kernel work
 
 Before Cosmic relies on this layer, the following must be green:
 
 - provider dispatch is explicit and source-contract tested;
+- ordinary collections/owning values contain no retained allocator capability;
+- every durable allocate/grow/free API exposes allocator use in its signature;
+- wrong-domain resize/free is detected by reference/debug providers where practical;
 - kernel-like and hosted-like providers pass identical behavioral tests;
 - arbitrary-size allocation works across varied sizes/alignment;
 - OOM is returned, not panicked;
