@@ -1,0 +1,143 @@
+{
+  :suite :forge/freestanding
+  :version 1
+  :status :normative-future
+  :tests [
+    {
+      :id :nostd/core-available
+      :kind :build
+      :flags ["--no-std"]
+      :expect :success
+      :requires [:module-graph]
+    }
+    {
+      :id :nostd/std-unavailable
+      :kind :build
+      :flags ["--no-std"]
+      :imports [std]
+      :expect :link/std-unavailable
+      :requires [:module-graph]
+    }
+    {
+      :id :panic/custom-provider
+      :kind :link
+      :flags ["--no-std"]
+      :provider :custom-panic
+      :expect :success
+      :requires [:runtime-abi]
+    }
+    {
+      :id :panic/missing-provider
+      :kind :link
+      :flags ["--no-std"]
+      :uses-defined-traps true
+      :expect :link/panic-provider-missing
+      :requires [:runtime-abi]
+    }
+    {
+      :id :panic/non-returning
+      :kind :runtime
+      :flags ["--no-std"]
+      :provider :test-panic-recorder
+      :trigger :explicit-panic
+      :expect :panic/never-returns
+      :requires [:runtime-abi :execution]
+    }
+    {
+      :id :panic/bounds-kind
+      :kind :runtime
+      :flags ["--no-std"]
+      :provider :test-panic-recorder
+      :trigger :bounds
+      :expect-kind :Bounds
+      :requires [:runtime-abi :arrays :execution]
+    }
+    {
+      :id :panic/overflow-kind
+      :kind :runtime
+      :flags ["--no-std"]
+      :provider :test-panic-recorder
+      :trigger :integer-overflow
+      :expect-kind :IntegerOverflow
+      :requires [:runtime-abi :execution]
+    }
+    {
+      :id :panic/divide-zero-kind
+      :kind :runtime
+      :flags ["--no-std"]
+      :provider :test-panic-recorder
+      :trigger :divide-by-zero
+      :expect-kind :DivideByZero
+      :requires [:runtime-abi :execution]
+    }
+    {
+      :id :panic/invalid-shift-kind
+      :kind :runtime
+      :flags ["--no-std"]
+      :provider :test-panic-recorder
+      :trigger :invalid-shift
+      :expect-kind :InvalidShift
+      :requires [:runtime-abi :execution]
+    }
+    {
+      :id :panic/no-unwind
+      :kind :runtime
+      :flags ["--no-std"]
+      :trigger :panic-inside-defer-scope
+      :expect :panic/no-unwind
+      :requires [:runtime-abi :defer :execution]
+    }
+    {
+      :id :alloc/failure-is-result
+      :kind :runtime
+      :flags ["--no-std"]
+      :provider :failing-arena
+      :operation :alloc
+      :expect :AllocError/OutOfMemory
+      :forbid [:panic]
+      :requires [:allocator :execution]
+    }
+    {
+      :id :alloc/arbitrary-size
+      :kind :runtime
+      :flags ["--no-std"]
+      :provider :test-arena
+      :sizes [1 3 7 16 31 64 255 4096 65537]
+      :expect :success
+      :requires [:allocator :execution]
+    }
+    {
+      :id :alloc/realloc-preserves-prefix
+      :kind :runtime
+      :flags ["--no-std"]
+      :provider :test-arena
+      :expect :success
+      :requires [:allocator :execution]
+    }
+    {
+      :id :object-cache/fixed-size
+      :kind :runtime
+      :flags ["--no-std"]
+      :provider :test-arena
+      :object-size 64
+      :object-align 16
+      :expect :success
+      :requires [:object-cache :execution]
+    }
+    {
+      :id :object-cache/reclaim
+      :kind :runtime
+      :flags ["--no-std"]
+      :provider :test-arena
+      :expect :returns-empty-slabs
+      :requires [:object-cache :execution]
+    }
+    {
+      :id :allocator/same-algorithm-two-providers
+      :kind :differential-runtime
+      :providers [:kernel-like-arena :hosted-like-arena]
+      :expect :same-observable-allocation-semantics
+      :requires [:allocator :execution]
+    }
+  ]
+}
