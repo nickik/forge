@@ -19,6 +19,38 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Normalize call-argument migration match
+        run: |
+          python3 -B - <<'PY'
+          from pathlib import Path
+          path = Path("crates/forge-frontend/src/typecheck_v1.rs")
+          text = path.read_text()
+          old = '''            let required = sig.params.iter().filter(|p| !p.has_default).count();
+                      if args.len() < required {
+                          self.diagnostic(
+                              span,
+                              "call/arity",
+                              format!(
+                                  "expected at least {required} arguments, found {}",
+                                  args.len()
+                              ),
+                          );
+                      }
+          '''
+          new = '''            for param in sig.params.iter().skip(args.len()) {
+                          if !param.has_default {
+                              self.diagnostic(
+                                  span,
+                                  "call/missing-argument",
+                                  format!("missing required argument `{}`", param.name),
+                              );
+                          }
+                      }
+          '''
+          if old not in text:
+              raise SystemExit("current positional-argument tail not found")
+          path.write_text(text.replace(old, new, 1))
+          PY
       - name: Apply FIR implementation
         run: python3 -B scripts/fir_impl_once.py
       - run: cargo fmt --all
