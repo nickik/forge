@@ -163,6 +163,10 @@ pub enum FirInstructionKind {
         base: FirValueId,
         index: FirValueId,
     },
+    Subsequence {
+        base: FirValueId,
+        start: u64,
+    },
     AddressOf {
         place: FirPlace,
         mutable: bool,
@@ -1212,26 +1216,50 @@ impl<'a> FunctionLowerer<'a> {
         let join = self.new_block();
 
         for (arm, planned) in arms.iter().zip(&plan.arms) {
-            let arm_entry = self.new_block();
             let next_arm = self.new_block();
-            let condition = self.lower_match_condition(
-                arm.pattern.span,
-                scrutinee,
-                &plan.scrutinee_type,
-                &planned.condition,
-            );
-            if let Some(condition) = condition {
-                self.terminate(FirTerminator::Branch {
-                    condition,
-                    then_block: arm_entry,
-                    else_block: next_arm,
-                });
+            let matched_entry = self.new_block();
+            if planned.alternatives.is_empty() {
+                self.terminate(FirTerminator::Goto { target: next_arm });
             } else {
-                self.terminate(FirTerminator::Goto { target: arm_entry });
+                for (index, alternative) in planned.alternatives.iter().enumerate() {
+                    let binding_entry = self.new_block();
+                    let false_target = if index + 1 == planned.alternatives.len() {
+                        next_arm
+                    } else {
+                        self.new_block()
+                    };
+                    let condition = self.lower_match_condition(
+                        arm.pattern.span,
+                        scrutinee,
+                        &plan.scrutinee_type,
+                        &alternative.condition,
+                    );
+                    if let Some(condition) = condition {
+                        self.terminate(FirTerminator::Branch {
+                            condition,
+                            then_block: binding_entry,
+                            else_block: false_target,
+                        });
+                    } else {
+                        self.terminate(FirTerminator::Goto {
+                            target: binding_entry,
+                        });
+                    }
+
+                    self.switch_to(binding_entry);
+                    self.lower_match_bindings(arm.pattern.span, scrutinee, &alternative.bindings);
+                    if !self.terminated() {
+                        self.terminate(FirTerminator::Goto {
+                            target: matched_entry,
+                        });
+                    }
+                    if index + 1 != planned.alternatives.len() {
+                        self.switch_to(false_target);
+                    }
+                }
             }
 
-            self.switch_to(arm_entry);
-            self.lower_match_bindings(arm.pattern.span, scrutinee, &planned.bindings);
+            self.switch_to(matched_entry);
             if let Some(guard) = &arm.guard {
                 let guard_value = self.lower_expr(guard);
                 let body_entry = self.new_block();
@@ -1293,63 +1321,136 @@ impl<'a> FunctionLowerer<'a> {
     ) -> Option<FirValueId> {
         match condition {
             MatchCondition::Always => None,
+            MatchCondition::Never => Some(self.emit_value(
+                span,
+                Ty::Bool,
+                FirInstructionKind::Const {
+                    value: FirConst::Bool { value: false },
+                },
+            )),
             MatchCondition::Test { projections, test } => {
                 let value = self.lower_match_projection(span, scrutinee, projections);
                 let value_ty = projections
                     .last()
                     .map(|projection| match projection {
                         MatchProjection::OptionPayload { ty }
-                        | MatchProjection::Field { ty, .. } => ty.clone(),
+                        | MatchProjection::Field { ty, .. }
+                        | MatchProjection::Index { ty, .. }
+                        | MatchProjection::Rest { ty, .. } => ty.clone(),
                     })
                     .unwrap_or_else(|| scrutinee_ty.clone());
                 Some(self.lower_match_test(span, value, &value_ty, test))
             }
             MatchCondition::All { conditions } => {
-                let mut combined = None;
-                for condition in conditions {
-                    let Some(value) =
-                        self.lower_match_condition(span, scrutinee, scrutinee_ty, condition)
-                    else {
-                        continue;
-                    };
-                    combined = Some(match combined {
-                        None => value,
-                        Some(left) => self.emit_value(
-                            span,
-                            Ty::Bool,
-                            FirInstructionKind::Binary {
-                                op: BinaryOp::LogicalAnd,
-                                overflow: None,
-                                left,
-                                right: value,
-                            },
-                        ),
-                    });
-                }
-                combined
+                self.lower_match_condition_list(span, scrutinee, scrutinee_ty, conditions, true)
             }
             MatchCondition::Any { conditions } => {
-                let mut combined = None;
-                for condition in conditions {
-                    let value =
-                        self.lower_match_condition(span, scrutinee, scrutinee_ty, condition)?;
-                    combined = Some(match combined {
-                        None => value,
-                        Some(left) => self.emit_value(
-                            span,
-                            Ty::Bool,
-                            FirInstructionKind::Binary {
-                                op: BinaryOp::LogicalOr,
-                                overflow: None,
-                                left,
-                                right: value,
-                            },
-                        ),
-                    });
-                }
-                combined
+                self.lower_match_condition_list(span, scrutinee, scrutinee_ty, conditions, false)
             }
         }
+    }
+
+    fn lower_match_condition_list(
+        &mut self,
+        span: Span,
+        scrutinee: FirValueId,
+        scrutinee_ty: &Ty,
+        conditions: &[MatchCondition],
+        all: bool,
+    ) -> Option<FirValueId> {
+        let mut terminal_block = None;
+        let mut join_block = None;
+        let mut result_local = None;
+        let mut saw_test = false;
+
+        for condition in conditions {
+            let condition = self.lower_match_condition(span, scrutinee, scrutinee_ty, condition);
+            let Some(condition) = condition else {
+                if all {
+                    continue;
+                }
+                return None;
+            };
+            saw_test = true;
+            let terminal = *terminal_block.get_or_insert_with(|| self.new_block());
+            let join = *join_block.get_or_insert_with(|| self.new_block());
+            let local = *result_local.get_or_insert_with(|| self.synthetic_local(Ty::Bool));
+            let next = self.new_block();
+            self.terminate(if all {
+                FirTerminator::Branch {
+                    condition,
+                    then_block: next,
+                    else_block: terminal,
+                }
+            } else {
+                FirTerminator::Branch {
+                    condition,
+                    then_block: terminal,
+                    else_block: next,
+                }
+            });
+            self.switch_to(next);
+            let _ = (join, local);
+        }
+
+        if !saw_test {
+            return if all {
+                None
+            } else {
+                Some(self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::Const {
+                        value: FirConst::Bool { value: false },
+                    },
+                ))
+            };
+        }
+
+        let terminal = terminal_block.expect("match condition terminal block");
+        let join = join_block.expect("match condition join block");
+        let local = result_local.expect("match condition result local");
+        let fallthrough_value = self.emit_value(
+            span,
+            Ty::Bool,
+            FirInstructionKind::Const {
+                value: FirConst::Bool { value: all },
+            },
+        );
+        self.emit_void(
+            span,
+            FirInstructionKind::Store {
+                place: FirPlace::Local { local },
+                value: fallthrough_value,
+            },
+        );
+        self.terminate(FirTerminator::Goto { target: join });
+
+        self.switch_to(terminal);
+        let terminal_value = self.emit_value(
+            span,
+            Ty::Bool,
+            FirInstructionKind::Const {
+                value: FirConst::Bool { value: !all },
+            },
+        );
+        self.emit_void(
+            span,
+            FirInstructionKind::Store {
+                place: FirPlace::Local { local },
+                value: terminal_value,
+            },
+        );
+        self.terminate(FirTerminator::Goto { target: join });
+
+        self.switch_to(join);
+        Some(self.emit_value(
+            span,
+            Ty::Bool,
+            FirInstructionKind::Load {
+                place: FirPlace::Local { local },
+            },
+        ))
     }
 
     fn lower_match_test(
@@ -1447,6 +1548,32 @@ impl<'a> FunctionLowerer<'a> {
                     name: name.clone(),
                 },
             ),
+            MatchTest::Length { count, at_least } => {
+                let len = self.emit_value(span, usize_ty(), FirInstructionKind::Len { value });
+                let expected = self.emit_value(
+                    span,
+                    usize_ty(),
+                    FirInstructionKind::Const {
+                        value: FirConst::Integer {
+                            text: count.to_string(),
+                        },
+                    },
+                );
+                self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::Binary {
+                        op: if *at_least {
+                            BinaryOp::GreaterEq
+                        } else {
+                            BinaryOp::Eq
+                        },
+                        overflow: None,
+                        left: len,
+                        right: expected,
+                    },
+                )
+            }
         }
     }
 
@@ -1479,6 +1606,30 @@ impl<'a> FunctionLowerer<'a> {
                     FirInstructionKind::ExtractField {
                         base: value,
                         field: name.clone(),
+                    },
+                ),
+                MatchProjection::Index { index, ty } => {
+                    let index = self.emit_value(
+                        span,
+                        usize_ty(),
+                        FirInstructionKind::Const {
+                            value: FirConst::Integer {
+                                text: index.to_string(),
+                            },
+                        },
+                    );
+                    self.emit_value(
+                        span,
+                        ty.clone(),
+                        FirInstructionKind::IndexUnchecked { base: value, index },
+                    )
+                }
+                MatchProjection::Rest { start, ty } => self.emit_value(
+                    span,
+                    ty.clone(),
+                    FirInstructionKind::Subsequence {
+                        base: value,
+                        start: *start,
                     },
                 ),
             };
@@ -2135,6 +2286,13 @@ fn first_positional(args: &[HirCallArg]) -> Option<&HirExpr> {
 fn arg_value(arg: &HirCallArg) -> &HirExpr {
     match arg {
         HirCallArg::Positional { value } | HirCallArg::Named { value, .. } => value,
+    }
+}
+
+fn usize_ty() -> Ty {
+    Ty::Int {
+        signed: false,
+        width: IntWidth::Pointer,
     }
 }
 
