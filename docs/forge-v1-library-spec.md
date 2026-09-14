@@ -1,7 +1,7 @@
 # Forge v1 Library and Execution Environment Specification
 
 **Status:** v1 design baseline.  
-**Relationship to the language:** this document specifies the standard library layers, compilation-unit model, runtime ABI boundary, and hosted/freestanding execution environments. It does **not** add new Forge language syntax.
+**Relationship to the language:** this document specifies the standard library layers, compilation-unit model, runtime ABI boundary, allocation discipline, and hosted/freestanding execution environments. It does **not** add new Forge language syntax.
 
 ## 1. Standard library layers
 
@@ -39,6 +39,7 @@ core.intrusive
 core.layout
 core.io
 core.target
+core.hash
 ```
 
 These libraries may depend on `core`; `core.sync` may additionally depend on `core.atomic`. They must not depend on hosted `std`, libc, Cosmic, a scheduler, a default heap, or platform services that are not passed explicitly or represented by a compiler/runtime primitive.
@@ -57,7 +58,9 @@ The shipped bootstrap files live under `lib/freestanding/`, but source compatibi
 
 ## 3. `std`
 
-`std` imports and builds on `core`. It may rely on a target's hosted platform contract and can provide startup, terminal/stream I/O, filesystems, networking, clocks, entropy, OS threads, process services, and a hosted allocator implementation.
+`std` imports and builds on `core`. It may rely on a target's hosted platform contract and can provide startup, terminal/stream I/O, filesystems, networking, clocks, entropy, OS threads, process services, and hosted allocator providers.
+
+`std` may provide convenient constructors for allocators, arenas, pools, or application memory domains. It does **not** establish a hidden process-global allocator for ordinary library APIs.
 
 An API belongs in `core`, not `std`, when its semantics can be implemented without assuming hosted services and all required resources can be supplied explicitly.
 
@@ -152,7 +155,73 @@ Forge v1 bootstrap defines no broad implicit standard-library prelude. Primitive
 
 Forge v1 has no language-level global allocator and no implicit `malloc` operation.
 
-Durable allocation requires an explicit allocator or owning object. The common allocator interfaces and object-cache algorithms belong in `core` so they can be shared between kernels and hosted programs.
+### 10.1 Explicit allocator rule
+
+For standard-library and ordinary application data structures, **every operation that allocates, reallocates, grows, clones owning storage, or frees durable memory must receive the allocator capability explicitly as a parameter at the call site**.
+
+This is the default and normative Forge v1 allocation discipline.
+
+Examples:
+
+```forge
+list_u8_push(&mut bytes, &mut allocator, value)?;
+hash_map_string_u64_put(&mut map, &mut allocator, key, value)?;
+list_u8_destroy(&mut bytes, &mut allocator);
+```
+
+Operations that provably cannot allocate or free do not take an allocator:
+
+```forge
+list_u8_len(&bytes);
+list_u8_get(&bytes, index);
+hash_map_string_u64_contains(&map, key);
+```
+
+### 10.2 Collections and ordinary owning values do not retain allocators
+
+Generated collections and ordinary owning standard-library values **must not contain `Allocator`, `&Allocator`, or `&mut Allocator` fields merely so future operations can allocate**.
+
+For example, this is the required shape:
+
+```forge
+pub struct ListU8 {
+    block: MemoryBlock?;
+    len: usize;
+    capacity: usize;
+}
+```
+
+and not:
+
+```forge
+pub struct ListU8 {
+    allocator: &mut Allocator; // forbidden for ordinary collection ownership
+    ...
+}
+```
+
+The same rule applies to `List*`, dynamic strings, `HashSet*`, `HashMap*`, deques, trees, priority queues, and similar standard-library containers.
+
+A specialized memory-management object such as an `Allocator`, `Arena`, slab allocator, object cache, or explicitly named memory-domain manager may itself retain backing-provider capabilities as part of implementing that memory domain. This exception does **not** turn normal data structures into allocator-owning wrappers.
+
+### 10.3 No default/global allocator fallback
+
+An allocating standard-library operation must not silently fall back to:
+
+- a process-global allocator;
+- a thread-local allocator;
+- `context.scratch`;
+- libc `malloc`;
+- a hosted runtime heap;
+- an allocator stored earlier in the collection.
+
+If an API allocates durable memory, the allocator must be visible in that operation's signature.
+
+Temporary scratch allocation remains a separate, non-escaping facility and cannot be used to satisfy durable ownership.
+
+### 10.4 General allocator architecture
+
+The common allocator interfaces and object-cache algorithms belong in `core` so they can be shared between kernels and hosted programs.
 
 Forge supports both general variable-sized allocation and fixed-size object caches. Variable-sized allocation is the explicit Forge equivalent of the traditional malloc workload; fixed-size caches optimize known object shapes and may also be used internally as size classes by a general allocator.
 
@@ -189,6 +258,8 @@ Kernel/user divergence belongs at explicit provider boundaries such as:
 - memory-pressure notification;
 - panic/diagnostic sink;
 - platform I/O.
+
+The explicit allocator call-site rule is identical in kernel and user mode.
 
 ## 13. Freestanding panic contract
 
