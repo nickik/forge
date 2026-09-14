@@ -4,13 +4,15 @@
 
 - [Forge v1 Language Specification](forge-v1-spec.md) — source syntax and semantics.
 - [Forge v1 Library and Execution Environment Specification](forge-v1-library-spec.md) — `core`, `std`, freestanding/hosted builds, runtime ABI boundary, and compilation-unit model.
+- [Forge Runtime ABI](runtime-abi.md) — canonical panic/trap provider contract for hosted and freestanding final artifacts.
 - [FDN v1 Specification](fdn-v1-spec.md) — universal structured-data notation.
 - [Compatibility Contract](compatibility.md) — what v1 promises long-term.
 
 ## Standard library design
 
 - [Library Model](library-model.md) — design rationale and bootstrap module/library graph.
-- [Core Library](core-library.md) — freestanding facilities and allocator/object-cache architecture shared by kernel and user mode.
+- [Core Library](core-library.md) — freestanding facilities shared by kernel and user mode.
+- [Core Allocation Architecture](core-allocation.md) — variable-sized allocators, fixed-size object caches, arenas, reclaim, and kernel/user reuse.
 
 ## Implementation
 
