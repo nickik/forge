@@ -35,6 +35,16 @@ jobs:
               """        ExprKind::Annotated { value, .. } => validate_expr(value, diagnostics),\\n""",
               "",
           )
+          replace_once(
+              "crates/forge-frontend/src/resolution_v1.rs",
+              """            TypeKind::Pointer { inner, .. }\\n            | TypeKind::Reference { inner, .. }\\n            | TypeKind::Optional { inner }\\n            | TypeKind::Annotated { inner, .. } => self.resolve_type(inner),\\n""",
+              """            TypeKind::Pointer { inner, .. }\\n            | TypeKind::Reference { inner, .. }\\n            | TypeKind::Optional { inner } => self.resolve_type(inner),\\n""",
+          )
+          replace_once(
+              "crates/forge-frontend/src/resolution_v1.rs",
+              """            ExprKind::Unary { value, .. }\\n            | ExprKind::Try { value }\\n            | ExprKind::Annotated { value, .. } => self.resolve_expr(value),\\n""",
+              """            ExprKind::Unary { value, .. } | ExprKind::Try { value } => {\\n                self.resolve_expr(value)\\n            }\\n""",
+          )
 
           '''
           if insertion not in text:
