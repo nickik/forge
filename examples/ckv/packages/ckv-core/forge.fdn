@@ -9,5 +9,9 @@
     }
   }
 
-  :dependencies {}
+  :dependencies {
+    :forge-collections {
+      :path "../../../../packages/forge-collections"
+    }
+  }
 }
