@@ -784,3 +784,86 @@ fn nested_execution_context_restores_in_lifo_order() {
         ]
     );
 }
+
+#[test]
+fn select_lowers_to_runtime_select_cfg_with_payload_binding() {
+    let output = lower(
+        r#"
+        module test.fir_select;
+        struct Job { value: u32; }
+        struct Jobs { marker: u8; }
+        impl Jobs {
+            fn recv(self: &Jobs) -> Job { return Job{value: 1u32}; }
+        }
+        fn worker(jobs: &Jobs) -> void {
+            select {
+                recv jobs -> Job{value} => { val copy: u32 = value; }
+                timeout #duration "100ms" => { }
+            }
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let worker = output
+        .module
+        .functions
+        .values()
+        .find(|f| {
+            f.blocks
+                .iter()
+                .any(|b| matches!(b.terminator, Some(FirTerminator::Select { .. })))
+        })
+        .expect("worker select FIR");
+    let select = worker
+        .blocks
+        .iter()
+        .find_map(|block| match &block.terminator {
+            Some(FirTerminator::Select { operation, cases }) => Some((*operation, cases)),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(select.0, forge_frontend::RuntimeOperationId::SelectWait);
+    assert_eq!(select.1.len(), 2);
+    assert!(matches!(
+        select.1[0],
+        forge_frontend::FirSelectCase::Receive {
+            operation: forge_frontend::RuntimeOperationId::ChannelReceive,
+            ..
+        }
+    ));
+    assert!(matches!(
+        select.1[1],
+        forge_frontend::FirSelectCase::Timeout {
+            operation: forge_frontend::RuntimeOperationId::SelectTimeout,
+            ..
+        }
+    ));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Const { value: forge_frontend::FirConst::Duration { value } }
+            if value == "100ms"
+    )));
+}
+
+#[test]
+fn selected_receive_struct_pattern_binds_exact_payload_fields() {
+    let output = lower(
+        r#"
+        module test.fir_select_pattern;
+        struct Job { value: u32; }
+        struct Jobs { marker: u8; }
+        impl Jobs {
+            fn recv(self: &Jobs) -> Job { return Job{value: 1u32}; }
+        }
+        fn worker(jobs: &Jobs) -> void {
+            select {
+                recv jobs -> Job{value} => { val copy: u32 = value; }
+            }
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(
+        |op| matches!(op, FirInstructionKind::ExtractField { field, .. } if field == "value")
+    ));
+}

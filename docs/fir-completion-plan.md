@@ -87,7 +87,8 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Step 8 complete: direct/named calls carry complete parameter-order argument plans; omitted defaults remain callee-owned typed HIR and FIR evaluates them in parameter order with earlier parameter values materialized exactly once.
 - Step 9 complete: explicit capture modes and typed closure environment fields are resolved above FIR; non-escaping closure bodies have dedicated FIR entries, reference captures remain aliasing places, and closure/function-pointer calls lower explicitly.
 - Step 10 complete: core execution-context slot accesses and overrides are resolved in typed HIR; override values are checked as non-owning references/pointers, lexical slot types are scoped, and FIR uses cleanup-integrated save/set/load/restore operations.
-- Steps 11-16 intentionally untouched.
+- Step 11 complete: select arms carry typed channel payload/timeout semantics and stable runtime-operation IDs; FIR lowers blocking select into an explicit multi-target terminator with receive payload destinations.
+- Steps 12-16 intentionally untouched.
 
 
 ## Step 8 acceptance tests
@@ -109,3 +110,13 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Context restoration is registered on the existing cleanup stack, so it runs after inner `defer`s on normal scope exit and on `return`, `break`, `continue`, and `?` cleanup edges.
 - Multiple slot restores occur in reverse installation order.
 - Valid context code no longer emits `fir/context-not-resolved`.
+
+
+## Step 11 acceptance tests
+
+- A receive arm is accepted only for a concrete channel capability exposing `recv(self) -> T` or `Result[T, E]`; the selected arm binds `T`.
+- `#duration "..."` has the dedicated semantic `Duration` type and is the required timeout operand.
+- Each select has a stable `SelectWait` runtime operation ID; receive and timeout cases carry stable `ChannelReceive` and `SelectTimeout` IDs.
+- FIR evaluates arm operands once in source order, then terminates the block with one atomic/select runtime operation and explicit arm targets.
+- A receive case supplies a typed synthetic payload destination which is bound through the ordinary pattern machinery on the selected edge.
+- Select FIR contains no `fir/select-not-resolved` fallback.

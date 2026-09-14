@@ -66,6 +66,7 @@ pub enum Ty {
     IntLiteral,
     FloatLiteral,
     NoneLiteral,
+    Duration,
     ContextSlot {
         slot: ContextSlot,
     },
@@ -248,6 +249,36 @@ pub struct TypedContextScope {
     pub overrides: Vec<TypedContextOverride>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[repr(u16)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeOperationId {
+    SelectWait = 1,
+    ChannelReceive = 2,
+    SelectTimeout = 3,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "arm", rename_all = "snake_case")]
+pub enum TypedSelectArm {
+    Receive {
+        channel: ExprId,
+        payload: Ty,
+        operation: RuntimeOperationId,
+    },
+    Timeout {
+        duration: ExprId,
+        operation: RuntimeOperationId,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TypedSelectPlan {
+    pub span: Span,
+    pub operation: RuntimeOperationId,
+    pub arms: Vec<TypedSelectArm>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "source", rename_all = "snake_case")]
 pub enum ResolvedCallArgument {
@@ -308,6 +339,7 @@ pub struct TypedBody {
     pub local_types: BTreeMap<LocalId, Ty>,
     pub local_constants: BTreeMap<LocalId, ConstValue>,
     pub context_scopes: Vec<TypedContextScope>,
+    pub select_plans: Vec<TypedSelectPlan>,
     pub expressions: Vec<TypedExpr>,
 }
 
@@ -459,6 +491,7 @@ pub fn type_check_module(
                 local_types: checker.local_types,
                 local_constants: checker.local_constants,
                 context_scopes: checker.context_scopes,
+                select_plans: checker.select_plans,
                 expressions: checker.expressions,
             },
         );
@@ -912,6 +945,24 @@ impl ModuleTypeEnv {
         self.functions.get(&method).map(|sig| (method, sig))
     }
 
+    fn channel_payload(&self, ty: &Ty) -> Option<Ty> {
+        let (_, sig) = self.lookup_method(ty, "recv")?;
+        // A channel capability is a concrete type exposing recv(self) with no
+        // additional parameters.  If recv is fallible, select binds the Ok payload.
+        if sig.params.len() != 1 || sig.params.first().is_none_or(|p| p.name != "self") {
+            return None;
+        }
+        let payload = match &sig.result {
+            Ty::Result { ok, .. } => ok.as_ref().clone(),
+            other => other.clone(),
+        };
+        if matches!(payload, Ty::Void | Ty::Unknown | Ty::Error) {
+            None
+        } else {
+            Some(payload)
+        }
+    }
+
     fn distinct_underlying(&self, id: DefId) -> Option<&Ty> {
         match self.types.get(&id).map(|i| &i.kind) {
             Some(TypeInfoKind::Distinct(ty)) => Some(ty),
@@ -936,6 +987,7 @@ struct BodyChecker<'a, 'd> {
     mutable_locals: BTreeSet<LocalId>,
     context_types: BTreeMap<ContextSlot, Ty>,
     context_scopes: Vec<TypedContextScope>,
+    select_plans: Vec<TypedSelectPlan>,
     expressions: Vec<TypedExpr>,
     diagnostics: &'d mut Vec<TypeDiagnostic>,
 }
@@ -954,6 +1006,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             mutable_locals: BTreeSet::new(),
             context_types: BTreeMap::new(),
             context_scopes: Vec::new(),
+            select_plans: Vec::new(),
             expressions: Vec::new(),
             diagnostics,
         }
@@ -1169,6 +1222,15 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 self.context_types = saved;
             }
             HirStmtKind::Select { arms } => {
+                if arms.is_empty() {
+                    self.diagnostic(
+                        stmt.span,
+                        "select/empty",
+                        "select requires at least one arm",
+                    );
+                }
+                let mut timeout_seen = false;
+                let mut planned = Vec::with_capacity(arms.len());
                 for arm in arms {
                     match arm {
                         crate::body_hir::HirSelectArm::Receive {
@@ -1176,16 +1238,52 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                             pattern,
                             body,
                         } => {
-                            self.check_expr(channel, None);
-                            self.check_pattern(pattern, &Ty::Unknown);
+                            let channel_ty = self.check_expr(channel, None);
+                            let payload = self.env.channel_payload(&channel_ty).unwrap_or_else(|| {
+                                self.diagnostic(
+                                    channel.span,
+                                    "select/channel-type",
+                                    "select receive requires a concrete channel type with recv(self) -> T or Result[T, E]",
+                                );
+                                Ty::Error
+                            });
+                            self.check_pattern(pattern, &payload);
                             self.check_block(body);
+                            planned.push(TypedSelectArm::Receive {
+                                channel: channel.id,
+                                payload,
+                                operation: RuntimeOperationId::ChannelReceive,
+                            });
                         }
                         crate::body_hir::HirSelectArm::Timeout { duration, body } => {
-                            self.check_expr(duration, None);
+                            if timeout_seen {
+                                self.diagnostic(
+                                    duration.span,
+                                    "select/duplicate-timeout",
+                                    "select may contain at most one timeout arm",
+                                );
+                            }
+                            timeout_seen = true;
+                            let duration_ty = self.check_expr(duration, Some(&Ty::Duration));
+                            self.require_assignable(
+                                duration.span,
+                                &Ty::Duration,
+                                &duration_ty,
+                                "select/timeout-type",
+                            );
                             self.check_block(body);
+                            planned.push(TypedSelectArm::Timeout {
+                                duration: duration.id,
+                                operation: RuntimeOperationId::SelectTimeout,
+                            });
                         }
                     }
                 }
+                self.select_plans.push(TypedSelectPlan {
+                    span: stmt.span,
+                    operation: RuntimeOperationId::SelectWait,
+                    arms: planned,
+                });
             }
             HirStmtKind::Break | HirStmtKind::Continue => {}
         }
@@ -1208,7 +1306,14 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             },
             HirExprKind::Bool { .. } => Ty::Bool,
             HirExprKind::None => Ty::NoneLiteral,
-            HirExprKind::Keyword { .. } | HirExprKind::ReaderForm { .. } => Ty::Unknown,
+            HirExprKind::Keyword { .. } => Ty::Unknown,
+            HirExprKind::ReaderForm { tag, value } => {
+                if tag == "duration" && matches!(value, ast::FdnValue::String { .. }) {
+                    Ty::Duration
+                } else {
+                    Ty::Unknown
+                }
+            }
             HirExprKind::Name { reference } => self.type_of_name(reference.root),
             HirExprKind::Context { name } => {
                 let slot = ContextSlot::from_name(name);

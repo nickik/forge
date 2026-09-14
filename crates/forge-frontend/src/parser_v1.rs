@@ -1197,9 +1197,11 @@ where
         .allow_trailing()
         .collect::<Vec<_>>()
         .delimited_by(just(Token::LParen), just(Token::RParen));
+    let declaration_function_name =
+        choice((ident(), just(Token::Recv).to("recv".to_owned()))).boxed();
     let function = choice((
         just(Token::Fn)
-            .ignore_then(ident())
+            .ignore_then(declaration_function_name.clone())
             .then(fn_params.clone())
             .then(just(Token::Arrow).ignore_then(ty.clone()).or_not())
             .then(block.clone())
@@ -1213,7 +1215,7 @@ where
                 })
             }),
         just(Token::Nfn)
-            .ignore_then(ident())
+            .ignore_then(declaration_function_name)
             .then(nfn_params.clone())
             .then(just(Token::Arrow).ignore_then(ty.clone()).or_not())
             .then(block.clone())

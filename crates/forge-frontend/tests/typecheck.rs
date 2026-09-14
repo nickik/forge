@@ -1493,3 +1493,100 @@ fn execution_context_nested_override_types_are_lexically_scoped() {
     assert!(matches!(&context_types[2], Ty::Reference { inner, .. }
         if inner.as_ref() == &Ty::Int { signed: false, width: forge_frontend::IntWidth::W32 }));
 }
+
+#[test]
+fn select_resolves_channel_payload_timeout_and_runtime_operations() {
+    let output = check(
+        r#"
+        module test.select_typed;
+        struct Job { value: u32; }
+        struct Jobs { marker: u8; }
+        impl Jobs {
+            fn recv(self: &Jobs) -> Job { return Job{value: 1u32}; }
+        }
+        fn worker(jobs: &Jobs) -> void {
+            select {
+                recv jobs -> Job{value} => { val copy: u32 = value; }
+                timeout #duration "100ms" => { }
+            }
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let body = output
+        .functions
+        .values()
+        .find(|b| !b.select_plans.is_empty())
+        .unwrap();
+    let plan = &body.select_plans[0];
+    assert_eq!(
+        plan.operation,
+        forge_frontend::RuntimeOperationId::SelectWait
+    );
+    assert!(matches!(
+        &plan.arms[0],
+        forge_frontend::TypedSelectArm::Receive {
+            payload: Ty::Nominal(_),
+            operation: forge_frontend::RuntimeOperationId::ChannelReceive,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &plan.arms[1],
+        forge_frontend::TypedSelectArm::Timeout {
+            operation: forge_frontend::RuntimeOperationId::SelectTimeout,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn select_rejects_non_channel_and_wrong_timeout() {
+    let bad_channel = check(
+        r#"
+        module test.select_bad_channel;
+        fn worker(value: u32) -> void {
+            select { recv value -> x => { } }
+        }
+        "#,
+    );
+    assert!(
+        has(&bad_channel, "select/channel-type"),
+        "{:?}",
+        bad_channel.diagnostics
+    );
+
+    let bad_timeout = check(
+        r#"
+        module test.select_bad_timeout;
+        fn worker() -> void {
+            select { timeout 10u32 => { } }
+        }
+        "#,
+    );
+    assert!(
+        has(&bad_timeout, "select/timeout-type"),
+        "{:?}",
+        bad_timeout.diagnostics
+    );
+}
+
+#[test]
+fn select_rejects_duplicate_timeout_arms() {
+    let output = check(
+        r#"
+        module test.select_duplicate_timeout;
+        fn worker() -> void {
+            select {
+                timeout #duration "1ms" => { }
+                timeout #duration "2ms" => { }
+            }
+        }
+        "#,
+    );
+    assert!(
+        has(&output, "select/duplicate-timeout"),
+        "{:?}",
+        output.diagnostics
+    );
+}

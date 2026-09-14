@@ -38,5 +38,7 @@ pub use typecheck::{
 pub use fir::{
     lower_fir, verify_fir_function, FirBasicBlock, FirBlockId, FirConst, FirDiagnostic,
     FirFunction, FirGlobal, FirInstruction, FirInstructionKind, FirLocal, FirLocalId, FirModule,
-    FirOutput, FirPlace, FirTerminator, FirUnaryOp, FirValueId, OverflowMode,
+    FirOutput, FirPlace, FirSelectCase, FirTerminator, FirUnaryOp, FirValueId, OverflowMode,
 };
+
+pub use typecheck::{RuntimeOperationId, TypedSelectArm, TypedSelectPlan};

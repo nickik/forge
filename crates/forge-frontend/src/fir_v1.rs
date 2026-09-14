@@ -12,8 +12,9 @@ use crate::{
     resolution::{LocalId, ResolvedName},
     typecheck::{
         CaptureMode, ConstValue, ContextSlot, IntWidth, MatchCondition, MatchProjection,
-        MatchScalar, MatchTest, ResolvedCallArgument, ResolvedReceiver, Ty, TypeCheckOutput,
-        TypedBody, TypedClosurePlan, TypedExpr, TypedExprKind, TypedMatchBinding, TypedMatchPlan,
+        MatchScalar, MatchTest, ResolvedCallArgument, ResolvedReceiver, RuntimeOperationId, Ty,
+        TypeCheckOutput, TypedBody, TypedClosurePlan, TypedExpr, TypedExprKind, TypedMatchBinding,
+        TypedMatchPlan, TypedSelectArm,
     },
 };
 
@@ -284,6 +285,24 @@ pub enum FirConst {
     Char { value: char },
     String { value: String },
     CString { value: String },
+    Duration { value: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "case", rename_all = "snake_case")]
+pub enum FirSelectCase {
+    Receive {
+        operation: RuntimeOperationId,
+        channel: FirValueId,
+        payload: FirLocalId,
+        payload_type: Ty,
+        target: FirBlockId,
+    },
+    Timeout {
+        operation: RuntimeOperationId,
+        duration: FirValueId,
+        target: FirBlockId,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -296,6 +315,10 @@ pub enum FirTerminator {
         condition: FirValueId,
         then_block: FirBlockId,
         else_block: FirBlockId,
+    },
+    Select {
+        operation: RuntimeOperationId,
+        cases: Vec<FirSelectCase>,
     },
     Return {
         value: Option<FirValueId>,
@@ -697,11 +720,7 @@ impl<'a> FunctionLowerer<'a> {
             HirStmtKind::WithContext { overrides, body } => {
                 self.lower_with_context(stmt.span, overrides, body)
             }
-            HirStmtKind::Select { .. } => self.diagnostic(
-                stmt.span,
-                "fir/select-not-resolved",
-                "select/channel semantics are not typed strongly enough for FIR lowering yet",
-            ),
+            HirStmtKind::Select { arms } => self.lower_select(stmt.span, arms),
         }
     }
 
@@ -768,6 +787,117 @@ impl<'a> FunctionLowerer<'a> {
             self.emit_scope_cleanups(cleanup_scope);
         }
         self.cleanup_scopes.pop();
+    }
+
+    fn lower_select(&mut self, span: Span, arms: &[crate::body_hir::HirSelectArm]) {
+        let Some(plan) = self
+            .typed
+            .select_plans
+            .iter()
+            .find(|plan| plan.span == span)
+            .cloned()
+        else {
+            self.diagnostic(
+                span,
+                "fir/select-plan",
+                "select reached FIR without a typed select plan",
+            );
+            return;
+        };
+        if plan.arms.len() != arms.len() {
+            self.diagnostic(
+                span,
+                "fir/select-plan",
+                "typed select plan does not match source arm count",
+            );
+            return;
+        }
+
+        let join = self.new_block();
+        let mut cases = Vec::with_capacity(arms.len());
+        let mut lowered = Vec::with_capacity(arms.len());
+
+        // Evaluate channel/timeout operands exactly once, in source-arm order, before waiting.
+        for (arm, planned) in arms.iter().zip(&plan.arms) {
+            let target = self.new_block();
+            match (arm, planned) {
+                (
+                    crate::body_hir::HirSelectArm::Receive {
+                        channel,
+                        pattern,
+                        body,
+                    },
+                    TypedSelectArm::Receive {
+                        channel: planned_id,
+                        payload,
+                        operation,
+                    },
+                ) if channel.id == *planned_id => {
+                    let channel_value = self.lower_expr(channel);
+                    let payload_local = self.synthetic_local(payload.clone());
+                    cases.push(FirSelectCase::Receive {
+                        operation: *operation,
+                        channel: channel_value,
+                        payload: payload_local,
+                        payload_type: payload.clone(),
+                        target,
+                    });
+                    lowered.push((
+                        target,
+                        Some((payload_local, payload.clone(), pattern)),
+                        body,
+                    ));
+                }
+                (
+                    crate::body_hir::HirSelectArm::Timeout { duration, body },
+                    TypedSelectArm::Timeout {
+                        duration: planned_id,
+                        operation,
+                    },
+                ) if duration.id == *planned_id => {
+                    let duration_value = self.lower_expr(duration);
+                    cases.push(FirSelectCase::Timeout {
+                        operation: *operation,
+                        duration: duration_value,
+                        target,
+                    });
+                    lowered.push((target, None, body));
+                }
+                _ => {
+                    self.diagnostic(
+                        span,
+                        "fir/select-plan",
+                        "typed select arm does not match source arm",
+                    );
+                    return;
+                }
+            }
+        }
+
+        self.terminate(FirTerminator::Select {
+            operation: plan.operation,
+            cases,
+        });
+        for (target, receive, body) in lowered {
+            self.switch_to(target);
+            if let Some((payload_local, payload_ty, pattern)) = receive {
+                let payload = self.emit_value(
+                    pattern.span,
+                    payload_ty.clone(),
+                    FirInstructionKind::Load {
+                        place: FirPlace::Local {
+                            local: payload_local,
+                        },
+                    },
+                );
+                self.bind_irrefutable_pattern(pattern, payload, &payload_ty);
+            }
+            self.lower_block(body);
+            if !self.terminated() {
+                self.terminate(FirTerminator::Goto { target: join });
+            }
+        }
+        self.switch_to(join);
     }
 
     fn lower_if(
@@ -1313,6 +1443,25 @@ impl<'a> FunctionLowerer<'a> {
                     "closure reached FIR without a typed closure environment plan",
                 );
                 self.poison(expr.span, ty)
+            }
+            HirExprKind::ReaderForm { tag, value } if ty == Ty::Duration && tag == "duration" => {
+                let FdnValue::String { value } = value else {
+                    self.diagnostic(
+                        expr.span,
+                        "fir/duration",
+                        "typed duration reader form has non-string payload",
+                    );
+                    return self.poison(expr.span, ty);
+                };
+                self.emit_value(
+                    expr.span,
+                    ty,
+                    FirInstructionKind::Const {
+                        value: FirConst::Duration {
+                            value: value.clone(),
+                        },
+                    },
+                )
             }
             HirExprKind::Keyword { .. } | HirExprKind::ReaderForm { .. } | HirExprKind::Error => {
                 self.diagnostic(
@@ -2768,6 +2917,13 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                     else_block,
                     ..
                 } => vec![*then_block, *else_block],
+                FirTerminator::Select { cases, .. } => cases
+                    .iter()
+                    .map(|case| match case {
+                        FirSelectCase::Receive { target, .. }
+                        | FirSelectCase::Timeout { target, .. } => *target,
+                    })
+                    .collect(),
                 FirTerminator::Return { .. } | FirTerminator::Unreachable => Vec::new(),
             };
             for target in targets {
@@ -2786,6 +2942,43 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                         code: "fir/verify-branch".into(),
                         message: format!("branch condition {condition:?} is not bool"),
                     });
+                }
+            }
+            if let FirTerminator::Select { operation, cases } = term {
+                if *operation != RuntimeOperationId::SelectWait || cases.is_empty() {
+                    diagnostics.push(FirDiagnostic {
+                        span: Span::new(0, 0),
+                        code: "fir/verify-select".into(),
+                        message: "select terminator has invalid wait operation or no cases".into(),
+                    });
+                }
+                for case in cases {
+                    if let FirSelectCase::Receive {
+                        operation,
+                        payload,
+                        payload_type,
+                        ..
+                    } = case
+                    {
+                        if *operation != RuntimeOperationId::ChannelReceive
+                            || function.locals.get(payload).map(|local| &local.ty)
+                                != Some(payload_type)
+                        {
+                            diagnostics.push(FirDiagnostic {
+                                span: Span::new(0, 0),
+                                code: "fir/verify-select".into(),
+                                message: "receive select case has invalid runtime operation or payload local".into(),
+                            });
+                        }
+                    } else if let FirSelectCase::Timeout { operation, .. } = case {
+                        if *operation != RuntimeOperationId::SelectTimeout {
+                            diagnostics.push(FirDiagnostic {
+                                span: Span::new(0, 0),
+                                code: "fir/verify-select".into(),
+                                message: "timeout select case has invalid runtime operation".into(),
+                            });
+                        }
+                    }
                 }
             }
             if let FirTerminator::Return { value } = term {
