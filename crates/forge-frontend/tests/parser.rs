@@ -51,3 +51,22 @@ fn parses_struct_and_optional_type() {
     assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
     assert!(parsed.ast.is_some());
 }
+
+#[test]
+fn parses_plain_and_field_assignment() {
+    let source = r#"
+        module test.assignment;
+        struct Counter { value: usize; }
+        fn bump(counter: &mut Counter) -> void {
+            var next: usize = counter.value + 1;
+            next = next + 1;
+            counter.value = next;
+        }
+    "#;
+    let parsed = parse_source(source);
+    assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+    let file = parsed.ast.expect("AST");
+    let DeclKind::Function(bump) = &file.declarations[1].kind else { panic!("expected function") };
+    assert!(matches!(bump.body.statements[1].kind, StmtKind::Assignment { .. }));
+    assert!(matches!(bump.body.statements[2].kind, StmtKind::Assignment { .. }));
+}
