@@ -1,0 +1,11 @@
+name: step14-inspect
+on:
+  push:
+    branches: [agent/fir-step14-work]
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          grep -n "fn check_pattern\|HirPatternKind::Map\|fn build_match_plan\|fn lower_match_condition\|fn lower_match_projection" crates/forge-frontend/src/typecheck_v1.rs crates/forge-frontend/src/fir_v1.rs
