@@ -177,6 +177,7 @@ pub enum ExprKind {
     Binary { op: BinaryOp, left: Box<Expr>, right: Box<Expr> },
     Call { callee: Box<Expr>, args: Vec<Expr> },
     Index { base: Box<Expr>, index: Box<Expr> },
+    Try { value: Box<Expr> },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
