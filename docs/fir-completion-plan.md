@@ -21,7 +21,7 @@ This plan starts from commit `d01a883` (`Implement Forge FIR lowering`). Only on
 
 Core FIR already provides typed values, locals/places, basic blocks, explicit terminators, direct/indirect calls, checked/wrapping arithmetic, explicit bounds checks, aggregates, Option/Result operations, loops, `defer`, and `?` propagation. Stable `ExprId`s connect HIR expressions to typed-HIR facts.
 
-The remaining boundary gaps are intentionally diagnosed instead of guessed by FIR.
+The typed-HIR -> FIR boundary is now hardened by whole-boundary and whole-module verification rather than relying only on local lowering diagnostics.
 
 ## Invariants
 
@@ -49,7 +49,7 @@ The remaining boundary gaps are intentionally diagnosed instead of guessed by FI
 13. **Bitstruct semantics.** Materialize storage width, LSB-first field offsets, ordinary Forge field types, checked writes, and FIR mask/shift operations.
 14. **Collection/map pattern protocol.** Define a concrete typed collection-pattern protocol; until then map patterns must not reach FIR with invented `Unknown` semantics.
 15. **Runtime global initialization.** Separate constant/static data from runtime initializer functions and define deterministic module-init ordering/dependencies.
-16. **FIR boundary hardening.** Add whole-module verification that successful semantic output contains no unresolved source-only constructs, plus FIR dump/golden tests for all completed features.
+16. **FIR boundary hardening.** Add whole-module verification that successful semantic output contains no unresolved source-only constructs, plus stable FIR dump/golden coverage.
 
 ## Step 1 acceptance tests
 
@@ -92,8 +92,7 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Step 13 complete: bitstruct storage/layout is materialized above FIR; field reads/writes lower through explicit checked mask/shift operations.
 - Step 14 complete: map patterns require a resolved nominal collection protocol (`pattern_get` + `pattern_has_only`); required/optional keyword bindings and closed/rest semantics lower through explicit FIR collection-pattern operations.
 - Step 15 complete: compile-time `const` globals remain static data; `val`/`var` globals carry typed runtime initializer bodies, direct runtime-global dependencies, deterministic dependency-first/source-order initialization, and explicit FIR initializer functions.
-- Step 16 intentionally untouched.
-
+- Step 16 complete: the public FIR lowering boundary validates typed-HIR concreteness/resolved semantic shapes before lowering and verifies the entire emitted module afterward, including poison rejection, initializer dependency ordering, globals, functions, and stable serializable FIR dumps.
 
 ## Step 8 acceptance tests
 
@@ -103,7 +102,6 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - A default may reference an earlier parameter; FIR materializes earlier parameter values into synthetic locals before lowering that default.
 - Chained defaults therefore observe the already-evaluated earlier parameter/default value without re-evaluating an explicit source argument.
 - `fir/default-argument-not-materialized` is removed; an incomplete semantic plan is instead an internal `fir/call-plan-incomplete` boundary failure.
-
 
 ## Step 10 acceptance tests
 
@@ -115,7 +113,6 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Multiple slot restores occur in reverse installation order.
 - Valid context code no longer emits `fir/context-not-resolved`.
 
-
 ## Step 11 acceptance tests
 
 - A receive arm is accepted only for a concrete channel capability exposing `recv(self) -> T` or `Result[T, E]`; the selected arm binds `T`.
@@ -124,7 +121,6 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - FIR evaluates arm operands once in source order, then terminates the block with one atomic/select runtime operation and explicit arm targets.
 - A receive case supplies a typed synthetic payload destination which is bound through the ordinary pattern machinery on the selected edge.
 - Select FIR contains no `fir/select-not-resolved` fallback.
-
 
 ## Step 12 acceptance tests
 
@@ -136,7 +132,6 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - FIR validates that provenance refers to a typed unsafe scope enclosing the source operation before emitting a raw operation.
 - Entering `unsafe` does not disable array/slice bounds checks, checked arithmetic, or ordinary type checking.
 
-
 ## Step 13 acceptance tests
 
 - Bitstruct storage is restricted to `u8`, `u16`, `u32`, or `u64`; zero-width and overflowing fields are semantic errors.
@@ -147,7 +142,6 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Writes perform an explicit range check when the ordinary field type admits values wider than the field, then use mask/shift read-modify-write and rebuild the nominal bitstruct.
 - Explicit bitstruct construction requires exactly its declared storage type.
 
-
 ## Step 14 acceptance tests
 
 - A map-pattern scrutinee must be a nominal type implementing `pattern_get(self: &T, key: str) -> V?` and `pattern_has_only(self: &T, keys: str[]) -> bool`; protocol lookup is resolved above FIR.
@@ -156,7 +150,6 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - A closed map pattern (no `..`) emits an allowed-keys-only protocol test; `..` deliberately skips that test.
 - Match plans retain resolved method `DefId`s and concrete value/optional types; no `Ty::Unknown` collection binding reaches successful FIR lowering.
 - FIR emits explicit `CollectionPatternLookup` and `CollectionPatternHasOnly` operations and never re-runs method/protocol resolution.
-
 
 ## Step 15 acceptance tests
 
@@ -168,3 +161,13 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - FIR represents each runtime initializer as an explicit zero-argument initializer function returning the global value and publishes the deterministic module `global_init_order`.
 - FIR consumes the typed dependency plan without rediscovering global references or choosing an initialization order.
 - Each initializer source expression is lowered exactly once; ordinary expression evaluation order remains unchanged inside the initializer function.
+
+## Step 16 acceptance tests
+
+- The public `lower_fir` entrypoint runs a typed-HIR boundary verifier before returning FIR.
+- Successful typed bodies may contain no non-concrete `Ty::Unknown`, error, or literal pseudo-types at the FIR boundary.
+- Source-only constructs that require semantic resolution (`context`, `?`, `match`, and closures) are rejected if they remain plain `TypedExprKind::Source` nodes. The dedicated typed `#duration` reader form is the only reader form admitted by the boundary.
+- Resolved semantic nodes are shape-checked against their HIR origin so malformed resolved call/closure/context/try/match/unsafe/bit-field plans are diagnosed as boundary failures.
+- Whole-module FIR verification covers every function and runtime initializer, verifies global metadata and initialization dependencies/order, and rejects `FirInstructionKind::Poison` in otherwise successful output.
+- `dump_fir_module` provides deterministic pretty JSON suitable for checked-in golden files.
+- A checked-in empty-module golden locks the serialized top-level FIR schema, while the existing Step 1-15 focused FIR tests remain the behavioral golden coverage for all completed lowering features.
