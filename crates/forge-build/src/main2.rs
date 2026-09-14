@@ -13,7 +13,9 @@ fn normalize_package_module(name: &str) -> String {
     name.replace('-', "_")
 }
 
-fn library_driver_args(graph: &forge_build::BuildGraph) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+fn library_driver_args(
+    graph: &forge_build::BuildGraph,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let mut args = Vec::new();
     for package_name in &graph.order {
         if package_name == &graph.root {
