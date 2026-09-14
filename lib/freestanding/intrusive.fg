@@ -1,0 +1,39 @@
+module core.intrusive;
+
+import core;
+
+// Allocation-free linkage for kernel queues/lists. The container never owns
+// nodes and therefore never allocates merely to enqueue an existing object.
+
+pub struct IntrusiveLink {
+    prev: *IntrusiveLink?;
+    next: *IntrusiveLink?;
+}
+
+pub struct IntrusiveList {
+    head: *IntrusiveLink?;
+    tail: *IntrusiveLink?;
+    len: usize;
+}
+
+pub fn intrusive_list_len(list: &IntrusiveList) -> usize {
+    return list.len;
+}
+
+pub fn intrusive_list_is_empty(list: &IntrusiveList) -> bool {
+    return list.len == 0;
+}
+
+// Contract operations, implemented in the executable reference model while
+// bootstrap pointer mutation catches up:
+//   intrusive_push_front/list_push_back
+//   intrusive_pop_front/list_pop_back
+//   intrusive_remove
+//   intrusive_contains (debug/test helper)
+
+// TODO
+// [ ] implement pointer-link mutation in Forge source
+// [ ] support safe container-of/owner recovery primitive
+// [ ] debug checks for double insertion and foreign removal
+// [ ] intrusive queue wrapper for scheduler/IPC use
+// [ ] prove all operations allocation-free

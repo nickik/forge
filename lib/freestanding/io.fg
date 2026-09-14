@@ -1,0 +1,41 @@
+module core.io;
+
+import core;
+
+// Non-allocating byte output capability suitable for serial consoles, fixed
+// buffers, hosted stderr adapters, early boot logs, and panic paths.
+
+pub enum WriteError {
+    Full,
+    Device,
+    Invalid,
+}
+
+pub struct WriterOps {
+    write: fn(*void, byte[], usize) -> Result[usize, WriteError];
+}
+
+pub struct Writer {
+    context: *void;
+    ops: &WriterOps;
+}
+
+pub fn writer_write(writer: &mut Writer, bytes: byte[], len: usize) -> Result[usize, WriteError] {
+    return writer.ops.write(writer.context, bytes, len);
+}
+
+// Formatting helpers are allocation-free and stream directly to Writer.
+// Initial executable semantics live in the reference model until slice/string
+// iteration is supported by the bootstrap compilers.
+//   write_str
+//   write_u64_dec
+//   write_i64_dec
+//   write_u64_hex
+//   write_pointer
+
+// TODO
+// [ ] implement write_str in Forge source
+// [ ] implement integer decimal/hex formatting without temporary heap allocation
+// [ ] add FixedBufferWriter
+// [ ] add panic-safe serial writer adapter in Cosmic, not in core.io
+// [ ] no printf-style varargs in v1

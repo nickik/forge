@@ -1,0 +1,31 @@
+module core.mem;
+
+import core;
+
+// Freestanding raw-memory helpers. No allocator or OS dependency.
+
+pub struct ByteSpan {
+    data: *byte;
+    len: usize;
+}
+
+pub fn range_end(start: usize, len: usize) -> usize {
+    return start + len;
+}
+
+pub fn ranges_overlap(a_start: usize, a_len: usize, b_start: usize, b_len: usize) -> bool {
+    if (a_len == 0 || b_len == 0) { return false; }
+    return a_start < range_end(b_start, b_len) && b_start < range_end(a_start, a_len);
+}
+
+// Runtime/compiler-backed primitives; semantics belong to this library contract.
+pub nfn copy_nonoverlapping(dst: *byte, src: *byte, len: usize) -> void;
+pub nfn move_overlapping(dst: *byte, src: *byte, len: usize) -> void;
+pub nfn set_bytes(dst: *byte, value: byte, len: usize) -> void;
+pub nfn compare_bytes(a: *byte, b: *byte, len: usize) -> i32;
+
+// TODO
+// [ ] expose safe slice wrappers once slice lowering is available
+// [ ] add zero_bytes convenience wrapper
+// [ ] define exact overlap diagnostics for copy_nonoverlapping
+// [ ] test actual lowered primitives on every target backend

@@ -1,0 +1,33 @@
+module core.mmio;
+
+import core;
+
+// Explicit volatile/MMIO access for device registers.
+// No ordinary pointer load/store may substitute for these operations.
+
+pub struct MmioU32 {
+    address: *u32;
+}
+
+pub nfn volatile_load_u8(address: *u8) -> u8;
+pub nfn volatile_store_u8(address: *u8, value: u8) -> void;
+pub nfn volatile_load_u16(address: *u16) -> u16;
+pub nfn volatile_store_u16(address: *u16, value: u16) -> void;
+pub nfn volatile_load_u32(address: *u32) -> u32;
+pub nfn volatile_store_u32(address: *u32, value: u32) -> void;
+pub nfn volatile_load_u64(address: *u64) -> u64;
+pub nfn volatile_store_u64(address: *u64, value: u64) -> void;
+
+pub fn mmio_read_u32(reg: &MmioU32) -> u32 {
+    return volatile_load_u32(reg.address);
+}
+
+pub fn mmio_write_u32(reg: &MmioU32, value: u32) -> void {
+    volatile_store_u32(reg.address, value);
+}
+
+// TODO
+// [ ] define target-specific device-memory ordering requirements
+// [ ] add read-modify-write helpers only where hardware explicitly permits them
+// [ ] distinguish ordinary volatile memory from strongly ordered device memory if needed
+// [ ] QEMU integration tests against a fake register block

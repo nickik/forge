@@ -1,0 +1,39 @@
+module core.sync;
+
+import core;
+import core.atomic;
+
+// Synchronization that remains meaningful without a scheduler.
+
+pub struct SpinLock {
+    state: AtomicU32;
+}
+
+pub struct CriticalSectionOps {
+    enter: fn(*void) -> usize;
+    exit: fn(*void, usize) -> void;
+}
+
+pub struct CriticalSection {
+    context: *void;
+    ops: &CriticalSectionOps;
+}
+
+pub fn critical_enter(section: &mut CriticalSection) -> usize {
+    return section.ops.enter(section.context);
+}
+
+pub fn critical_exit(section: &mut CriticalSection, token: usize) -> void {
+    section.ops.exit(section.context, token);
+}
+
+pub nfn spin_try_lock(lock: &mut SpinLock) -> bool;
+pub nfn spin_lock(lock: &mut SpinLock) -> void;
+pub nfn spin_unlock(lock: &mut SpinLock) -> void;
+
+// TODO
+// [ ] define initialization syntax/constructor for SpinLock
+// [ ] add Once/one-time initialization
+// [ ] add debug owner tracking as an optional policy
+// [ ] prove spin_lock never calls scheduler/blocking services
+// [ ] keep sleeping mutexes/wait queues out of this library

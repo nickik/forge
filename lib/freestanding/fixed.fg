@@ -1,0 +1,54 @@
+module core.fixed;
+
+import core;
+
+// Initial concrete bounded containers. Forge v1 has no user-defined generics,
+// so useful concrete shapes are standardized first and compile-time generation
+// can add application-specific variants later.
+
+pub struct ByteVec256 {
+    data: [byte; 256];
+    len: usize;
+}
+
+pub fn byte_vec256_capacity(vec: &ByteVec256) -> usize {
+    return 256;
+}
+
+pub fn byte_vec256_len(vec: &ByteVec256) -> usize {
+    return vec.len;
+}
+
+pub fn byte_vec256_is_empty(vec: &ByteVec256) -> bool {
+    return vec.len == 0;
+}
+
+pub fn byte_vec256_is_full(vec: &ByteVec256) -> bool {
+    return vec.len == 256;
+}
+
+pub struct UsizeRing64 {
+    data: [usize; 64];
+    head: usize;
+    len: usize;
+}
+
+pub fn usize_ring64_capacity(ring: &UsizeRing64) -> usize {
+    return 64;
+}
+
+pub fn usize_ring64_len(ring: &UsizeRing64) -> usize {
+    return ring.len;
+}
+
+// Mutation operations are part of the contract and become ordinary Forge once
+// array assignment/mutation is supported by all bootstrap implementations:
+//   byte_vec256_push/pop/get/clear
+//   usize_ring64_push_back/pop_front/peek_front/clear
+
+// TODO
+// [ ] implement ByteVec256 push/pop/get/clear in Forge source
+// [ ] implement UsizeRing64 FIFO operations in Forge source
+// [ ] add generated FixedVec_T_N and RingBuffer_T_N facility
+// [ ] add iteration without allocation
+// [ ] test capacity boundaries and wrap-around exhaustively
