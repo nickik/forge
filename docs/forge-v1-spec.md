@@ -27,7 +27,7 @@ A conforming Forge implementation must preserve these principles:
 11. Evaluation order is defined.
 12. Modules are semantic units; there is no textual include preprocessor.
 13. `#tag` is structured reader extension; `@` is metadata.
-14. Durable allocation is explicit through an allocator or owning object; temporary non-escaping work may use the narrow execution context.
+14. Durable allocation is explicit at the allocating/freeing call site through an allocator argument; ordinary values and collections do not retain allocator capabilities merely to allocate later. Temporary non-escaping work may use the narrow execution context.
 15. The language does not require garbage collection, exceptions, green threads, inheritance or virtual dispatch.
 
 ---
@@ -1082,24 +1082,38 @@ Category 4 must remain small. Safe source should not rely on host-language undef
 
 Forge language syntax does not imply a universal heap allocator.
 
-Any operation that creates durable memory must identify ownership through:
+Any operation that allocates, reallocates, grows, clones owning durable storage, or frees durable storage must receive the allocator capability explicitly at that operation's call site.
 
-- an explicit `&Allocator` argument; or
-- a receiver/owning object that already contains/owns its memory domain.
-
-Example explicit allocation:
+Example:
 
 ```forge
-fn decode_image(bytes: u8[], allocator: &Allocator)
+fn decode_image(bytes: u8[], allocator: &mut Allocator)
     -> Result[Image, DecodeError];
 ```
 
-Example owner-based allocation:
+Ordinary values and collections do not retain `Allocator`, `&Allocator`, or `&mut Allocator` fields merely so later operations can allocate. For example:
 
 ```forge
-fn spawn(world: &mut World, spec: EntitySpec)
-    -> Result[Entity, AllocError];
+struct ListU8 {
+    block: MemoryBlock?;
+    len: usize;
+    capacity: usize;
+}
+
+fn list_u8_push(
+    list: &mut ListU8,
+    allocator: &mut Allocator,
+    value: u8
+) -> Result[void, AllocError];
 ```
+
+Operations that provably cannot allocate or free do not take an allocator.
+
+Specialized memory-management objects such as `Allocator`, `Arena`, `ObjectCache`, slab allocators, and explicitly named pool/memory-domain managers may retain their lower-level provider capabilities because implementing a memory domain is their purpose. This is not permission for ordinary strings, buffers, collections, parsers, or application values to remember an allocator for later convenience.
+
+There is no implicit fallback to a process-global allocator, thread-local allocator, libc allocator, hosted runtime heap, `context.scratch`, or an allocator remembered during construction.
+
+A durable block remains associated with the allocator domain that created it. Later resize/free operations must be given the same allocator domain, or a provider explicitly documented as compatible with that domain. The collection does not retain allocator identity; preserving allocator-domain provenance is a caller ownership obligation, and debug providers should validate it where practical.
 
 ## 48. Primitive allocation is fallible
 
@@ -1136,6 +1150,8 @@ with context {
 
 Applications cannot extend core context into a general hidden service locator. Durable business/system dependencies remain explicit.
 
+`context.scratch` is never a fallback allocator for durable ownership.
+
 ## 50. Arenas and pools
 
 Arena/pool behavior is primarily standard-library policy rather than unique language syntax. Forge code can create generated concrete types representing linear, stack, fixed-pool, slab, free-list, static and thread-local memory domains.
@@ -1146,6 +1162,8 @@ Bulk lifetime operations pair naturally with `defer`:
 val mark = arena.mark();
 defer arena.release(mark);
 ```
+
+These are explicit memory-domain objects, not ordinary data containers.
 
 ---
 
@@ -1299,7 +1317,7 @@ fn movement(world: &mut World, dt: f32) {
 }
 ```
 
-A `ManagedVec_u32` is simply a struct plus statically known methods, not an ECS entity and not a function-pointer object.
+An explicit memory-domain manager may retain backing-provider state; an ordinary convenience wrapper must not retain an allocator merely to hide allocator parameters from later calls.
 
 ---
 
@@ -1310,6 +1328,8 @@ A `ManagedVec_u32` is simply a struct plus statically known methods, not an ECS 
 Forge's standard thread API maps to operating-system threads on supported targets. No language-level green-thread scheduler is required.
 
 Each thread receives an execution context and normally its own scratch arena.
+
+A thread-local scratch arena is for non-escaping temporary work and is not a durable-allocation fallback.
 
 ## 60. CSP `select`
 
@@ -1375,23 +1395,33 @@ Pins the representation according to the target's documented C ABI. Ordinary For
 
 `str` is immutable borrowed text with pointer+byte length semantics. It is not NUL terminated.
 
-Owned mutable strings are concrete standard-library types using explicit allocators, e.g. generated/common `String` implementations. APIs must distinguish text from byte arrays.
+Owned mutable strings are concrete standard-library types. The string value stores its owned storage/length/capacity, but not an allocator capability. Every operation that allocates, grows, clones, or frees owned string storage receives an explicit allocator argument.
 
-UTF-8 is the standard text encoding; byte indexing and Unicode-scalar/grapheme iteration are distinct operations.
+APIs must distinguish text from byte arrays. UTF-8 is the standard text encoding; byte indexing and Unicode-scalar/grapheme iteration are distinct operations.
 
 ## 65. Collections
 
 Because v1 has no user generics, standard concrete families are generated or predefined:
 
 ```text
-Vec_u8
-Vec_u32
-Vec_Point
-HashMap_Symbol_User
-Pool_Connection
+ListU8
+ListU64
+ListPoint
+HashMapSymbolUser
+PoolConnection
 ```
 
-The fundamental vector representation should not need to store an allocator. Managed wrappers may store one when convenient.
+Ordinary collection representations **must not store allocator capabilities**. They store their backing storage and collection metadata only. Every operation that may allocate, reallocate, grow, or free durable collection storage takes an explicit allocator argument at that call site.
+
+For example:
+
+```forge
+list_u8_push(&mut bytes, &mut allocator, value)?;
+hash_map_symbol_user_put(&mut users, &mut allocator, symbol, user)?;
+list_u8_destroy(&mut bytes, &mut allocator);
+```
+
+A wrapper whose only purpose is to remember an allocator and hide these parameters is not part of the Forge v1 standard collection model. Explicit memory-domain managers such as allocators, arenas, pools, and object caches remain a separate category.
 
 ## 66. Transducers
 
@@ -1412,6 +1442,8 @@ val xf = #forge/transducer {
 
 Exact reader payload syntax may live in the standard-library reader namespace and can evolve compatibly without changing core parser grammar.
 
+Transducer values do not retain allocators. A terminal reducer such as `into` that grows durable output receives an allocator explicitly.
+
 ---
 
 # Part XIV — Intentionally absent from v1
@@ -1431,7 +1463,8 @@ Forge v1 deliberately excludes:
 - implicit switch fallthrough;
 - arbitrary runtime reflection;
 - automatic heap allocation for escaping closures;
-- green threads/mandatory user-space scheduler.
+- green threads/mandatory user-space scheduler;
+- hidden process-global allocation for ordinary standard-library APIs.
 
 Future versions may add facilities when they can be added without changing v1 source meaning.
 
@@ -1442,7 +1475,7 @@ Future versions may add facilities when they can be added without changing v1 so
 ## 67. Result + defer + explicit durable allocator
 
 ```forge
-fn load_document(path: str, allocator: &Allocator)
+fn load_document(path: str, allocator: &mut Allocator)
     -> Result[Document, LoadError]
 {
     val file = file_open(path)?;
@@ -1465,7 +1498,7 @@ fn parse_header(bytes: u8[]) -> Result[Header, ParseError] {
 }
 ```
 
-No scratch allocation may escape in returned `Header` unless `Header` copies/owns it elsewhere.
+No scratch allocation may escape in returned `Header` unless `Header` copies/owns it elsewhere using an explicit durable allocator supplied by its caller.
 
 ## 69. Option without null
 
@@ -1533,17 +1566,21 @@ val window = open_window(
 struct Server {
     connections: ConnectionPool;
     clients: ClientStore;
-    memory: ServerArena;
 }
 
-fn accept(server: &mut Server, socket: Socket)
-    -> Result[ConnectionId, ServerError]
+fn accept(
+    server: &mut Server,
+    allocator: &mut Allocator,
+    socket: Socket
+) -> Result[ConnectionId, ServerError]
 {
-    val conn = server.connections.acquire()?;
+    val conn = server.connections.acquire(allocator)?;
     conn.socket = socket;
-    return server.clients.attach(conn)?;
+    return server.clients.attach(allocator, conn)?;
 }
 ```
+
+A pool implementation may itself be an explicitly documented memory-domain manager, but ordinary containers and stores must not gain hidden allocator behavior merely because they are fields of a larger owner.
 
 ## 74. Unsafe device access
 
@@ -1591,6 +1628,8 @@ Implementations must diagnose violations of:
 - closure escape beyond supported lifetime;
 - invalid FDN/reader forms;
 - duplicate metadata/map keys where prohibited.
+
+Library/API conformance tests must additionally reject ordinary standard-library collection layouts that retain allocator capabilities contrary to §47 and §65.
 
 ## 77. Optimizer freedom
 
