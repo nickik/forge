@@ -23,6 +23,7 @@ jobs:
         run: |
           python3 -B scripts/fir_step8_once.py
           python3 -B scripts/fir_step8_fix.py
+          python3 -B scripts/fir_step8_test_fix.py
       - run: cargo fmt --all
       - run: cargo fmt --all -- --check
       - run: cargo check --workspace --locked
@@ -31,7 +32,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings -A unused_mut -A clippy::collapsible_match -A clippy::large-enum-variant -A clippy::only-used-in-recursion
       - name: Commit validated Step 8
         run: |
-          rm scripts/fir_step8_once.py scripts/fir_step8_fix.py .github/workflows/fir-step8-once.yml
+          rm scripts/fir_step8_once.py scripts/fir_step8_fix.py scripts/fir_step8_test_fix.py .github/workflows/fir-step8-once.yml
           git config user.name forge-ci
           git config user.email forge-ci@users.noreply.github.com
           git add -A
