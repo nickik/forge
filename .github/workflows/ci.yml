@@ -5,6 +5,17 @@ on:
   pull_request:
 
 jobs:
+  build-system:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --package forge-build -- --check
+      - run: cargo clippy -p forge-build --all-targets -- -D warnings
+      - run: cargo test -p forge-build
+
   rust:
     runs-on: ubuntu-latest
     steps:
