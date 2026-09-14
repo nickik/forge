@@ -2,9 +2,68 @@ module core;
 
 // Forge freestanding standard library bootstrap.
 //
-// This file deliberately contains only facilities whose semantics are already clear.
-// It must remain usable without an OS, libc, process heap, filesystem, threads, or
-// conventional program entry point.
+// core must remain usable without an OS, libc, process heap, filesystem,
+// threads, or a conventional program entry point. Environment-specific
+// behavior enters through explicit providers and the Forge runtime ABI.
+
+pub enum PanicKind {
+    Explicit,
+    Assertion,
+    Bounds,
+    IntegerOverflow,
+    DivideByZero,
+    InvalidShift,
+    Unreachable,
+    AllocationFailure,
+}
+
+pub struct PanicLocation {
+    file: str;
+    line: u32;
+    column: u32;
+}
+
+pub struct PanicInfo {
+    kind: PanicKind;
+    message: str;
+    location: PanicLocation?;
+}
+
+pub enum AllocError {
+    OutOfMemory,
+    InvalidSize,
+    InvalidAlignment,
+    ResourceLimit,
+    CorruptState,
+}
+
+pub enum AllocWait {
+    MayWait,
+    NoWait,
+}
+
+pub struct AllocRequest {
+    size: usize;
+    align: usize;
+    wait: AllocWait;
+}
+
+// Describes one variable-sized allocation. This is the portable building
+// block for malloc-like allocators without requiring hidden boundary tags.
+pub struct MemoryBlock {
+    data: *byte;
+    size: usize;
+    align: usize;
+}
+
+// Configuration for a fixed-size object cache. The actual cache state is
+// implementation-private and will be introduced when opaque/library-private
+// representation support is executable.
+pub struct ObjectCacheSpec {
+    object_size: usize;
+    object_align: usize;
+    slab_size: usize;
+}
 
 pub fn min_i32(a: i32, b: i32) -> i32 {
     if (a < b) {
@@ -34,17 +93,28 @@ pub fn max_u32(a: u32, b: u32) -> u32 {
     return b;
 }
 
-// Planned core allocation surface, specified in docs/core-library.md:
+pub fn is_power_of_two_usize(value: usize) -> bool {
+    if (value == 0) {
+        return false;
+    }
+    return (value & (value - 1)) == 0;
+}
+
+pub fn valid_alignment(align: usize) -> bool {
+    return is_power_of_two_usize(align);
+}
+
+// Planned provider-backed allocation surface, specified in
+// docs/core-library.md and docs/runtime-abi.md:
 //
 //   Arena
 //   Allocator
 //   ObjectCache
-//   ObjectCacheSpec
-//   AllocError
 //   arena_alloc / arena_free
 //   alloc / free
 //   object_cache_create / object_cache_alloc / object_cache_free
 //   object_cache_reclaim
 //
-// These are intentionally not stubbed as fake implementations. They will be added
-// as the required struct, pointer, Result, and module semantics become executable.
+// These are not stubbed with fake semantics. The shared algorithms will be
+// added once library-private state, pointer operations, and Result execution
+// are implemented.
