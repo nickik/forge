@@ -1,0 +1,104 @@
+module examples.game_of_life;
+
+import std.console;
+
+// Conway's Game of Life on an 8x8 toroidal board.
+// The update/render structure is adapted from simple console C implementations,
+// including Bruce Hill's MIT-licensed conway example, but rewritten as a compact
+// u64 bitboard so it fits the current Forge bootstrap language surface.
+fn main() -> i32 {
+    // Glider seed:
+    // .#......
+    // ..#.....
+    // ###.....
+    var board: u64 =
+        (1 << 1) |
+        (1 << 10) |
+        (1 << 16) |
+        (1 << 17) |
+        (1 << 18);
+
+    var generation: u64 = 0;
+
+    while (generation < 4) {
+        console.write("Generation\n");
+
+        var y: u64 = 0;
+        while (y < 8) {
+            var x: u64 = 0;
+            while (x < 8) {
+                val index: u64 = (y * 8) + x;
+                val mask: u64 = 1 << index;
+
+                if ((board & mask) != 0) {
+                    console.write("#");
+                } else {
+                    console.write(".");
+                }
+
+                x += 1;
+            }
+
+            console.write("\n");
+            y += 1;
+        }
+
+        console.write("\n");
+
+        var next: u64 = 0;
+        var cy: u64 = 0;
+
+        while (cy < 8) {
+            var cx: u64 = 0;
+
+            while (cx < 8) {
+                var neighbors: u64 = 0;
+                var dy: u64 = 0;
+
+                while (dy < 3) {
+                    var dx: u64 = 0;
+
+                    while (dx < 3) {
+                        if ((dx != 1) || (dy != 1)) {
+                            val nx: u64 = (cx + dx + 7) % 8;
+                            val ny: u64 = (cy + dy + 7) % 8;
+                            val neighbor_index: u64 = (ny * 8) + nx;
+                            val neighbor_mask: u64 = 1 << neighbor_index;
+
+                            if ((board & neighbor_mask) != 0) {
+                                neighbors += 1;
+                            }
+                        }
+
+                        dx += 1;
+                    }
+
+                    dy += 1;
+                }
+
+                val cell_index: u64 = (cy * 8) + cx;
+                val cell_mask: u64 = 1 << cell_index;
+                val alive: bool = (board & cell_mask) != 0;
+
+                if (alive) {
+                    if ((neighbors == 2) || (neighbors == 3)) {
+                        next = next | cell_mask;
+                    }
+                } else {
+                    if (neighbors == 3) {
+                        next = next | cell_mask;
+                    }
+                }
+
+                cx += 1;
+            }
+
+            cy += 1;
+        }
+
+        board = next;
+        generation += 1;
+    }
+
+    return 0;
+}
