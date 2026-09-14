@@ -1150,3 +1150,84 @@ fn typed_hir_retains_fir_boundary_facts() {
         forge_frontend::TypedExprKind::OptionalPromote { .. }
     )));
 }
+
+#[test]
+fn match_plan_nested_payload_test_does_not_cover_entire_variant() {
+    let output = check(
+        r#"
+        module test.match_plan_nested_non_exhaustive;
+        tagged Token { Number { value: u32; }, Plus, }
+        fn code(token: Token) -> i32 {
+            return match (token) {
+                Token::Number{value: 1} => 1,
+                Token::Plus => 2,
+            };
+        }
+        "#,
+    );
+    assert!(
+        has(&output, "match/non-exhaustive"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
+fn match_plan_some_binding_subsumes_later_payload_literal() {
+    let output = check(
+        r#"
+        module test.match_plan_optional_subsumption;
+        fn code(value: u32?) -> i32 {
+            return match (value) {
+                Some(_) => 1,
+                Some(7) => 2,
+                None => 3,
+            };
+        }
+        "#,
+    );
+    assert!(
+        has(&output, "match/unreachable-arm"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
+fn match_plan_variant_binding_subsumes_later_field_literal() {
+    let output = check(
+        r#"
+        module test.match_plan_variant_subsumption;
+        tagged Value { Count { x: u32; }, Flag, }
+        fn code(value: Value) -> i32 {
+            return match (value) {
+                Value::Count{x} => 1,
+                Value::Count{x: 7} => 2,
+                Value::Flag => 3,
+            };
+        }
+        "#,
+    );
+    assert!(
+        has(&output, "match/unreachable-arm"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
+fn match_plan_or_alternatives_cover_closed_domain() {
+    let output = check(
+        r#"
+        module test.match_plan_or_exhaustive;
+        enum Token { Plus, Minus, Number }
+        fn code(token: Token) -> i32 {
+            return match (token) {
+                Token::Plus | Token::Minus => 1,
+                Token::Number => 2,
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+}
