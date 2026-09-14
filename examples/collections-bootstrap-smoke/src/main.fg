@@ -1,0 +1,70 @@
+module examples.collections_bootstrap_smoke;
+
+import forge_collections_bootstrap;
+
+fn main() -> i32 {
+    val bytes: usize = forge_collections_bootstrap.list_u8_create(0);
+    forge_collections_bootstrap.list_u8_push(bytes, 1);
+    forge_collections_bootstrap.list_u8_push(bytes, 2);
+    forge_collections_bootstrap.list_u8_push(bytes, 3);
+    forge_collections_bootstrap.list_u8_push(bytes, 4);
+    forge_collections_bootstrap.list_u8_push(bytes, 5);
+    if (forge_collections_bootstrap.list_u8_len(bytes) != 5) { return 1; }
+    if (forge_collections_bootstrap.list_u8_capacity(bytes) < 5) { return 2; }
+    if (forge_collections_bootstrap.list_u8_get(bytes, 2) != 3) { return 3; }
+    forge_collections_bootstrap.list_u8_set(bytes, 2, 9);
+    if (forge_collections_bootstrap.list_u8_get(bytes, 2) != 9) { return 4; }
+    if (forge_collections_bootstrap.list_u8_remove(bytes, 1) != 2) { return 5; }
+    if (forge_collections_bootstrap.list_u8_get(bytes, 1) != 9) { return 6; }
+    if (forge_collections_bootstrap.list_u8_swap_remove(bytes, 1) != 9) { return 7; }
+    forge_collections_bootstrap.list_u8_truncate(bytes, 2);
+    if (forge_collections_bootstrap.list_u8_len(bytes) != 2) { return 8; }
+
+    val words: usize = forge_collections_bootstrap.list_u64_create(1);
+    forge_collections_bootstrap.list_u64_push(words, 100);
+    forge_collections_bootstrap.list_u64_push(words, 200);
+    forge_collections_bootstrap.list_u64_push(words, 300);
+    if (forge_collections_bootstrap.list_u64_len(words) != 3) { return 9; }
+    if (forge_collections_bootstrap.list_u64_get(words, 1) != 200) { return 10; }
+    if (forge_collections_bootstrap.list_u64_pop_or(words, 999) != 300) { return 11; }
+
+    val set: usize = forge_collections_bootstrap.hash_set_u64_create();
+    if (!forge_collections_bootstrap.hash_set_u64_insert(set, 42)) { return 12; }
+    if (forge_collections_bootstrap.hash_set_u64_insert(set, 42)) { return 13; }
+    if (!forge_collections_bootstrap.hash_set_u64_insert(set, 77)) { return 14; }
+    if (!forge_collections_bootstrap.hash_set_u64_contains(set, 77)) { return 15; }
+    if (!forge_collections_bootstrap.hash_set_u64_remove(set, 42)) { return 16; }
+    if (forge_collections_bootstrap.hash_set_u64_contains(set, 42)) { return 17; }
+
+    val indexes: usize = forge_collections_bootstrap.hash_map_string_usize_create();
+    if (!forge_collections_bootstrap.hash_map_string_usize_put(indexes, "alpha", 10)) { return 18; }
+    if (forge_collections_bootstrap.hash_map_string_usize_put(indexes, "alpha", 11)) { return 19; }
+    if (forge_collections_bootstrap.hash_map_string_usize_get_or(indexes, "alpha", 0) != 11) { return 20; }
+    if (forge_collections_bootstrap.hash_map_string_usize_get_or(indexes, "missing", 99) != 99) { return 21; }
+
+    val counters: usize = forge_collections_bootstrap.hash_map_string_u64_create();
+    forge_collections_bootstrap.hash_map_string_u64_put(counters, "requests", 4294967296);
+    if (forge_collections_bootstrap.hash_map_string_u64_get_or(counters, "requests", 0) != 4294967296) { return 22; }
+    forge_collections_bootstrap.hash_map_string_u64_put(counters, "bytes", 1844674407370955);
+    if (forge_collections_bootstrap.hash_map_string_u64_len(counters) != 2) { return 23; }
+
+    val numeric: usize = forge_collections_bootstrap.hash_map_u64_u64_create();
+    if (!forge_collections_bootstrap.hash_map_u64_u64_put(numeric, 1000, 9000)) { return 24; }
+    if (!forge_collections_bootstrap.hash_map_u64_u64_put(numeric, 1001, 9001)) { return 25; }
+    if (forge_collections_bootstrap.hash_map_u64_u64_put(numeric, 1000, 9999)) { return 26; }
+    if (forge_collections_bootstrap.hash_map_u64_u64_get_or(numeric, 1000, 0) != 9999) { return 27; }
+
+    // Force growth/rehash in all string-backed numeric table variants.
+    forge_collections_bootstrap.hash_map_u64_u64_put(numeric, 1002, 9002);
+    forge_collections_bootstrap.hash_map_u64_u64_put(numeric, 1003, 9003);
+    forge_collections_bootstrap.hash_map_u64_u64_put(numeric, 1004, 9004);
+    forge_collections_bootstrap.hash_map_u64_u64_put(numeric, 1005, 9005);
+    forge_collections_bootstrap.hash_map_u64_u64_put(numeric, 1006, 9006);
+    forge_collections_bootstrap.hash_map_u64_u64_put(numeric, 1007, 9007);
+    if (forge_collections_bootstrap.hash_map_u64_u64_get_or(numeric, 1007, 0) != 9007) { return 28; }
+    if (!forge_collections_bootstrap.hash_map_u64_u64_remove(numeric, 1003)) { return 29; }
+    if (forge_collections_bootstrap.hash_map_u64_u64_contains(numeric, 1003)) { return 30; }
+    if (forge_collections_bootstrap.hash_map_u64_u64_get_or(numeric, 1007, 0) != 9007) { return 31; }
+
+    return 0;
+}
