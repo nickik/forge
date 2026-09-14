@@ -235,6 +235,7 @@ where
         enum Postfix {
             Call(Vec<Expr>),
             Index(Expr),
+            Try,
         }
 
         let postfix = choice((
@@ -242,12 +243,14 @@ where
             expr.clone()
                 .delimited_by(just(Token::LBracket), just(Token::RBracket))
                 .map(Postfix::Index),
+            just(Token::Question).to(Postfix::Try),
         ));
 
         let postfix_expr = atom.foldl_with(postfix.repeated(), |base, op, e| {
             let kind = match op {
                 Postfix::Call(args) => ExprKind::Call { callee: Box::new(base), args },
                 Postfix::Index(index) => ExprKind::Index { base: Box::new(base), index: Box::new(index) },
+                Postfix::Try => ExprKind::Try { value: Box::new(base) },
             };
             Node::new(kind, span(e.span()))
         });
@@ -593,8 +596,6 @@ where
 pub fn parse_source(source: &str) -> ParseOutput {
     let mut diagnostics = Vec::new();
 
-    // Collect eagerly so the lexing closure's mutable borrow of diagnostics is
-    // finished before parser diagnostics are appended below.
     let tokens = Token::lexer(source)
         .spanned()
         .map(|(token, range)| {
