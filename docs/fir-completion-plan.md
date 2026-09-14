@@ -81,4 +81,5 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Step 2 complete: optional `None`/`Some` decisions, payload extraction, bindings, and guarded fallthrough.
 - Step 3 complete: enum discriminant decisions lowered as resolved FIR variant tests.
 - Step 4 complete: tagged-union discriminant tests plus typed payload-field extraction/bindings.
-- Steps 5-16 intentionally untouched.
+- Step 5 complete: integer/char/string literal tests and integer/char ranges lower from semantic match conditions.
+- Steps 6-16 intentionally untouched.
