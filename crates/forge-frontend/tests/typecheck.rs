@@ -1922,3 +1922,67 @@ fn map_pattern_rejects_duplicate_keys() {
         output.diagnostics
     );
 }
+
+#[test]
+fn runtime_global_initializers_are_dependency_ordered_and_constants_are_static() {
+    let output = check(
+        r#"
+        module test.global_init_order;
+        fn seed() -> u32 { return 3u32; }
+        val dependent: u32 = base + 1u32;
+        val base: u32 = seed();
+        const fixed: u32 = 7u32;
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert_eq!(output.global_initializers.len(), 2);
+    assert_eq!(output.global_init_order.len(), 2);
+    assert_eq!(output.constants.len(), 1);
+
+    let first = output.global_init_order[0];
+    let second = output.global_init_order[1];
+    assert!(output.global_initializers[&first].dependencies.is_empty());
+    assert_eq!(
+        output.global_initializers[&second].dependencies,
+        vec![first]
+    );
+    assert!(
+        first.0 > second.0,
+        "dependency declared later must initialize first"
+    );
+}
+
+#[test]
+fn runtime_global_initializer_cycles_are_rejected() {
+    let output = check(
+        r#"
+        module test.global_init_cycle;
+        val first: u32 = second + 1u32;
+        val second: u32 = first + 1u32;
+        "#,
+    );
+    assert!(
+        has(&output, "global/init-cycle"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
+fn independent_runtime_globals_keep_source_order() {
+    let output = check(
+        r#"
+        module test.global_init_source_order;
+        fn seed() -> u32 { return 1u32; }
+        val first: u32 = seed();
+        val second: u32 = seed();
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let sorted = output
+        .global_initializers
+        .keys()
+        .copied()
+        .collect::<Vec<_>>();
+    assert_eq!(output.global_init_order, sorted);
+}

@@ -5,7 +5,7 @@ use serde::Serialize;
 use crate::{
     ast::{BinaryOp, FdnValue, MetadataArg, Span, UnaryOp},
     body_hir::{
-        BodyHirOutput, ExprId, HirBlock, HirCallArg, HirExpr, HirExprKind, HirMatchBody,
+        BodyHirOutput, ExprId, HirBlock, HirBody, HirCallArg, HirExpr, HirExprKind, HirMatchBody,
         HirPattern, HirPatternKind, HirStmt, HirStmtKind,
     },
     hir::{DefId, MetadataTableExt, MetadataTarget},
@@ -52,6 +52,8 @@ pub struct FirOutput {
 pub struct FirModule {
     pub functions: BTreeMap<DefId, FirFunction>,
     pub globals: BTreeMap<DefId, FirGlobal>,
+    pub global_initializers: BTreeMap<DefId, FirGlobalInitializer>,
+    pub global_init_order: Vec<DefId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -59,6 +61,13 @@ pub struct FirGlobal {
     pub owner: DefId,
     pub ty: Ty,
     pub constant: Option<ConstValue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FirGlobalInitializer {
+    pub owner: DefId,
+    pub dependencies: Vec<DefId>,
+    pub function: FirFunction,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -376,6 +385,61 @@ pub fn lower_fir(bodies: &BodyHirOutput, typed: &TypeCheckOutput) -> FirOutput {
                 owner: *owner,
                 ty: ty.clone(),
                 constant: typed.constants.get(owner).cloned(),
+            },
+        );
+    }
+
+    output.module.global_init_order = typed.global_init_order.clone();
+    for owner in &typed.global_init_order {
+        let Some(plan) = typed.global_initializers.get(owner) else {
+            output.diagnostics.push(FirDiagnostic {
+                span: Span::new(0, 0),
+                code: "fir/global-init-plan".into(),
+                message: format!("missing typed runtime global initializer for {owner:?}"),
+            });
+            continue;
+        };
+        let Some(global) = bodies.globals.get(owner) else {
+            output.diagnostics.push(FirDiagnostic {
+                span: plan.span,
+                code: "fir/global-init-body".into(),
+                message: format!("missing HIR runtime global initializer for {owner:?}"),
+            });
+            continue;
+        };
+        let synthetic = HirBody {
+            owner: *owner,
+            params: Vec::new(),
+            param_defaults: BTreeMap::new(),
+            return_type: global.ty.clone(),
+            locals: global.locals.clone(),
+            block: HirBlock {
+                span: global.value.span,
+                statements: vec![HirStmt {
+                    span: global.value.span,
+                    kind: HirStmtKind::Return {
+                        tail: false,
+                        value: Some(global.value.clone()),
+                    },
+                }],
+            },
+        };
+        let (function, mut diagnostics) = FunctionLowerer::new(
+            &synthetic,
+            &plan.body,
+            bodies,
+            typed,
+            function_overflow_mode(typed, *owner),
+        )
+        .lower();
+        diagnostics.extend(verify_fir_function(&function));
+        output.diagnostics.extend(diagnostics);
+        output.module.global_initializers.insert(
+            *owner,
+            FirGlobalInitializer {
+                owner: *owner,
+                dependencies: plan.dependencies.clone(),
+                function,
             },
         );
     }

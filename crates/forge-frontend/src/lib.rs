@@ -32,14 +32,15 @@ pub use typecheck::{
     MatchProjection, MatchScalar, MatchTest, ResolvedCallArgument, ResolvedReceiver, Ty,
     TypeCheckOutput, TypeDiagnostic, TypedBitField, TypedBitFieldAccess, TypedBitStruct, TypedBody,
     TypedCapture, TypedClosurePlan, TypedCollectionPatternProtocol, TypedContextOverride,
-    TypedContextScope, TypedExpr, TypedExprKind, TypedMatchArmPlan, TypedMatchBinding,
-    TypedMatchPlan, TypedUnsafeScope, UnsafeOperationKind, UnsafeProvenance,
+    TypedContextScope, TypedExpr, TypedExprKind, TypedGlobalInitializer, TypedMatchArmPlan,
+    TypedMatchBinding, TypedMatchPlan, TypedUnsafeScope, UnsafeOperationKind, UnsafeProvenance,
 };
 
 pub use fir::{
     lower_fir, verify_fir_function, FirBasicBlock, FirBlockId, FirConst, FirDiagnostic,
-    FirFunction, FirGlobal, FirInstruction, FirInstructionKind, FirLocal, FirLocalId, FirModule,
-    FirOutput, FirPlace, FirSelectCase, FirTerminator, FirUnaryOp, FirValueId, OverflowMode,
+    FirFunction, FirGlobal, FirGlobalInitializer, FirInstruction, FirInstructionKind, FirLocal,
+    FirLocalId, FirModule, FirOutput, FirPlace, FirSelectCase, FirTerminator, FirUnaryOp,
+    FirValueId, OverflowMode,
 };
 
 pub use typecheck::{RuntimeOperationId, TypedSelectArm, TypedSelectPlan};

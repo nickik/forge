@@ -54,6 +54,7 @@ pub struct HirBody {
 pub struct HirGlobalBody {
     pub owner: DefId,
     pub ty: Option<HirType>,
+    pub locals: Vec<HirLocalDecl>,
     pub value: HirExpr,
 }
 
@@ -458,11 +459,13 @@ pub fn lower_resolved_bodies(source: &ast::SourceFile, module: &HirModule) -> Bo
                 let mut lowerer = Lowerer::new(module, &imports, &mut output.diagnostics);
                 let ty = value.ty.as_ref().map(|ty| lowerer.lower_type(ty));
                 let expr = lowerer.lower_expr(&value.value);
+                let locals = lowerer.locals;
                 output.globals.insert(
                     owner,
                     HirGlobalBody {
                         owner,
                         ty,
+                        locals,
                         value: expr,
                     },
                 );
