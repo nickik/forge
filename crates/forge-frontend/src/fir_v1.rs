@@ -13,8 +13,9 @@ use crate::{
     typecheck::{
         CaptureMode, ConstValue, ContextSlot, IntWidth, MatchCondition, MatchProjection,
         MatchScalar, MatchTest, ResolvedCallArgument, ResolvedReceiver, RuntimeOperationId, Ty,
-        TypeCheckOutput, TypedBody, TypedClosurePlan, TypedExpr, TypedExprKind, TypedMatchBinding,
-        TypedMatchPlan, TypedSelectArm, UnsafeOperationKind, UnsafeProvenance,
+        TypeCheckOutput, TypedBitFieldAccess, TypedBody, TypedClosurePlan, TypedExpr,
+        TypedExprKind, TypedMatchBinding, TypedMatchPlan, TypedSelectArm, UnsafeOperationKind,
+        UnsafeProvenance,
     },
 };
 
@@ -161,6 +162,18 @@ pub enum FirInstructionKind {
     Convert {
         value: FirValueId,
         target: Ty,
+    },
+    BitStructStorage {
+        value: FirValueId,
+        storage: Ty,
+    },
+    BitStructFromStorage {
+        value: FirValueId,
+        bitstruct: DefId,
+    },
+    BitFieldCheck {
+        value: FirValueId,
+        width: u32,
     },
     PointerOffset {
         pointer: FirValueId,
@@ -673,6 +686,9 @@ impl<'a> FunctionLowerer<'a> {
                 self.bind_irrefutable_pattern(pattern, value_id, &ty);
             }
             HirStmtKind::Assignment { target, value } => {
+                if self.lower_bitfield_assignment(target, value) {
+                    return;
+                }
                 let value = self.lower_expr(value);
                 if let Some(place) = self.lower_place(target) {
                     self.emit_void(stmt.span, FirInstructionKind::Store { place, value });
@@ -1269,6 +1285,9 @@ impl<'a> FunctionLowerer<'a> {
                 ..
             } => self.lower_try(expr, source_error, target_error, result_ty),
             TypedExprKind::ResolvedMatch { plan, .. } => self.lower_match(expr, plan, result_ty),
+            TypedExprKind::ResolvedBitField { access, .. } => {
+                self.lower_bitfield_read(expr, access, result_ty)
+            }
             TypedExprKind::UnsafeOperation {
                 operation,
                 provenance,
@@ -1419,20 +1438,33 @@ impl<'a> FunctionLowerer<'a> {
                     );
                     return self.poison(expr.span, ty);
                 }
-                let Some(value) = first_positional(args) else {
-                    self.diagnostic(
+                let value = self.lower_expr(source_expr);
+                if let Ty::Nominal(id) = ty {
+                    if self.all_typed.bitstructs.contains_key(&id) {
+                        return self.emit_value(
+                            expr.span,
+                            Ty::Nominal(id),
+                            FirInstructionKind::BitStructFromStorage {
+                                value,
+                                bitstruct: id,
+                            },
+                        );
+                    }
+                    self.emit_value(
                         expr.span,
-                        "fir/conversion-arity",
-                        "type conversion requires one positional operand",
-                    );
-                    return self.poison(expr.span, ty);
-                };
-                let value = self.lower_expr(value);
-                self.emit_value(
-                    expr.span,
-                    ty.clone(),
-                    FirInstructionKind::Convert { value, target: ty },
-                )
+                        Ty::Nominal(id),
+                        FirInstructionKind::Convert {
+                            value,
+                            target: Ty::Nominal(id),
+                        },
+                    )
+                } else {
+                    self.emit_value(
+                        expr.span,
+                        ty.clone(),
+                        FirInstructionKind::Convert { value, target: ty },
+                    )
+                }
             }
             HirExprKind::Index { base, index } => {
                 let base_ty = self.expr_ty(base);
@@ -1776,6 +1808,233 @@ impl<'a> FunctionLowerer<'a> {
                 .copied()
                 .map(|local| FirPlace::Local { local })
         }
+    }
+
+    fn lower_bitfield_read(
+        &mut self,
+        expr: &HirExpr,
+        access: &TypedBitFieldAccess,
+        result_ty: Ty,
+    ) -> FirValueId {
+        let HirExprKind::Member { base, .. } = &expr.kind else {
+            self.diagnostic(
+                expr.span,
+                "fir/bitfield-shape",
+                "resolved bit-field access is not attached to a member expression",
+            );
+            return self.poison(expr.span, result_ty);
+        };
+        let base_value = if let Some(place) = self.try_place(base) {
+            self.emit_value(
+                base.span,
+                Ty::Nominal(access.owner),
+                FirInstructionKind::Load { place },
+            )
+        } else {
+            self.lower_expr(base)
+        };
+        let storage = self.emit_value(
+            expr.span,
+            access.storage.clone(),
+            FirInstructionKind::BitStructStorage {
+                value: base_value,
+                storage: access.storage.clone(),
+            },
+        );
+        let shifted = if access.field.offset == 0 {
+            storage
+        } else {
+            let shift = self.emit_integer_const(
+                expr.span,
+                access.storage.clone(),
+                access.field.offset as u64,
+            );
+            self.emit_value(
+                expr.span,
+                access.storage.clone(),
+                FirInstructionKind::Binary {
+                    op: BinaryOp::ShiftRight,
+                    overflow: Some(OverflowMode::Checked),
+                    left: storage,
+                    right: shift,
+                },
+            )
+        };
+        let mask = bit_mask(access.field.width);
+        let mask_value = self.emit_integer_const(expr.span, access.storage.clone(), mask);
+        let masked = self.emit_value(
+            expr.span,
+            access.storage.clone(),
+            FirInstructionKind::Binary {
+                op: BinaryOp::BitAnd,
+                overflow: None,
+                left: shifted,
+                right: mask_value,
+            },
+        );
+        if result_ty == Ty::Bool {
+            let zero = self.emit_integer_const(expr.span, access.storage.clone(), 0);
+            self.emit_value(
+                expr.span,
+                Ty::Bool,
+                FirInstructionKind::Binary {
+                    op: BinaryOp::NotEq,
+                    overflow: None,
+                    left: masked,
+                    right: zero,
+                },
+            )
+        } else if result_ty == access.storage {
+            masked
+        } else {
+            self.emit_value(
+                expr.span,
+                result_ty.clone(),
+                FirInstructionKind::Convert {
+                    value: masked,
+                    target: result_ty,
+                },
+            )
+        }
+    }
+
+    fn lower_bitfield_assignment(&mut self, target: &HirExpr, value: &HirExpr) -> bool {
+        let Some(typed) = self.exprs.get(&target.id).copied() else {
+            return false;
+        };
+        let TypedExprKind::ResolvedBitField { access, .. } = &typed.kind else {
+            return false;
+        };
+        let access = access.clone();
+        let HirExprKind::Member { base, .. } = &target.kind else {
+            return false;
+        };
+        let Some(base_place) = self.lower_place(base) else {
+            return true;
+        };
+        let current = self.emit_value(
+            base.span,
+            Ty::Nominal(access.owner),
+            FirInstructionKind::Load {
+                place: base_place.clone(),
+            },
+        );
+        let storage = self.emit_value(
+            target.span,
+            access.storage.clone(),
+            FirInstructionKind::BitStructStorage {
+                value: current,
+                storage: access.storage.clone(),
+            },
+        );
+        let field_value = self.lower_expr(value);
+        if access.field.ty != Ty::Bool
+            && access.field.width
+                < integer_width_bits(&access.field.ty).unwrap_or(access.field.width)
+        {
+            self.emit_void(
+                value.span,
+                FirInstructionKind::BitFieldCheck {
+                    value: field_value,
+                    width: access.field.width,
+                },
+            );
+        }
+        let encoded = if access.field.ty == access.storage {
+            field_value
+        } else {
+            self.emit_value(
+                value.span,
+                access.storage.clone(),
+                FirInstructionKind::Convert {
+                    value: field_value,
+                    target: access.storage.clone(),
+                },
+            )
+        };
+        let mask = bit_mask(access.field.width);
+        let mask_value = self.emit_integer_const(target.span, access.storage.clone(), mask);
+        let masked = self.emit_value(
+            target.span,
+            access.storage.clone(),
+            FirInstructionKind::Binary {
+                op: BinaryOp::BitAnd,
+                overflow: None,
+                left: encoded,
+                right: mask_value,
+            },
+        );
+        let shifted_value = if access.field.offset == 0 {
+            masked
+        } else {
+            let shift = self.emit_integer_const(
+                target.span,
+                access.storage.clone(),
+                access.field.offset as u64,
+            );
+            self.emit_value(
+                target.span,
+                access.storage.clone(),
+                FirInstructionKind::Binary {
+                    op: BinaryOp::ShiftLeft,
+                    overflow: Some(OverflowMode::Checked),
+                    left: masked,
+                    right: shift,
+                },
+            )
+        };
+        let shifted_mask = mask << access.field.offset;
+        let storage_mask = bit_mask(access.storage_bits);
+        let clear_mask = storage_mask ^ shifted_mask;
+        let clear_value = self.emit_integer_const(target.span, access.storage.clone(), clear_mask);
+        let cleared = self.emit_value(
+            target.span,
+            access.storage.clone(),
+            FirInstructionKind::Binary {
+                op: BinaryOp::BitAnd,
+                overflow: None,
+                left: storage,
+                right: clear_value,
+            },
+        );
+        let combined = self.emit_value(
+            target.span,
+            access.storage.clone(),
+            FirInstructionKind::Binary {
+                op: BinaryOp::BitOr,
+                overflow: None,
+                left: cleared,
+                right: shifted_value,
+            },
+        );
+        let rebuilt = self.emit_value(
+            target.span,
+            Ty::Nominal(access.owner),
+            FirInstructionKind::BitStructFromStorage {
+                value: combined,
+                bitstruct: access.owner,
+            },
+        );
+        self.emit_void(
+            target.span,
+            FirInstructionKind::Store {
+                place: base_place,
+                value: rebuilt,
+            },
+        );
+        true
+    }
+
+    fn emit_integer_const(&mut self, span: Span, ty: Ty, value: u64) -> FirValueId {
+        self.emit_value(
+            span,
+            ty,
+            FirInstructionKind::Const {
+                value: FirConst::Integer {
+                    text: value.to_string(),
+                },
+            },
+        )
     }
 
     fn lower_match(&mut self, expr: &HirExpr, plan: &TypedMatchPlan, result_ty: Ty) -> FirValueId {
@@ -3008,6 +3267,36 @@ fn usize_ty() -> Ty {
     Ty::Int {
         signed: false,
         width: IntWidth::Pointer,
+    }
+}
+
+fn bit_mask(width: u32) -> u64 {
+    if width >= 64 {
+        u64::MAX
+    } else {
+        (1u64 << width) - 1
+    }
+}
+
+fn integer_width_bits(ty: &Ty) -> Option<u32> {
+    match ty {
+        Ty::Int {
+            width: IntWidth::W8,
+            ..
+        } => Some(8),
+        Ty::Int {
+            width: IntWidth::W16,
+            ..
+        } => Some(16),
+        Ty::Int {
+            width: IntWidth::W32,
+            ..
+        } => Some(32),
+        Ty::Int {
+            width: IntWidth::W64,
+            ..
+        } => Some(64),
+        _ => None,
     }
 }
 

@@ -1748,3 +1748,92 @@ fn integer_to_pointer_alias_conversion_requires_unsafe() {
         }
     )));
 }
+
+#[test]
+fn bitstruct_layout_is_lsb_first_with_standard_field_types() {
+    let output = check(
+        r#"
+        module test.bitstruct_layout;
+        bitstruct Status: u16 {
+            ready: 1;
+            error: 1;
+            mode: 3;
+            code: 5;
+            reserved: 6;
+        }
+        fn main(status: Status) -> u8 { return status.mode; }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let layout = output.bitstructs.values().next().expect("bitstruct layout");
+    assert_eq!(layout.storage_bits, 16);
+    assert_eq!(layout.fields["ready"].offset, 0);
+    assert_eq!(layout.fields["error"].offset, 1);
+    assert_eq!(layout.fields["mode"].offset, 2);
+    assert_eq!(layout.fields["code"].offset, 5);
+    assert_eq!(layout.fields["reserved"].offset, 10);
+    assert_eq!(layout.fields["ready"].ty, Ty::Bool);
+    assert_eq!(
+        layout.fields["mode"].ty,
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W8,
+        }
+    );
+    assert!(output
+        .functions
+        .values()
+        .flat_map(|body| body.expressions.iter())
+        .any(|expr| matches!(
+            expr.kind,
+            forge_frontend::TypedExprKind::ResolvedBitField { .. }
+        )));
+}
+
+#[test]
+fn bitstruct_rejects_invalid_storage_and_overflowing_layout() {
+    let bad_storage = check(
+        r#"
+        module test.bitstruct_bad_storage;
+        bitstruct Bad: i16 { x: 1; }
+        fn main() -> i32 { return 0; }
+        "#,
+    );
+    assert!(
+        has(&bad_storage, "bitstruct/storage"),
+        "{:?}",
+        bad_storage.diagnostics
+    );
+
+    let too_wide = check(
+        r#"
+        module test.bitstruct_too_wide;
+        bitstruct Bad: u8 { a: 5; b: 4; }
+        fn main() -> i32 { return 0; }
+        "#,
+    );
+    assert!(
+        has(&too_wide, "bitstruct/width"),
+        "{:?}",
+        too_wide.diagnostics
+    );
+}
+
+#[test]
+fn bitstruct_constructor_requires_exact_storage_type() {
+    let output = check(
+        r#"
+        module test.bitstruct_constructor;
+        bitstruct Status: u16 { mode: 3; }
+        fn main() -> i32 {
+            val status: Status = Status(0u8);
+            return 0;
+        }
+        "#,
+    );
+    assert!(
+        has(&output, "bitstruct/storage-conversion"),
+        "{:?}",
+        output.diagnostics
+    );
+}
