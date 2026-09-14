@@ -18,6 +18,14 @@ The exact symbol mangling is implementation-defined until the Forge ABI is froze
 
 `core` may construct and pass `PanicInfo`, but must not provide the environment policy for reporting, rebooting, halting, debugging, or terminating a process.
 
+### Panic is non-unwinding in Forge v1
+
+The v1 runtime ABI does not require stack unwinding, exception tables, a personality routine, or heap allocation for panic. `__forge_panic` does not return and ordinary `defer` semantics must already have been lowered where the language guarantees them; panic itself is terminal for the current execution unit.
+
+A future ABI may define an optional recovery/unwind facility, but it must not become a requirement for freestanding `core` or silently change v1 panic behavior.
+
+This is intentionally suitable for kernels and embedded systems: a panic path can remain valid before allocators, schedulers, filesystems, consoles, or userspace exist.
+
 ## 2. Freestanding behavior
 
 A `--no-std` executable or kernel image does not receive a hosted panic implementation.
@@ -42,6 +50,8 @@ A freestanding provider may:
 - record crash state and reset.
 
 It must never return normally.
+
+A final freestanding image that can reach a panic path but supplies no handler is a build/link error. Supplying more than one canonical handler is also an error.
 
 ## 3. Hosted behavior
 
@@ -104,9 +114,12 @@ Entry-point selection and panic-provider selection are separate concerns.
 
 ## 7. Comparison model
 
-Forge deliberately follows the useful property shared by Rust `no_std` and Zig: libraries can trigger one canonical panic mechanism while the final program/environment owns the policy.
+Forge deliberately takes two useful ideas from existing systems languages:
 
-Forge avoids requiring a second standard library for freestanding use. `core` remains the same library in kernel, embedded, and hosted builds; only the runtime provider changes.
+- Rust `no_std`: `core` can invoke panic but the final freestanding binary supplies the panic handler.
+- Zig: the final root/program can override the canonical panic policy rather than libraries embedding one.
+
+Forge keeps the v1 ABI explicitly non-unwinding and does not require a separate freestanding standard library. `core` remains the same library in kernel, embedded, and hosted builds; only the runtime provider changes.
 
 ## 8. Testing requirements
 
@@ -119,5 +132,7 @@ The standard library/runtime test suite must verify at least:
 5. allocation failure remains a returned error unless explicitly converted to panic;
 6. a freestanding final artifact can supply a custom panic provider;
 7. a missing required provider is diagnosed during final linking/building rather than becoming an unresolved runtime accident;
-8. the panic hook is non-returning;
-9. hosted and freestanding implementations can use the same `core` code.
+8. duplicate panic providers are rejected;
+9. the panic hook is non-returning;
+10. panic does not require unwind tables or an unwinder in v1;
+11. hosted and freestanding implementations can use the same `core` code.
