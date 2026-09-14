@@ -1,0 +1,12 @@
+module std;
+
+import core;
+
+// Forge hosted standard library bootstrap.
+//
+// `std` is layered on `core`. Hosted startup, I/O, filesystem, networking,
+// clocks, OS threads, entropy, and process allocator policy will live here as
+// their platform contracts are defined.
+//
+// No fake print/allocator intrinsics are declared yet: the runtime ABI and
+// foreign/platform binding mechanism should be specified before std exposes them.
