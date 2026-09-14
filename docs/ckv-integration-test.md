@@ -120,7 +120,7 @@ The older CForge CKV implementation is only a reference/oracle used for differen
 - [x] End-to-end CI performs separate `set`/`get` invocations against a real file.
 - [x] Exact value output is asserted while timing output is pattern-checked.
 - [x] Overwrite is tested and the append log is verified to contain two records.
-- [ ] CForge native image runs exactly the same package and source. (CI gate added; awaiting/maintaining green native run.)
+- [x] CForge native image runs exactly the same package and source.
 
 ### Stage 3 — stronger persistence semantics
 
@@ -138,7 +138,7 @@ The older CForge CKV implementation is only a reference/oracle used for differen
 ### Stage 4 — portability gate
 
 - [ ] Native Unix Forge platform provider.
-- [x] CForge hosted reference provider.
+- [x] CForge hosted reference provider on JVM and GraalVM native image.
 - [ ] Cosmic userspace provider.
 - [ ] Same `ckv-core` source passes persistence tests on native Unix Forge and Cosmic.
 
@@ -177,6 +177,7 @@ The CKV suite is intended to become one of the required Forge/Cosmic integration
 - [x] real file locking exercised by Forge source
 - [x] access timing produced by the monotonic provider
 - [x] separate process invocations for set/get in CI
+- [x] same CKV sequence through the GraalVM-native CForge executable
 - [ ] simultaneous writers serialize correctly
 - [ ] shared-reader/exclusive-writer policy
 - [ ] large database (10k+ keys)
