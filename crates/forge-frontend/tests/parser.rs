@@ -249,3 +249,41 @@ fn empty_enum_and_tagged_are_rejected() {
         assert!(!parsed.diagnostics.is_empty(), "{source}");
     }
 }
+
+#[test]
+fn metadata_is_prefix_only() {
+    let parsed = parse_source(
+        r#"
+        module test.metadata_prefix;
+
+        @repr(c)
+        struct Header {
+            @deprecated("legacy")
+            word: u32;
+        }
+
+        @range(0..=100)
+        type Percent = u8;
+
+        @overflow(wrap)
+        fn mix(x: u32) -> u32 { return x + 1u32; }
+        "#,
+    );
+    assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+    assert!(parsed.ast.is_some());
+}
+
+#[test]
+fn rejects_expression_and_type_metadata_forms() {
+    for source in [
+        "module test.bad_expr_meta; fn main() -> i32 { val x = 1u32 @unchecked; return 0; }",
+        "module test.bad_type_meta; type Percent = u8 @range(0..=100);",
+        "module test.bad_wrap; fn main() -> u32 { return @wrap(1u32 + 2u32); }",
+    ] {
+        let parsed = parse_source(source);
+        assert!(
+            parsed.ast.is_none() || !parsed.diagnostics.is_empty(),
+            "unexpectedly accepted: {source}"
+        );
+    }
+}

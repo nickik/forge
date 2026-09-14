@@ -3,8 +3,9 @@ module examples.conformance.metadata_chains;
 @cold
 @doc("helper")
 fn helper(value: u32) -> u32 {
-    val x = value @unchecked @trace("read");
-    return x;
+    return value;
 }
 
-type Small = u32 @range(0..=15) @repr(u8);
+@range(0..=15)
+@repr(u8)
+type Small = u32;

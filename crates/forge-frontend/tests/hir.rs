@@ -1,5 +1,5 @@
 use forge_frontend::{
-    hir::{DefId, HirItemKind},
+    hir::{DefId, HirItemKind, MetadataTarget},
     lower_module, parse_source,
 };
 
@@ -102,4 +102,65 @@ fn records_impl_without_defining_target_again() {
         output.module.items[1].kind,
         HirItemKind::Impl { .. }
     ));
+}
+
+#[test]
+fn preserves_metadata_by_semantic_target() {
+    let output = lower(
+        r#"
+        module test.metadata_hir;
+
+        @repr(c)
+        struct Header {
+            @align(4)
+            word: u32;
+        }
+
+        @overflow(wrap)
+        fn hash(x: u32) -> u32 { return x + 1u32; }
+
+        impl Header {
+            @inline
+            fn get(self: &Header) -> u32 { return self.word; }
+        }
+        "#,
+    );
+
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let item = output
+        .module
+        .metadata
+        .get(&MetadataTarget::Item { owner: DefId(0) })
+        .expect("struct metadata");
+    assert!(item.iter().any(|m| m.name.as_deref() == Some("repr")));
+
+    let field = output
+        .module
+        .metadata
+        .get(&MetadataTarget::Field {
+            owner: DefId(0),
+            variant: None,
+            name: "word".into(),
+        })
+        .expect("field metadata");
+    assert!(field.iter().any(|m| m.name.as_deref() == Some("align")));
+
+    let function = output
+        .module
+        .metadata
+        .get(&MetadataTarget::Item { owner: DefId(1) })
+        .expect("function metadata");
+    assert!(function
+        .iter()
+        .any(|m| m.name.as_deref() == Some("overflow")));
+
+    let method = output
+        .module
+        .metadata
+        .get(&MetadataTarget::ImplMethod {
+            owner: DefId(2),
+            name: "get".into(),
+        })
+        .expect("impl method metadata");
+    assert!(method.iter().any(|m| m.name.as_deref() == Some("inline")));
 }

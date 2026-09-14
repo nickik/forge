@@ -320,8 +320,7 @@ impl<'a, 'd> Resolver<'a, 'd> {
             TypeKind::Named { path } => self.resolve_type_path(path, ty.span),
             TypeKind::Pointer { inner, .. }
             | TypeKind::Reference { inner, .. }
-            | TypeKind::Optional { inner }
-            | TypeKind::Annotated { inner, .. } => self.resolve_type(inner),
+            | TypeKind::Optional { inner } => self.resolve_type(inner),
             TypeKind::Slice { element, .. } => self.resolve_type(element),
             TypeKind::Array { element, length } => {
                 self.resolve_type(element);
@@ -556,9 +555,7 @@ impl<'a, 'd> Resolver<'a, 'd> {
                     self.resolve_expr(item);
                 }
             }
-            ExprKind::Unary { value, .. }
-            | ExprKind::Try { value }
-            | ExprKind::Annotated { value, .. } => self.resolve_expr(value),
+            ExprKind::Unary { value, .. } | ExprKind::Try { value } => self.resolve_expr(value),
             ExprKind::Binary { left, right, .. } => {
                 self.resolve_expr(left);
                 self.resolve_expr(right);

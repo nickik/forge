@@ -73,7 +73,8 @@ It should:
 - preserve pattern trees until exhaustiveness analysis;
 - record overload candidate sets before exact selection;
 - represent `T?` explicitly as the compiler-recognized `Option` type;
-- retain source spans for diagnostics.
+- retain source spans for diagnostics;
+- retain one generic metadata table keyed by semantic target so later stages can inspect declaration metadata without reparsing AST syntax.
 
 ## Typed HIR requirements
 

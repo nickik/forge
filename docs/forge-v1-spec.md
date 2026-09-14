@@ -355,7 +355,8 @@ Unlike `distinct`, aliases do not create a new nominal type.
 ## 15. Range-constrained types
 
 ```forge
-type Percentage = u8 @range(0..=100);
+@range(0..=100)
+type Percentage = u8;
 ```
 
 Construction from an arbitrary integer checks range:
@@ -565,13 +566,7 @@ val c: u32 = a + b;
 
 If the mathematical result is not representable, execution performs a defined arithmetic trap/panic path.
 
-Explicit wrapping:
-
-```forge
-val c: u32 = @wrap(a + b);
-```
-
-Function/block metadata may declare wrapping arithmetic where appropriate:
+Wrapping arithmetic is not expressed by attaching metadata to an expression. When an entire function intentionally uses wrapping integer arithmetic, declaration metadata may request it:
 
 ```forge
 @overflow(wrap)
@@ -579,6 +574,8 @@ fn hash_mix(x: u32) -> u32 {
     return x * 2654435761u32;
 }
 ```
+
+Code that needs only one localized wrapping operation uses an explicit wrapping arithmetic operation/intrinsic rather than `@` expression syntax.
 
 Unchecked overflow is never implied solely by optimization level.
 
@@ -1030,13 +1027,7 @@ Out of bounds causes a defined trap/panic.
 
 The compiler should prove and remove redundant checks where possible.
 
-Unchecked indexing requires explicit unsafe intent:
-
-```forge
-unsafe {
-    val x = values[i] @unchecked;
-}
-```
+Unchecked indexing requires explicit unsafe intent and a dedicated unsafe operation/intrinsic. `@` metadata is not expression syntax, and entering `unsafe` alone does not disable bounds checks.
 
 Optimization level alone never changes checked source semantics.
 
@@ -1230,7 +1221,9 @@ Structured metadata embeds FDN:
 pub fn connect(...) { ... }
 ```
 
-Metadata can be consumed by compiler, linker, documentation, serialization and static-analysis tools. Unknown metadata must not silently change core language semantics.
+Metadata attaches to declarations and declaration-owned fields/methods. It is not an expression operator or a postfix type operator: forms such as `value @unchecked`, `u8 @range(...)`, and `@wrap(expr)` are not Forge v1 metadata syntax. A constrained alias instead carries `@range(...)` on the alias declaration itself.
+
+The compiler carries metadata as one universal structured metadata concept. HIR and later semantic stages retain the original metadata values together with the semantic target they annotate. Individual compiler stages interpret only metadata names they own (`@repr`, `@align`, `@overflow`, and so on); they must not lower each metadata spelling into unrelated parser/HIR syntax. Unknown metadata remains available to linker, documentation, serialization and static-analysis tools and must not silently change core language semantics.
 
 ## 55. Representation metadata
 

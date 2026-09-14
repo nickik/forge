@@ -169,22 +169,35 @@ When there are no captures, `[]` is omitted:
 
 ## Metadata
 
-Metadata is legal before declarations and as postfix metadata on types and expressions.
+Metadata is prefix-only in Forge v1. It may annotate declarations and declaration-owned fields/methods.
 
 ```forge
 @repr(c)
-struct Header { ... }
+struct Header {
+    @deprecated("use sequence")
+    sequence: u32;
+}
 
-type Percentage = u8 @range(0..=100);
+@range(0..=100)
+type Percentage = u8;
 
-unsafe {
-    val x = values[i] @unchecked;
+@overflow(wrap)
+fn hash_mix(x: u32) -> u32 {
+    return x * 2654435761u32;
 }
 ```
 
-The parser accepts the general metadata position; semantic validation decides which metadata names are legal for which construct.
+Metadata is structured data attached to a semantic target. The compiler preserves it generically through HIR/typed HIR; later stages inspect names they understand instead of receiving separate syntax nodes for each metadata spelling.
 
-Checked arithmetic is the default. `@check(...)` is removed from v1 and should be rejected as a standardized compiler form. Explicit wrapping remains available through `@wrap(...)` / `@overflow(wrap)` as defined by the metadata contract.
+Postfix type/expression metadata is not part of v1. These forms are rejected:
+
+```forge
+type Percentage = u8 @range(0..=100);
+val x = values[i] @unchecked;
+val y = @wrap(a + b);
+```
+
+Checked arithmetic and checked indexing remain the default. Function-wide wrapping may be requested with `@overflow(wrap)`. Localized wrapping or unchecked operations use explicit operations/intrinsics, not metadata applied to expressions. `@check(...)` is likewise not a standardized compiler form.
 
 ## Methods
 

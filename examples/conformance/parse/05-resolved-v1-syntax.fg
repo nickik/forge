@@ -2,7 +2,8 @@ module examples.conformance.resolved_v1;
 
 import std.io, std.mem;
 
-type Percentage = u8 @range(0..=100);
+@range(0..=100)
+type Percentage = u8;
 
 struct Point {
     x: i32;
@@ -70,10 +71,10 @@ fn exercise(ptr: *volatile u32, point: Point, shape: Shape) -> i32 {
         point.length();
     }
 
-    val unchecked = point.x @unchecked;
+    val field = point.x;
     val red = Color::Red;
     val unit_a = Shape::Point;
     val unit_b = Shape::Point{};
 
-    return inc(add_x(result + unchecked));
+    return inc(add_x(result + field));
 }

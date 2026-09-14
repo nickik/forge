@@ -1,0 +1,5 @@
+module examples.conformance.bad_wrap_expression;
+
+fn main() -> u32 {
+    return @wrap(1u32 + 2u32);
+}

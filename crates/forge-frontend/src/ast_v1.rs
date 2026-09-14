@@ -373,10 +373,6 @@ pub enum ExprKind {
         tag: String,
         value: FdnValue,
     },
-    Annotated {
-        value: Box<Expr>,
-        metadata: Vec<Metadata>,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -470,10 +466,6 @@ pub enum TypeKind {
     Closure {
         params: Vec<TypeNode>,
         result: Box<TypeNode>,
-    },
-    Annotated {
-        inner: Box<TypeNode>,
-        metadata: Vec<Metadata>,
     },
 }
 

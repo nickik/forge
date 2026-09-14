@@ -349,7 +349,6 @@ where
     enum TypeSuffix {
         Optional,
         Slice(bool),
-        Metadata(Metadata),
     }
     let type_suffix = choice((
         just(Token::Question).to(TypeSuffix::Optional),
@@ -357,7 +356,6 @@ where
             .ignore_then(just(Token::RBracket))
             .ignore_then(just(Token::Mut).or_not())
             .map(|mutable| TypeSuffix::Slice(mutable.is_some())),
-        metadata.clone().map(TypeSuffix::Metadata),
     ));
     ty.define(
         prefixed_type
@@ -369,10 +367,6 @@ where
                     TypeSuffix::Slice(mutable) => TypeKind::Slice {
                         mutable,
                         element: Box::new(base),
-                    },
-                    TypeSuffix::Metadata(item) => TypeKind::Annotated {
-                        inner: Box::new(base),
-                        metadata: vec![item],
                     },
                 };
                 Node::new(kind, span(e.span()))
@@ -615,25 +609,6 @@ where
         .ignore_then(fdn_name())
         .then(fdn.clone())
         .map_with(|(tag, value), e| Node::new(ExprKind::ReaderForm { tag, value }, span(e.span())));
-    let wrap_expr = just(Token::At)
-        .ignore_then(select! { Token::Ident(name) if name == "wrap" => name })
-        .then(
-            expr.clone()
-                .delimited_by(just(Token::LParen), just(Token::RParen)),
-        )
-        .map_with(|(name, value), e| {
-            Node::new(
-                ExprKind::Annotated {
-                    value: Box::new(value),
-                    metadata: vec![Metadata {
-                        name: Some(name),
-                        arguments: Vec::new(),
-                        map: None,
-                    }],
-                },
-                span(e.span()),
-            )
-        });
     let init_field = ident()
         .then_ignore(just(Token::Colon))
         .then(expr.clone())
@@ -783,7 +758,6 @@ where
         .delimited_by(just(Token::LParen), just(Token::RParen));
     let atom = choice((
         match_expr,
-        wrap_expr,
         reader_expr,
         captured_closure,
         capture_free_closure,
@@ -830,7 +804,6 @@ where
         Index(Expr),
         Member(String),
         Try,
-        Metadata(Metadata),
     }
     let postfix = choice((
         call_args.map(Postfix::Call),
@@ -839,7 +812,6 @@ where
             .map(Postfix::Index),
         just(Token::Dot).ignore_then(ident()).map(Postfix::Member),
         just(Token::Question).to(Postfix::Try),
-        metadata.clone().map(Postfix::Metadata),
     ));
     let postfix_expr = atom.foldl_with(postfix.repeated(), |base, postfix, e| {
         let kind = match postfix {
@@ -857,10 +829,6 @@ where
             },
             Postfix::Try => ExprKind::Try {
                 value: Box::new(base),
-            },
-            Postfix::Metadata(item) => ExprKind::Annotated {
-                value: Box::new(base),
-                metadata: vec![item],
             },
         };
         Node::new(kind, span(e.span()))
@@ -1677,7 +1645,6 @@ fn validate_expr(expr: &Expr, diagnostics: &mut Vec<Diagnostic>) {
                 }
             }
         }
-        ExprKind::Annotated { value, .. } => validate_expr(value, diagnostics),
         ExprKind::Integer { .. }
         | ExprKind::Float { .. }
         | ExprKind::Character { .. }

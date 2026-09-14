@@ -45,6 +45,8 @@ AST nodes preserve source spans and original syntax required for diagnostics. Th
 
 Lower AST to a compiler-oriented HIR after reader expansion and name resolution. HIR should use declaration IDs rather than textual lookup and may desugar source conveniences. A second typed-HIR stage records exact Forge types, resolved overloads, closure captures and safety checks before FIR lowering.
 
+Metadata is lowered separately from expression/type syntax into one generic target-keyed metadata table. HIR assigns metadata to semantic targets (items, fields, impl methods, and future declaration-owned targets), and typed HIR carries the same table forward. Layout, optimizer, linker and tooling passes interpret the metadata names relevant to them; the frontend does not create one bespoke HIR field or node kind per metadata spelling.
+
 ## Name resolution
 
 Resolve modules and lexical scopes before full type checking. Overload sets are symbols containing multiple exact signatures.

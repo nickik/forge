@@ -16,7 +16,10 @@ pub use body_hir::{
     lower_resolved_bodies, BodyHirOutput, HirBody, HirExpr, HirExprKind, HirGlobalBody,
     HirLocalDecl, HirPattern, HirPatternKind, HirStmt, HirStmtKind, HirType, HirTypeKind,
 };
-pub use hir::{lower_module, DefId, HirDiagnostic, HirModule, HirOutput, Namespace};
+pub use hir::{
+    lower_module, DefId, HirDiagnostic, HirModule, HirOutput, MetadataTable, MetadataTarget,
+    Namespace,
+};
 pub use parser::{parse_source, Diagnostic, ParseOutput};
 pub use resolution::{
     resolve_module_bodies, BodyResolutionOutput, HirLocal, LocalId, NameUse, ResolvedBody,

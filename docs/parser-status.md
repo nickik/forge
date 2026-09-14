@@ -32,6 +32,8 @@
 - `unsafe`
 - source byte spans on AST nodes
 - JSON AST dumping
+- prefix metadata on declarations and declaration-owned fields/methods
+- structured FDN metadata payloads
 - basic parser recovery at `;` / `}` boundaries
 
 ## Intentionally next
@@ -44,7 +46,6 @@ The parser is a bring-up frontend, not yet the full Forge v1 grammar. The next p
 4. patterns and destructuring;
 5. `match` with guards and nested patterns;
 6. `for` and `switch`;
-7. `@` metadata carrying FDN values;
 8. `#tag` reader forms and FDN payload integration;
 9. named `nfn` calls;
 10. CSP `select` syntax;

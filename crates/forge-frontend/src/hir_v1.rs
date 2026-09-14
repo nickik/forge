@@ -8,6 +8,25 @@ use crate::ast::{self, DeclKind, PatternKind, Span};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct DefId(pub u32);
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(tag = "target", rename_all = "snake_case")]
+pub enum MetadataTarget {
+    Item {
+        owner: DefId,
+    },
+    Field {
+        owner: DefId,
+        variant: Option<String>,
+        name: String,
+    },
+    ImplMethod {
+        owner: DefId,
+        name: String,
+    },
+}
+
+pub type MetadataTable = BTreeMap<MetadataTarget, Vec<ast::Metadata>>;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Namespace {
@@ -41,6 +60,7 @@ pub struct HirModule {
     pub imports: Vec<ast::Path>,
     pub items: Vec<HirItem>,
     pub symbols: BTreeMap<String, SymbolSet>,
+    pub metadata: MetadataTable,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -83,11 +103,17 @@ pub fn lower_module(source: &ast::SourceFile) -> HirOutput {
         imports: source.imports.clone(),
         items: Vec::with_capacity(source.declarations.len()),
         symbols: BTreeMap::new(),
+        metadata: BTreeMap::new(),
     };
     let mut diagnostics = Vec::new();
 
     for (index, declaration) in source.declarations.iter().enumerate() {
         let id = DefId(index as u32);
+        record_metadata(
+            &mut module.metadata,
+            MetadataTarget::Item { owner: id },
+            &declaration.kind.metadata,
+        );
         let kind = match &declaration.kind.kind {
             DeclKind::Function(function) => {
                 define(
@@ -104,6 +130,17 @@ pub fn lower_module(source: &ast::SourceFile) -> HirOutput {
                 }
             }
             DeclKind::Struct(value) => {
+                for field in &value.fields {
+                    record_metadata(
+                        &mut module.metadata,
+                        MetadataTarget::Field {
+                            owner: id,
+                            variant: None,
+                            name: field.name.clone(),
+                        },
+                        &field.metadata,
+                    );
+                }
                 define_type(
                     &mut module,
                     &mut diagnostics,
@@ -128,6 +165,19 @@ pub fn lower_module(source: &ast::SourceFile) -> HirOutput {
                 }
             }
             DeclKind::Tagged(value) => {
+                for variant in &value.variants {
+                    for field in &variant.fields {
+                        record_metadata(
+                            &mut module.metadata,
+                            MetadataTarget::Field {
+                                owner: id,
+                                variant: Some(variant.name.clone()),
+                                name: field.name.clone(),
+                            },
+                            &field.metadata,
+                        );
+                    }
+                }
                 define_type(
                     &mut module,
                     &mut diagnostics,
@@ -175,9 +225,21 @@ pub fn lower_module(source: &ast::SourceFile) -> HirOutput {
                     name: value.name.clone(),
                 }
             }
-            DeclKind::Impl(value) => HirItemKind::Impl {
-                target: value.target.clone(),
-            },
+            DeclKind::Impl(value) => {
+                for method in &value.methods {
+                    record_metadata(
+                        &mut module.metadata,
+                        MetadataTarget::ImplMethod {
+                            owner: id,
+                            name: method.function.name.clone(),
+                        },
+                        &method.metadata,
+                    );
+                }
+                HirItemKind::Impl {
+                    target: value.target.clone(),
+                }
+            }
             DeclKind::Global(value) => {
                 let mut bindings = Vec::new();
                 collect_pattern_bindings(&value.pattern, &mut bindings);
@@ -206,6 +268,12 @@ pub fn lower_module(source: &ast::SourceFile) -> HirOutput {
     HirOutput {
         module,
         diagnostics,
+    }
+}
+
+fn record_metadata(table: &mut MetadataTable, target: MetadataTarget, metadata: &[ast::Metadata]) {
+    if !metadata.is_empty() {
+        table.entry(target).or_default().extend_from_slice(metadata);
     }
 }
 

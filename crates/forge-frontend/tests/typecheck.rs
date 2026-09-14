@@ -1,5 +1,6 @@
 use forge_frontend::{
-    lower_module, lower_resolved_bodies, parse_source, type_check_module, IntWidth, Ty,
+    lower_module, lower_resolved_bodies, parse_source, type_check_module, DefId, IntWidth,
+    MetadataTarget, Ty,
 };
 
 fn check(source: &str) -> forge_frontend::TypeCheckOutput {
@@ -694,4 +695,25 @@ fn destructuring_declarations_reject_refutable_patterns() {
         "{:?}",
         slice.diagnostics
     );
+}
+
+#[test]
+fn typed_hir_preserves_generic_metadata_table() {
+    let output = check(
+        r#"
+        module test.metadata_typed;
+        @inline
+        @overflow(wrap)
+        fn main() -> i32 { return 0; }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let metadata = output
+        .metadata
+        .get(&MetadataTarget::Item { owner: DefId(0) })
+        .expect("typed metadata");
+    assert!(metadata.iter().any(|m| m.name.as_deref() == Some("inline")));
+    assert!(metadata
+        .iter()
+        .any(|m| m.name.as_deref() == Some("overflow")));
 }

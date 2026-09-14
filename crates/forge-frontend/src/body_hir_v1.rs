@@ -236,10 +236,6 @@ pub enum HirExprKind {
         tag: String,
         value: ast::FdnValue,
     },
-    Annotated {
-        value: Box<HirExpr>,
-        metadata: Vec<ast::Metadata>,
-    },
     Error,
 }
 
@@ -371,10 +367,6 @@ pub enum HirTypeKind {
     Closure {
         params: Vec<HirType>,
         result: Box<HirType>,
-    },
-    Annotated {
-        inner: Box<HirType>,
-        metadata: Vec<ast::Metadata>,
     },
 }
 
@@ -587,10 +579,6 @@ impl<'a, 'd> Lowerer<'a, 'd> {
             TypeKind::Closure { params, result } => HirTypeKind::Closure {
                 params: params.iter().map(|p| self.lower_type(p)).collect(),
                 result: Box::new(self.lower_type(result)),
-            },
-            TypeKind::Annotated { inner, metadata } => HirTypeKind::Annotated {
-                inner: Box::new(self.lower_type(inner)),
-                metadata: metadata.clone(),
             },
         };
         HirNode::new(ty.span, kind)
@@ -978,10 +966,6 @@ impl<'a, 'd> Lowerer<'a, 'd> {
             ExprKind::ReaderForm { tag, value } => HirExprKind::ReaderForm {
                 tag: tag.clone(),
                 value: value.clone(),
-            },
-            ExprKind::Annotated { value, metadata } => HirExprKind::Annotated {
-                value: Box::new(self.lower_expr(value)),
-                metadata: metadata.clone(),
             },
         };
         HirNode::new(expr.span, kind)

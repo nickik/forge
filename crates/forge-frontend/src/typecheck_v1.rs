@@ -8,7 +8,7 @@ use crate::{
         BodyHirOutput, HirBlock, HirCallArg, HirExpr, HirExprKind, HirPattern, HirPatternKind,
         HirStmt, HirStmtKind, HirType, HirTypeKind, HirTypeRef,
     },
-    hir::{DefId, HirModule},
+    hir::{DefId, HirModule, MetadataTable},
     resolution::{LocalId, ResolvedName},
 };
 
@@ -109,6 +109,7 @@ pub struct TypedBody {
 pub struct TypeCheckOutput {
     pub functions: BTreeMap<DefId, TypedBody>,
     pub global_types: BTreeMap<DefId, Ty>,
+    pub metadata: MetadataTable,
     pub diagnostics: Vec<TypeDiagnostic>,
 }
 
@@ -160,7 +161,10 @@ pub fn type_check_module(
     module: &HirModule,
     bodies: &BodyHirOutput,
 ) -> TypeCheckOutput {
-    let mut output = TypeCheckOutput::default();
+    let mut output = TypeCheckOutput {
+        metadata: module.metadata.clone(),
+        ..TypeCheckOutput::default()
+    };
     let env = ModuleTypeEnv::build(source, module);
 
     for (owner, body) in &bodies.functions {
@@ -423,7 +427,6 @@ impl ModuleTypeEnv {
                     .collect(),
                 result: Box::new(self.lower_ast_type(result, module)),
             },
-            ast::TypeKind::Annotated { inner, .. } => self.lower_ast_type(inner, module),
         }
     }
 
@@ -461,7 +464,6 @@ impl ModuleTypeEnv {
                 params: params.iter().map(|p| self.lower_hir_type(p)).collect(),
                 result: Box::new(self.lower_hir_type(result)),
             },
-            HirTypeKind::Annotated { inner, .. } => self.lower_hir_type(inner),
         }
     }
 
@@ -849,7 +851,6 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 }
                 result
             }
-            HirExprKind::Annotated { value, .. } => self.check_expr(value, expected),
             HirExprKind::Error => Ty::Error,
         };
 

@@ -113,6 +113,9 @@
     {:path #path "syntax-negative/62-generic-type-alias.fg" :kind :syntax-negative :expect :syntax/generics-reserved}
     {:path #path "syntax-negative/63-return-tail-without-expression.fg" :kind :syntax-negative :expect :syntax/tail-expression}
     {:path #path "syntax-negative/64-select-empty-arm-syntax.fg" :kind :syntax-negative :expect :syntax/select-arm}
+    {:path #path "syntax-negative/65-postfix-expression-metadata.fg" :kind :syntax-negative :expect :syntax/metadata-placement}
+    {:path #path "syntax-negative/66-postfix-type-metadata.fg" :kind :syntax-negative :expect :syntax/metadata-placement}
+    {:path #path "syntax-negative/67-wrap-expression.fg" :kind :syntax-negative :expect :syntax/wrap-expression-removed}
 
     {:path #path "negative/01-mixed-width-arithmetic.fg" :kind :negative :expect :type/mismatch}
     {:path #path "negative/02-signed-unsigned-compare.fg" :kind :negative :expect :type/mismatch}
