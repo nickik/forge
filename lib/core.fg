@@ -99,9 +99,11 @@ pub fn arena_reclaim(arena: &mut Arena, target_bytes: usize) -> usize {
 // General allocator capability for arbitrary-size allocations. This is kept
 // separate from Arena because an allocator may implement size classes,
 // metadata, quarantine, debugging, or other policy above one or more arenas.
+// Unlike Arena release, Allocator free is fallible so debug/checked allocators
+// can report ForeignAllocation instead of silently corrupting another domain.
 pub struct AllocatorOps {
     alloc: fn(*void, AllocRequest) -> Result[MemoryBlock, AllocError];
-    free: fn(*void, MemoryBlock) -> void;
+    free: fn(*void, MemoryBlock) -> Result[void, AllocError];
     resize: fn(*void, MemoryBlock, usize) -> Result[MemoryBlock, AllocError];
 }
 
@@ -117,8 +119,11 @@ pub fn allocator_alloc(
     return allocator.ops.alloc(allocator.context, request);
 }
 
-pub fn allocator_free(allocator: &mut Allocator, block: MemoryBlock) -> void {
-    allocator.ops.free(allocator.context, block);
+pub fn allocator_free(
+    allocator: &mut Allocator,
+    block: MemoryBlock
+) -> Result[void, AllocError] {
+    return allocator.ops.free(allocator.context, block);
 }
 
 pub fn allocator_resize(
