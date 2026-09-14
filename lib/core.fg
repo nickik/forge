@@ -99,12 +99,18 @@ pub fn arena_reclaim(arena: &mut Arena, target_bytes: usize) -> usize {
 // General allocator capability for arbitrary-size allocations. This is kept
 // separate from Arena because an allocator may implement size classes,
 // metadata, quarantine, debugging, or other policy above one or more arenas.
-// Unlike Arena release, Allocator free is fallible so debug/checked allocators
-// can report ForeignAllocation instead of silently corrupting another domain.
+//
+// `validate` checks whether a live block belongs to this allocator domain. This
+// lets containers that intentionally do not store allocator identity validate
+// provenance before allocating nested owned values even when their own backing
+// storage does not need to grow. Providers that can prove compatibility cheaply
+// should do so; checked/debug providers must return ForeignAllocation for a
+// block owned by an incompatible domain.
 pub struct AllocatorOps {
     alloc: fn(*void, AllocRequest) -> Result[MemoryBlock, AllocError];
     free: fn(*void, MemoryBlock) -> Result[void, AllocError];
     resize: fn(*void, MemoryBlock, usize) -> Result[MemoryBlock, AllocError];
+    validate: fn(*void, MemoryBlock) -> Result[void, AllocError];
 }
 
 pub struct Allocator {
@@ -132,6 +138,13 @@ pub fn allocator_resize(
     new_size: usize
 ) -> Result[MemoryBlock, AllocError] {
     return allocator.ops.resize(allocator.context, block, new_size);
+}
+
+pub fn allocator_validate(
+    allocator: &mut Allocator,
+    block: MemoryBlock
+) -> Result[void, AllocError] {
+    return allocator.ops.validate(allocator.context, block);
 }
 
 // Fixed-size object-cache configuration. Object caches are optimized for
