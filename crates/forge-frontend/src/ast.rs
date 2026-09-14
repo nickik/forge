@@ -149,6 +149,7 @@ pub struct Block {
 #[serde(tag = "stmt", rename_all = "snake_case")]
 pub enum StmtKind {
     Value(ValueDecl),
+    Assignment { target: Expr, value: Expr },
     Expr { expr: Expr },
     Return { tail: bool, value: Option<Expr> },
     If {
