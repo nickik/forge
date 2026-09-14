@@ -19,6 +19,21 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Repair migration script
+        run: |
+          python3 -B - <<'PY'
+          from pathlib import Path
+          path = Path("scripts/semantic_cleanup_once.py")
+          text = path.read_text()
+          block = '''replace_all(
+              "crates/forge-frontend/src/typecheck_v1.rs",
+              'Ty::Array { element }',
+              'Ty::Array { element, .. }',
+          )
+          '''
+          text = text.replace(block, "")
+          path.write_text(text)
+          PY
       - name: Apply semantic cleanup
         run: python3 -B scripts/semantic_cleanup_once.py
       - run: cargo fmt --all
