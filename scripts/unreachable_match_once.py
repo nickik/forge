@@ -91,7 +91,7 @@ fn finite_matches_report_provably_unreachable_arms() {
         enum Color { Red, Green }
         fn choose(color: Color, flag: bool) -> i32 {
             return match (color) {
-                Color::Red if flag => 1,
+                Color::Red when flag => 1,
                 Color::Red => 2,
                 Color::Green => 3,
             };
@@ -136,5 +136,13 @@ old = '- Exhaustiveness for finite built-in/nominal sums (`bool`, optionals, enu
 new = '- Exhaustiveness and provably unreachable arms for finite built-in/nominal sums (`bool`, optionals, enums, tagged unions) belong in semantic type checking because this is the first layer with both resolved type identity and typed patterns. The current check is deliberately conservative for guarded/refutable payload patterns; full pattern-matrix usefulness and decision-tree optimization remain a later pass.\n'
 if old in text:
     arch.write_text(text.replace(old, new, 1))
+
+spec = Path("docs/forge-v1-spec.md")
+text = spec.read_text()
+old = 'Metadata attaches to declarations and declaration-owned fields/methods. It is not an expression operator or a postfix type operator: forms such as `value @unchecked`, `u8 @range(...)`, and `@wrap(expr)` are not Forge v1 metadata syntax. A constrained alias instead carries `@range(...)` on the alias declaration itself.\n'
+new = 'Metadata attaches to declarations and declaration-owned fields/methods. It is not an expression operator or a postfix type operator: forms such as `value @unchecked`, `u8 @range(...)`, and `@wrap(expr)` are not Forge v1 metadata syntax. Forge v1 does not standardize constrained/refined types; a metadata name such as `@range` may still be preserved as ordinary tool metadata without changing type semantics.\n'
+if old not in text:
+    raise SystemExit("stale constrained-alias wording not found")
+spec.write_text(text.replace(old, new, 1))
 
 print("unreachable match analysis patch applied")
