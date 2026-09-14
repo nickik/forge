@@ -79,7 +79,7 @@ nfn list_u8_remove(list: &mut ListU8, index: usize) -> u8 { }
 nfn list_u8_swap_remove(list: &mut ListU8, index: usize) -> u8 { }
 nfn list_u8_clear(list: &mut ListU8) -> void { }
 nfn list_u8_truncate(list: &mut ListU8, len: usize) -> void { }
-nfn list_u8_destroy(list: &mut ListU8, allocator: &mut core.Allocator) -> void { }
+nfn list_u8_destroy(list: &mut ListU8, allocator: &mut core.Allocator) -> Result[void, core.AllocError] { }
 
 // ListUsize: contiguous growable vector.
 // element_size=8 element_align=8
@@ -103,7 +103,7 @@ nfn list_usize_remove(list: &mut ListUsize, index: usize) -> usize { }
 nfn list_usize_swap_remove(list: &mut ListUsize, index: usize) -> usize { }
 nfn list_usize_clear(list: &mut ListUsize) -> void { }
 nfn list_usize_truncate(list: &mut ListUsize, len: usize) -> void { }
-nfn list_usize_destroy(list: &mut ListUsize, allocator: &mut core.Allocator) -> void { }
+nfn list_usize_destroy(list: &mut ListUsize, allocator: &mut core.Allocator) -> Result[void, core.AllocError] { }
 
 // ListString: contiguous growable vector.
 // element_size=16 element_align=8
@@ -127,7 +127,7 @@ nfn list_string_remove(list: &mut ListString, index: usize) -> str { }
 nfn list_string_swap_remove(list: &mut ListString, index: usize) -> str { }
 nfn list_string_clear(list: &mut ListString) -> void { }
 nfn list_string_truncate(list: &mut ListString, len: usize) -> void { }
-nfn list_string_destroy(list: &mut ListString, allocator: &mut core.Allocator) -> void { }
+nfn list_string_destroy(list: &mut ListString, allocator: &mut core.Allocator) -> Result[void, core.AllocError] { }
 
 // ListU64: first fully Forge-implemented dynamic collection.
 // Only Option/Result construction and typed MemoryBlock access remain backend primitives.
@@ -228,14 +228,15 @@ pub fn list_u64_clear(list: &mut ListU64) -> void { list.len = 0; }
 pub fn list_u64_truncate(list: &mut ListU64, len: usize) -> void {
     if (len < list.len) { list.len = len; }
 }
-pub fn list_u64_destroy(list: &mut ListU64, allocator: &mut core.Allocator) -> void {
+pub fn list_u64_destroy(list: &mut ListU64, allocator: &mut core.Allocator) -> Result[void, core.AllocError] {
     if (list.capacity != 0) {
         val block: core.MemoryBlock = memory_block_value(list.block);
-        core.allocator_free(allocator, block);
+        core.allocator_free(allocator, block)?;
     }
     list.block = memory_block_none();
     list.len = 0;
     list.capacity = 0;
+    return result_void_ok();
 }
 
 // HashSetU64: open addressing, linear probing, tombstones.
@@ -252,7 +253,7 @@ nfn hash_set_u64_insert(set: &mut HashSetU64, allocator: &mut core.Allocator, va
 nfn hash_set_u64_remove(set: &mut HashSetU64, value: u64) -> bool { }
 nfn hash_set_u64_try_reserve(set: &mut HashSetU64, allocator: &mut core.Allocator, capacity: usize) -> Result[void, core.AllocError] { }
 nfn hash_set_u64_clear(set: &mut HashSetU64) -> void { }
-nfn hash_set_u64_destroy(set: &mut HashSetU64, allocator: &mut core.Allocator) -> void { }
+nfn hash_set_u64_destroy(set: &mut HashSetU64, allocator: &mut core.Allocator) -> Result[void, core.AllocError] { }
 
 // HashSetString: open addressing, linear probing, tombstones.
 pub struct HashSetString {
@@ -268,7 +269,7 @@ nfn hash_set_string_insert(set: &mut HashSetString, allocator: &mut core.Allocat
 nfn hash_set_string_remove(set: &mut HashSetString, value: str) -> bool { }
 nfn hash_set_string_try_reserve(set: &mut HashSetString, allocator: &mut core.Allocator, capacity: usize) -> Result[void, core.AllocError] { }
 nfn hash_set_string_clear(set: &mut HashSetString) -> void { }
-nfn hash_set_string_destroy(set: &mut HashSetString, allocator: &mut core.Allocator) -> void { }
+nfn hash_set_string_destroy(set: &mut HashSetString, allocator: &mut core.Allocator) -> Result[void, core.AllocError] { }
 
 // HashMapStringString: shared open-addressing table algorithm.
 pub struct HashMapStringString {
@@ -286,7 +287,7 @@ nfn hash_map_string_string_put(map: &mut HashMapStringString, allocator: &mut co
 nfn hash_map_string_string_remove(map: &mut HashMapStringString, key: str) -> bool { }
 nfn hash_map_string_string_try_reserve(map: &mut HashMapStringString, allocator: &mut core.Allocator, capacity: usize) -> Result[void, core.AllocError] { }
 nfn hash_map_string_string_clear(map: &mut HashMapStringString) -> void { }
-nfn hash_map_string_string_destroy(map: &mut HashMapStringString, allocator: &mut core.Allocator) -> void { }
+nfn hash_map_string_string_destroy(map: &mut HashMapStringString, allocator: &mut core.Allocator) -> Result[void, core.AllocError] { }
 
 // HashMapStringUsize: shared open-addressing table algorithm.
 pub struct HashMapStringUsize {
@@ -304,7 +305,7 @@ nfn hash_map_string_usize_put(map: &mut HashMapStringUsize, allocator: &mut core
 nfn hash_map_string_usize_remove(map: &mut HashMapStringUsize, key: str) -> bool { }
 nfn hash_map_string_usize_try_reserve(map: &mut HashMapStringUsize, allocator: &mut core.Allocator, capacity: usize) -> Result[void, core.AllocError] { }
 nfn hash_map_string_usize_clear(map: &mut HashMapStringUsize) -> void { }
-nfn hash_map_string_usize_destroy(map: &mut HashMapStringUsize, allocator: &mut core.Allocator) -> void { }
+nfn hash_map_string_usize_destroy(map: &mut HashMapStringUsize, allocator: &mut core.Allocator) -> Result[void, core.AllocError] { }
 
 // HashMapStringU64: shared open-addressing table algorithm.
 pub struct HashMapStringU64 {
@@ -322,7 +323,7 @@ nfn hash_map_string_u64_put(map: &mut HashMapStringU64, allocator: &mut core.All
 nfn hash_map_string_u64_remove(map: &mut HashMapStringU64, key: str) -> bool { }
 nfn hash_map_string_u64_try_reserve(map: &mut HashMapStringU64, allocator: &mut core.Allocator, capacity: usize) -> Result[void, core.AllocError] { }
 nfn hash_map_string_u64_clear(map: &mut HashMapStringU64) -> void { }
-nfn hash_map_string_u64_destroy(map: &mut HashMapStringU64, allocator: &mut core.Allocator) -> void { }
+nfn hash_map_string_u64_destroy(map: &mut HashMapStringU64, allocator: &mut core.Allocator) -> Result[void, core.AllocError] { }
 
 // HashMapU64U64: shared open-addressing table algorithm.
 pub struct HashMapU64U64 {
@@ -340,4 +341,4 @@ nfn hash_map_u64_u64_put(map: &mut HashMapU64U64, allocator: &mut core.Allocator
 nfn hash_map_u64_u64_remove(map: &mut HashMapU64U64, key: u64) -> bool { }
 nfn hash_map_u64_u64_try_reserve(map: &mut HashMapU64U64, allocator: &mut core.Allocator, capacity: usize) -> Result[void, core.AllocError] { }
 nfn hash_map_u64_u64_clear(map: &mut HashMapU64U64) -> void { }
-nfn hash_map_u64_u64_destroy(map: &mut HashMapU64U64, allocator: &mut core.Allocator) -> void { }
+nfn hash_map_u64_u64_destroy(map: &mut HashMapU64U64, allocator: &mut core.Allocator) -> Result[void, core.AllocError] { }
