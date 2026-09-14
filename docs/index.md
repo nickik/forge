@@ -17,6 +17,10 @@
 - [Freestanding Library Roadmap](freestanding-libraries.md) — `--no-std` libraries for memory, bits, MMIO, atomics, bounded containers, intrusive collections, layout, output, and target facts, with per-library TODOs and the pre-Cosmic integration gate.
 - [Hosted Console Library](hosted-console.md) — portable `std.console` API with Unix/CForge/Cosmic provider backends and its relationship to freestanding `core.io.Writer`.
 
+## Build system
+
+- [Forge Build System](build-system.md) — `forge.fdn`, local path dependencies, targets, deterministic graph resolution, compiler-driver protocol, and CForge bootstrap integration.
+
 ## Implementation
 
 - [Grammar Sketch](grammar.ebnf) — parser-oriented EBNF.
