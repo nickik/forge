@@ -10,8 +10,8 @@
   }
 
   :dependencies {
-    :forge-collections {
-      :path "../../../../packages/forge-collections"
+    :forge-collections-bootstrap {
+      :path "../../../../packages/forge-collections-bootstrap"
     }
   }
 }
