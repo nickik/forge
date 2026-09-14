@@ -216,7 +216,11 @@ fn parse_map(tokens: &[Token], pos: &mut usize) -> Result<BTreeMap<String, Value
     while tokens.get(*pos) != Some(&Token::RBrace) {
         let key = match tokens.get(*pos) {
             Some(Token::Keyword(k)) => k.clone(),
-            other => return Err(BuildError(format!("expected keyword map key, found {other:?}"))),
+            other => {
+                return Err(BuildError(format!(
+                    "expected keyword map key, found {other:?}"
+                )))
+            }
         };
         *pos += 1;
         let value = parse_value(tokens, pos)?;
@@ -284,7 +288,10 @@ fn required_keyword(map: &BTreeMap<String, Value>, key: &str) -> Result<String> 
 
 pub fn load_package(manifest_path: &Path) -> Result<Package> {
     let manifest_path = fs::canonicalize(manifest_path).map_err(|e| {
-        BuildError(format!("cannot open manifest {}: {e}", manifest_path.display()))
+        BuildError(format!(
+            "cannot open manifest {}: {e}",
+            manifest_path.display()
+        ))
     })?;
     let root_dir = manifest_path
         .parent()
@@ -326,7 +333,10 @@ pub fn load_package(manifest_path: &Path) -> Result<Package> {
         }
         let root = root_dir.join(required_string(m, "root")?);
         if !root.is_file() {
-            return Err(BuildError(format!("target root does not exist: {}", root.display())));
+            return Err(BuildError(format!(
+                "target root does not exist: {}",
+                root.display()
+            )));
         }
         let std_default = kind != "kernel";
         let expected_output = if let Some(test) = m.get("test") {
@@ -378,7 +388,10 @@ pub fn load_graph(manifest_path: &Path) -> Result<BuildGraph> {
             return Ok(());
         }
         if !visiting.insert(path.clone()) {
-            return Err(BuildError(format!("dependency cycle at {}", path.display())));
+            return Err(BuildError(format!(
+                "dependency cycle at {}",
+                path.display()
+            )));
         }
         for dep in package.dependencies.values() {
             let child = load_package(&dep.path)?;
@@ -413,7 +426,11 @@ pub fn load_graph(manifest_path: &Path) -> Result<BuildGraph> {
         &mut visiting,
         &mut visited,
     )?;
-    Ok(BuildGraph { root, packages, order })
+    Ok(BuildGraph {
+        root,
+        packages,
+        order,
+    })
 }
 
 fn selected_targets<'a>(package: &'a Package, name: Option<&str>) -> Result<Vec<&'a Target>> {
