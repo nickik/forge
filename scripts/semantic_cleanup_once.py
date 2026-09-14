@@ -524,12 +524,6 @@ replace_all(
 )
 replace_all(
     "crates/forge-frontend/src/typecheck_v1.rs",
-    'Ty::Array { element } | Ty::Slice { element, .. } => *element',
-    'Ty::Array { element, .. } | Ty::Slice { element, .. } => *element',
-)
-# There can be nested matches in place_type after the first all replacement.
-replace_all(
-    "crates/forge-frontend/src/typecheck_v1.rs",
     'Ty::Array { element }',
     'Ty::Array { element, .. }',
 )
