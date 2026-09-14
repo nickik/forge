@@ -155,14 +155,17 @@ pub fn list_u64_try_reserve(list: &mut ListU64, allocator: &mut core.Allocator, 
     if (requested <= list.capacity) { return result_void_ok(); }
     val replacement_capacity: usize = next_capacity(list.capacity, requested);
     val replacement_bytes: usize = replacement_capacity * 8;
-    var replacement: core.MemoryBlock;
+
     if (list.capacity == 0) {
         val request: core.AllocRequest = core.AllocRequest{size: replacement_bytes, align: 8, wait: core.AllocWait.MayWait};
-        replacement = core.allocator_alloc(allocator, request)?;
-    } else {
-        val old_block: core.MemoryBlock = memory_block_value(list.block);
-        replacement = core.allocator_resize(allocator, old_block, replacement_bytes)?;
+        val replacement: core.MemoryBlock = core.allocator_alloc(allocator, request)?;
+        list.block = memory_block_some(replacement);
+        list.capacity = replacement_capacity;
+        return result_void_ok();
     }
+
+    val old_block: core.MemoryBlock = memory_block_value(list.block);
+    val replacement: core.MemoryBlock = core.allocator_resize(allocator, old_block, replacement_bytes)?;
     list.block = memory_block_some(replacement);
     list.capacity = replacement_capacity;
     return result_void_ok();
