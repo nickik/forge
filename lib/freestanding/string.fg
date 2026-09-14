@@ -75,6 +75,17 @@ pub fn string_as_str(value: &String) -> str {
     return block_as_str(block, value.len);
 }
 
+pub fn string_validate(
+    value: &String,
+    allocator: &mut core.Allocator
+) -> Result[void, core.AllocError] {
+    if (value.capacity != 0) {
+        val block: core.MemoryBlock = memory_block_value(value.block);
+        core.allocator_validate(allocator, block)?;
+    }
+    return result_void_ok();
+}
+
 pub fn string_destroy(
     value: &mut String,
     allocator: &mut core.Allocator
