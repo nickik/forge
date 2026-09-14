@@ -14,7 +14,7 @@ use crate::{
         CaptureMode, ConstValue, ContextSlot, IntWidth, MatchCondition, MatchProjection,
         MatchScalar, MatchTest, ResolvedCallArgument, ResolvedReceiver, RuntimeOperationId, Ty,
         TypeCheckOutput, TypedBody, TypedClosurePlan, TypedExpr, TypedExprKind, TypedMatchBinding,
-        TypedMatchPlan, TypedSelectArm,
+        TypedMatchPlan, TypedSelectArm, UnsafeOperationKind, UnsafeProvenance,
     },
 };
 
@@ -162,6 +162,18 @@ pub enum FirInstructionKind {
         value: FirValueId,
         target: Ty,
     },
+    PointerOffset {
+        pointer: FirValueId,
+        offset: FirValueId,
+        subtract: bool,
+        provenance: UnsafeProvenance,
+    },
+    PointerConvert {
+        value: FirValueId,
+        target: Ty,
+        operation: UnsafeOperationKind,
+        provenance: UnsafeProvenance,
+    },
     MakeArray {
         items: Vec<FirValueId>,
     },
@@ -265,6 +277,11 @@ pub enum FirPlace {
     },
     Deref {
         address: FirValueId,
+    },
+    RawDeref {
+        address: FirValueId,
+        volatile: bool,
+        provenance: UnsafeProvenance,
     },
 }
 
@@ -1252,6 +1269,11 @@ impl<'a> FunctionLowerer<'a> {
                 ..
             } => self.lower_try(expr, source_error, target_error, result_ty),
             TypedExprKind::ResolvedMatch { plan, .. } => self.lower_match(expr, plan, result_ty),
+            TypedExprKind::UnsafeOperation {
+                operation,
+                provenance,
+                ..
+            } => self.lower_unsafe_expr(expr, *operation, *provenance, result_ty),
             TypedExprKind::Source { .. } => self.lower_source_expr(expr, result_ty),
         }
     }
@@ -1345,6 +1367,17 @@ impl<'a> FunctionLowerer<'a> {
             }
             HirExprKind::Unary { op, value } => self.lower_unary(expr.span, *op, value, ty),
             HirExprKind::Binary { op, left, right } => {
+                let left_ty = self.expr_ty(left);
+                if matches!(left_ty, Ty::Pointer { .. })
+                    && matches!(op, BinaryOp::Add | BinaryOp::Sub)
+                {
+                    self.diagnostic(
+                        expr.span,
+                        "fir/unsafe-authorization-missing",
+                        "raw pointer arithmetic reached FIR without semantic unsafe provenance",
+                    );
+                    return self.poison(expr.span, ty);
+                }
                 if matches!(op, BinaryOp::LogicalAnd | BinaryOp::LogicalOr) {
                     self.lower_short_circuit(expr.span, *op, left, right)
                 } else {
@@ -1365,6 +1398,27 @@ impl<'a> FunctionLowerer<'a> {
             }
             HirExprKind::Call { .. } => self.lower_call_expression(expr, false),
             HirExprKind::TypeCall { args, .. } => {
+                let Some(source_expr) = first_positional(args) else {
+                    self.diagnostic(
+                        expr.span,
+                        "fir/conversion-arity",
+                        "type conversion requires one positional operand",
+                    );
+                    return self.poison(expr.span, ty);
+                };
+                let source_ty = self.expr_ty(source_expr);
+                let pointer_conversion = matches!(source_ty, Ty::Pointer { .. })
+                    && matches!(ty, Ty::Pointer { .. } | Ty::Int { .. } | Ty::Byte)
+                    || matches!(ty, Ty::Pointer { .. })
+                        && matches!(source_ty, Ty::Int { .. } | Ty::Byte);
+                if pointer_conversion {
+                    self.diagnostic(
+                        expr.span,
+                        "fir/unsafe-authorization-missing",
+                        "raw pointer conversion reached FIR without semantic unsafe provenance",
+                    );
+                    return self.poison(expr.span, ty);
+                }
                 let Some(value) = first_positional(args) else {
                     self.diagnostic(
                         expr.span,
@@ -1470,6 +1524,108 @@ impl<'a> FunctionLowerer<'a> {
                     "source-only or unresolved expression reached FIR",
                 );
                 self.poison(expr.span, ty)
+            }
+        }
+    }
+
+    fn lower_unsafe_expr(
+        &mut self,
+        expr: &HirExpr,
+        operation: UnsafeOperationKind,
+        provenance: UnsafeProvenance,
+        result_ty: Ty,
+    ) -> FirValueId {
+        if !self
+            .typed
+            .unsafe_scopes
+            .iter()
+            .any(|scope| scope.span == provenance.scope)
+            || provenance.scope.start > expr.span.start
+            || provenance.scope.end < expr.span.end
+        {
+            self.diagnostic(
+                expr.span,
+                "fir/unsafe-provenance",
+                "unsafe operation has no valid enclosing semantic authorization scope",
+            );
+            return self.poison(expr.span, result_ty);
+        }
+
+        match (operation, &expr.kind) {
+            (
+                UnsafeOperationKind::RawDereference { volatile },
+                HirExprKind::Unary {
+                    op: UnaryOp::Deref,
+                    value,
+                },
+            ) => {
+                let address = self.lower_expr(value);
+                self.emit_value(
+                    expr.span,
+                    result_ty,
+                    FirInstructionKind::Load {
+                        place: FirPlace::RawDeref {
+                            address,
+                            volatile,
+                            provenance,
+                        },
+                    },
+                )
+            }
+            (
+                UnsafeOperationKind::PointerOffset { subtract },
+                HirExprKind::Binary {
+                    op: BinaryOp::Add | BinaryOp::Sub,
+                    left,
+                    right,
+                },
+            ) => {
+                let pointer = self.lower_expr(left);
+                let offset = self.lower_expr(right);
+                self.emit_value(
+                    expr.span,
+                    result_ty,
+                    FirInstructionKind::PointerOffset {
+                        pointer,
+                        offset,
+                        subtract,
+                        provenance,
+                    },
+                )
+            }
+            (
+                operation @ (UnsafeOperationKind::PointerToInteger
+                | UnsafeOperationKind::IntegerToPointer
+                | UnsafeOperationKind::PointerReinterpret),
+                HirExprKind::TypeCall { args, .. },
+            ) => {
+                let Some(value) = first_positional(args) else {
+                    self.diagnostic(
+                        expr.span,
+                        "fir/unsafe-conversion-shape",
+                        "unsafe pointer conversion has no positional operand",
+                    );
+                    return self.poison(expr.span, result_ty);
+                };
+                let value = self.lower_expr(value);
+                self.emit_value(
+                    expr.span,
+                    result_ty.clone(),
+                    FirInstructionKind::PointerConvert {
+                        value,
+                        target: result_ty,
+                        operation,
+                        provenance,
+                    },
+                )
+            }
+            _ => {
+                self.diagnostic(
+                    expr.span,
+                    "fir/unsafe-plan-shape",
+                    "typed unsafe operation does not match its source expression",
+                );
+                self.poison(expr.span, result_ty)
             }
         }
     }
@@ -2475,6 +2631,14 @@ impl<'a> FunctionLowerer<'a> {
                 )
             }
             UnaryOp::Deref => {
+                if matches!(self.expr_ty(value), Ty::Pointer { .. }) {
+                    self.diagnostic(
+                        span,
+                        "fir/unsafe-authorization-missing",
+                        "raw pointer dereference reached FIR without semantic unsafe provenance",
+                    );
+                    return self.poison(span, ty);
+                }
                 let address = self.lower_expr(value);
                 self.emit_value(
                     span,
@@ -2606,9 +2770,50 @@ impl<'a> FunctionLowerer<'a> {
             HirExprKind::Unary {
                 op: UnaryOp::Deref,
                 value,
-            } => Some(FirPlace::Deref {
-                address: self.lower_expr(value),
-            }),
+            } => {
+                let value_ty = self.expr_ty(value);
+                let address = self.lower_expr(value);
+                if let Ty::Pointer { volatile, .. } = value_ty {
+                    let typed = self.typed_expr(expr)?.clone();
+                    let TypedExprKind::UnsafeOperation {
+                        operation:
+                            UnsafeOperationKind::RawDereference {
+                                volatile: planned_volatile,
+                            },
+                        provenance,
+                        ..
+                    } = typed.kind
+                    else {
+                        self.diagnostic(
+                            expr.span,
+                            "fir/unsafe-authorization-missing",
+                            "raw pointer place reached FIR without semantic unsafe provenance",
+                        );
+                        return None;
+                    };
+                    if planned_volatile != volatile
+                        || !self
+                            .typed
+                            .unsafe_scopes
+                            .iter()
+                            .any(|scope| scope.span == provenance.scope)
+                    {
+                        self.diagnostic(
+                            expr.span,
+                            "fir/unsafe-provenance",
+                            "raw pointer place has invalid unsafe provenance",
+                        );
+                        return None;
+                    }
+                    Some(FirPlace::RawDeref {
+                        address,
+                        volatile,
+                        provenance,
+                    })
+                } else {
+                    Some(FirPlace::Deref { address })
+                }
+            }
             _ => None,
         }
     }
