@@ -322,7 +322,10 @@ fn map_rehash(map: usize, new_buckets: usize) -> void {
 pub fn hash_map_string_string_put(map: usize, key: str, value: str) -> bool {
     val len: usize = map_len(map);
     val buckets: usize = map_buckets(map);
-    if (((len + 1) * 10) >= (buckets * 7)) {
+    val next_len: usize = len + 1;
+    val load_scaled: usize = next_len * 10;
+    val grow_at: usize = buckets * 7;
+    if (load_scaled >= grow_at) {
         map_rehash(map, buckets * 2);
     }
     return map_put_no_grow(map, key, value);
