@@ -5,14 +5,14 @@ use serde::Serialize;
 use crate::{
     ast::{BinaryOp, FdnValue, MetadataArg, Span, UnaryOp},
     body_hir::{
-        BodyHirOutput, ExprId, HirBlock, HirCallArg, HirExpr, HirExprKind, HirPattern,
-        HirPatternKind, HirStmt, HirStmtKind,
+        BodyHirOutput, ExprId, HirBlock, HirCallArg, HirExpr, HirExprKind, HirMatchBody,
+        HirPattern, HirPatternKind, HirStmt, HirStmtKind,
     },
     hir::{DefId, MetadataTableExt, MetadataTarget},
     resolution::{LocalId, ResolvedName},
     typecheck::{
-        ConstValue, IntWidth, ResolvedReceiver, Ty, TypeCheckOutput, TypedBody, TypedExpr,
-        TypedExprKind,
+        ConstValue, IntWidth, MatchTest, ResolvedReceiver, Ty, TypeCheckOutput, TypedBody,
+        TypedExpr, TypedExprKind, TypedMatchPlan,
     },
 };
 
@@ -99,6 +99,7 @@ pub enum FirInstructionKind {
     Const {
         value: FirConst,
     },
+    Unit,
     FunctionRef {
         target: DefId,
     },
@@ -985,6 +986,7 @@ impl<'a> FunctionLowerer<'a> {
                 target_error,
                 ..
             } => self.lower_try(expr, source_error, target_error, result_ty),
+            TypedExprKind::ResolvedMatch { plan, .. } => self.lower_match(expr, plan, result_ty),
             TypedExprKind::Source { .. } => self.lower_source_expr(expr, result_ty),
         }
     }
@@ -1177,6 +1179,117 @@ impl<'a> FunctionLowerer<'a> {
                 );
                 self.poison(expr.span, ty)
             }
+        }
+    }
+
+    fn lower_match(&mut self, expr: &HirExpr, plan: &TypedMatchPlan, result_ty: Ty) -> FirValueId {
+        let HirExprKind::Match { value, arms } = &expr.kind else {
+            self.diagnostic(
+                expr.span,
+                "fir/match-shape",
+                "resolved match plan is not attached to a match HIR node",
+            );
+            return self.poison(expr.span, result_ty);
+        };
+        if plan.scrutinee_type != Ty::Bool || plan.arms.len() != arms.len() {
+            self.diagnostic(
+                expr.span,
+                "fir/match-plan",
+                "typed boolean match plan does not match the source match shape",
+            );
+            return self.poison(expr.span, result_ty);
+        }
+
+        // Forge evaluation order requires the scrutinee to execute exactly once.
+        let scrutinee = self.lower_expr(value);
+        let result_local = if result_ty == Ty::Void {
+            None
+        } else {
+            Some(self.synthetic_local(result_ty.clone()))
+        };
+        let join = self.new_block();
+
+        for (arm, planned) in arms.iter().zip(&plan.arms) {
+            let arm_entry = self.new_block();
+            let next_arm = self.new_block();
+            match planned.test {
+                MatchTest::Bool { value: true } => {
+                    self.terminate(FirTerminator::Branch {
+                        condition: scrutinee,
+                        then_block: arm_entry,
+                        else_block: next_arm,
+                    });
+                }
+                MatchTest::Bool { value: false } => {
+                    let condition = self.emit_value(
+                        arm.pattern.span,
+                        Ty::Bool,
+                        FirInstructionKind::Unary {
+                            op: FirUnaryOp::Not,
+                            value: scrutinee,
+                        },
+                    );
+                    self.terminate(FirTerminator::Branch {
+                        condition,
+                        then_block: arm_entry,
+                        else_block: next_arm,
+                    });
+                }
+                MatchTest::Always => {
+                    self.terminate(FirTerminator::Goto { target: arm_entry });
+                }
+            }
+
+            self.switch_to(arm_entry);
+            if let Some(guard) = &arm.guard {
+                let guard_value = self.lower_expr(guard);
+                let body_entry = self.new_block();
+                self.terminate(FirTerminator::Branch {
+                    condition: guard_value,
+                    then_block: body_entry,
+                    else_block: next_arm,
+                });
+                self.switch_to(body_entry);
+            }
+
+            match &arm.body {
+                HirMatchBody::Expr(body) => {
+                    let value = self.lower_expr(body);
+                    if let Some(local) = result_local {
+                        self.emit_void(
+                            body.span,
+                            FirInstructionKind::Store {
+                                place: FirPlace::Local { local },
+                                value,
+                            },
+                        );
+                    }
+                }
+                HirMatchBody::Block(body) => self.lower_block(body),
+            }
+            if !self.terminated() {
+                self.terminate(FirTerminator::Goto { target: join });
+            }
+            self.switch_to(next_arm);
+        }
+
+        // Semantic exhaustiveness guarantees that valid boolean matches cannot
+        // fall through all unguarded coverage. Keep this explicit in FIR so a
+        // broken semantic plan cannot become target-dependent behavior.
+        if !self.terminated() {
+            self.terminate(FirTerminator::Unreachable);
+        }
+        self.switch_to(join);
+        if let Some(local) = result_local {
+            self.emit_value(
+                expr.span,
+                result_ty,
+                FirInstructionKind::Load {
+                    place: FirPlace::Local { local },
+                },
+            )
+        } else {
+            self.emit_value(expr.span, Ty::Void, FirInstructionKind::Unit)
         }
     }
 

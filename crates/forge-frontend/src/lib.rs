@@ -28,8 +28,8 @@ pub use resolution::{
     ResolvedName,
 };
 pub use typecheck::{
-    type_check_module, ConstValue, IntWidth, ResolvedReceiver, Ty, TypeCheckOutput, TypeDiagnostic,
-    TypedBody, TypedExpr, TypedExprKind,
+    type_check_module, ConstValue, IntWidth, MatchTest, ResolvedReceiver, Ty, TypeCheckOutput,
+    TypeDiagnostic, TypedBody, TypedExpr, TypedExprKind, TypedMatchArmPlan, TypedMatchPlan,
 };
 
 pub use fir::{

@@ -208,12 +208,97 @@ fn defer_call_is_emitted_before_return() {
 }
 
 #[test]
-fn fir_reports_missing_pre_fir_pattern_decision_tree() {
+fn boolean_match_plan_lowers_to_cfg() {
     let output = lower(
         r#"
-        module test.fir_match_gap;
+        module test.fir_bool_match;
         fn choose(value: bool) -> i32 {
             return match (value) { true => 1i32, false => 2i32, };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let function = output.module.functions.values().next().unwrap();
+    assert!(function.blocks.len() >= 5);
+    assert!(function
+        .blocks
+        .iter()
+        .all(|block| block.terminator.is_some()));
+    assert!(function
+        .blocks
+        .iter()
+        .any(|block| matches!(block.terminator, Some(FirTerminator::Branch { .. }))));
+}
+
+#[test]
+fn boolean_match_preserves_wildcard_and_guard_fallthrough() {
+    let output = lower(
+        r#"
+        module test.fir_bool_guard;
+        fn choose(value: bool, guard: bool) -> i32 {
+            return match (value) {
+                true when guard => 1i32,
+                true => 2i32,
+                _ => 3i32,
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let branches = output
+        .module
+        .functions
+        .values()
+        .flat_map(|function| &function.blocks)
+        .filter(|block| matches!(block.terminator, Some(FirTerminator::Branch { .. })))
+        .count();
+    assert!(branches >= 3, "expected pattern and guard branches");
+}
+
+#[test]
+fn boolean_match_scrutinee_is_evaluated_once() {
+    let output = lower(
+        r#"
+        module test.fir_bool_once;
+        fn source() -> bool { return true; }
+        fn choose() -> i32 {
+            return match (source()) { true => 1i32, false => 2i32, };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let calls = instructions(&output)
+        .filter(|op| matches!(op, FirInstructionKind::Call { .. }))
+        .count();
+    assert_eq!(calls, 1, "match scrutinee call must execute once");
+}
+
+#[test]
+fn boolean_match_block_arms_lower_as_void_cfg() {
+    let output = lower(
+        r#"
+        module test.fir_bool_blocks;
+        fn choose(value: bool) -> void {
+            match (value) {
+                true => { val x: u32 = 1u32; },
+                false => { val y: u32 = 2u32; },
+            };
+            return;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::Unit)));
+}
+
+#[test]
+fn non_boolean_match_still_waits_for_later_pattern_steps() {
+    let output = lower(
+        r#"
+        module test.fir_enum_match_later;
+        enum Color { Red, Green }
+        fn choose(value: Color) -> i32 {
+            return match (value) { Color::Red => 1i32, Color::Green => 2i32, };
         }
         "#,
     );

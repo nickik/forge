@@ -87,6 +87,24 @@ pub enum ConstValue {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "test", rename_all = "snake_case")]
+pub enum MatchTest {
+    Bool { value: bool },
+    Always,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypedMatchArmPlan {
+    pub test: MatchTest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypedMatchPlan {
+    pub scrutinee_type: Ty,
+    pub arms: Vec<TypedMatchArmPlan>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TypeDiagnostic {
     pub span: Span,
     pub code: String,
@@ -117,6 +135,10 @@ pub enum TypedExprKind {
     ResolvedTry {
         source_error: Ty,
         target_error: Ty,
+        hir: HirExpr,
+    },
+    ResolvedMatch {
+        plan: TypedMatchPlan,
         hir: HirExpr,
     },
     OptionalPromote {
@@ -951,6 +973,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
     fn check_expr(&mut self, expr: &HirExpr, expected: Option<&Ty>) -> Ty {
         let mut resolved_call: Option<ResolvedCallInfo> = None;
         let mut resolved_try: Option<(Ty, Ty)> = None;
+        let mut resolved_match: Option<TypedMatchPlan> = None;
         let mut ty = match &expr.kind {
             HirExprKind::Integer { text } => integer_literal_ty(text),
             HirExprKind::Float { text } => float_literal_ty(text),
@@ -1134,6 +1157,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     }
                 }
                 self.check_match_exhaustiveness(expr.span, &matched, arms);
+                resolved_match = self.build_bool_match_plan(&matched, arms);
                 result
             }
             HirExprKind::Error => Ty::Error,
@@ -1170,6 +1194,11 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 method: call.method,
                 receiver: call.receiver,
                 argument_parameters: call.argument_parameters,
+                hir: expr.clone(),
+            }
+        } else if let Some(plan) = resolved_match {
+            TypedExprKind::ResolvedMatch {
+                plan,
                 hir: expr.clone(),
             }
         } else {
@@ -1995,6 +2024,31 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             | HirPatternKind::None { .. }
             | HirPatternKind::Some { .. } => false,
         }
+    }
+
+    fn build_bool_match_plan(
+        &self,
+        ty: &Ty,
+        arms: &[crate::body_hir::HirMatchArm],
+    ) -> Option<TypedMatchPlan> {
+        if *ty != Ty::Bool {
+            return None;
+        }
+        let mut planned = Vec::with_capacity(arms.len());
+        for arm in arms {
+            let test = match &arm.pattern.kind {
+                HirPatternKind::Literal {
+                    value: ast::PatternLiteral::Bool { value },
+                } => MatchTest::Bool { value: *value },
+                HirPatternKind::Wildcard => MatchTest::Always,
+                _ => return None,
+            };
+            planned.push(TypedMatchArmPlan { test });
+        }
+        Some(TypedMatchPlan {
+            scrutinee_type: Ty::Bool,
+            arms: planned,
+        })
     }
 
     fn check_match_exhaustiveness(

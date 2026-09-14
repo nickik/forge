@@ -68,4 +68,4 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 
 ## Completion record
 
-Step 1: in progress. Later steps intentionally untouched.
+Step 1: implementation attempted for typed boolean/wildcard match plans and FIR CFG lowering. Later steps intentionally untouched.
