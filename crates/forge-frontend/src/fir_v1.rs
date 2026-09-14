@@ -11,9 +11,9 @@ use crate::{
     hir::{DefId, MetadataTableExt, MetadataTarget},
     resolution::{LocalId, ResolvedName},
     typecheck::{
-        ConstValue, IntWidth, MatchCondition, MatchProjection, MatchScalar, MatchTest,
-        ResolvedCallArgument, ResolvedReceiver, Ty, TypeCheckOutput, TypedBody, TypedExpr,
-        TypedExprKind, TypedMatchBinding, TypedMatchPlan,
+        CaptureMode, ConstValue, IntWidth, MatchCondition, MatchProjection, MatchScalar, MatchTest,
+        ResolvedCallArgument, ResolvedReceiver, Ty, TypeCheckOutput, TypedBody, TypedClosurePlan,
+        TypedExpr, TypedExprKind, TypedMatchBinding, TypedMatchPlan,
     },
 };
 
@@ -65,9 +65,27 @@ pub struct FirFunction {
     pub params: Vec<FirLocalId>,
     pub return_type: Ty,
     pub locals: BTreeMap<FirLocalId, FirLocal>,
+    pub closures: BTreeMap<ExprId, FirClosure>,
     pub entry: FirBlockId,
     pub blocks: Vec<FirBasicBlock>,
     pub value_types: BTreeMap<FirValueId, Ty>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FirClosure {
+    pub id: ExprId,
+    pub captures: Vec<FirClosureField>,
+    pub params: Vec<FirLocalId>,
+    pub return_type: Ty,
+    pub entry: FirBlockId,
+    pub function_pointer: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FirClosureField {
+    pub local: LocalId,
+    pub ty: Ty,
+    pub mode: CaptureMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -83,6 +101,7 @@ pub struct FirLocal {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FirBasicBlock {
     pub id: FirBlockId,
+    pub closure: Option<ExprId>,
     pub instructions: Vec<FirInstruction>,
     pub terminator: Option<FirTerminator>,
 }
@@ -171,6 +190,15 @@ pub enum FirInstructionKind {
         place: FirPlace,
         mutable: bool,
     },
+    MakeClosure {
+        closure: ExprId,
+        captures: Vec<FirValueId>,
+    },
+    CallClosure {
+        closure: FirValueId,
+        args: Vec<FirValueId>,
+        tail: bool,
+    },
     Call {
         target: DefId,
         args: Vec<FirValueId>,
@@ -207,6 +235,10 @@ pub enum FirInstructionKind {
 pub enum FirPlace {
     Local {
         local: FirLocalId,
+    },
+    ClosureCapture {
+        closure: ExprId,
+        index: u32,
     },
     Field {
         base: Box<FirPlace>,
@@ -343,6 +375,9 @@ struct FunctionLowerer<'a> {
     loops: Vec<LoopTargets>,
     diagnostics: Vec<FirDiagnostic>,
     in_cleanup: bool,
+    active_closure: Option<ExprId>,
+    active_return_type: Ty,
+    closure_capture_places: BTreeMap<LocalId, (ExprId, u32)>,
 }
 
 impl<'a> FunctionLowerer<'a> {
@@ -363,9 +398,11 @@ impl<'a> FunctionLowerer<'a> {
             params: Vec::new(),
             return_type: typed.return_type.clone(),
             locals: BTreeMap::new(),
+            closures: BTreeMap::new(),
             entry,
             blocks: vec![FirBasicBlock {
                 id: entry,
+                closure: None,
                 instructions: Vec::new(),
                 terminator: None,
             }],
@@ -420,6 +457,9 @@ impl<'a> FunctionLowerer<'a> {
             loops: Vec::new(),
             diagnostics: Vec::new(),
             in_cleanup: false,
+            active_closure: None,
+            active_return_type: typed.return_type.clone(),
+            closure_capture_places: BTreeMap::new(),
         }
     }
 
@@ -462,6 +502,7 @@ impl<'a> FunctionLowerer<'a> {
         let id = FirBlockId(self.function.blocks.len() as u32);
         self.function.blocks.push(FirBasicBlock {
             id,
+            closure: self.active_closure,
             instructions: Vec::new(),
             terminator: None,
         });
@@ -982,6 +1023,9 @@ impl<'a> FunctionLowerer<'a> {
             } => self.lower_resolved_call(
                 expr, *target, *method, *receiver, arguments, result_ty, false,
             ),
+            TypedExprKind::ResolvedClosure { plan, .. } => {
+                self.lower_closure(expr, plan, result_ty)
+            }
             TypedExprKind::ResolvedTry {
                 source_error,
                 target_error,
@@ -1167,8 +1211,8 @@ impl<'a> FunctionLowerer<'a> {
             HirExprKind::Closure { .. } => {
                 self.diagnostic(
                     expr.span,
-                    "fir/closure-environment-missing",
-                    "closure capture types/environment layout are not explicit enough in typed HIR yet",
+                    "fir/unresolved-closure",
+                    "closure reached FIR without a typed closure environment plan",
                 );
                 self.poison(expr.span, ty)
             }
@@ -1180,6 +1224,154 @@ impl<'a> FunctionLowerer<'a> {
                 );
                 self.poison(expr.span, ty)
             }
+        }
+    }
+
+    fn lower_closure(
+        &mut self,
+        expr: &HirExpr,
+        plan: &TypedClosurePlan,
+        result_ty: Ty,
+    ) -> FirValueId {
+        let HirExprKind::Closure { body, .. } = &expr.kind else {
+            self.diagnostic(
+                expr.span,
+                "fir/closure-shape",
+                "resolved closure plan is not attached to a closure HIR node",
+            );
+            return self.poison(expr.span, result_ty);
+        };
+
+        // Evaluate environment construction in the enclosing lexical context.
+        let mut capture_values = Vec::with_capacity(plan.captures.len());
+        for capture in &plan.captures {
+            let value = match capture.mode {
+                CaptureMode::Value => {
+                    self.lower_name(expr.span, capture.source, capture.ty.clone())
+                }
+                CaptureMode::SharedReference | CaptureMode::MutableReference => {
+                    let ResolvedName::Local(source) = capture.source else {
+                        self.diagnostic(
+                            expr.span,
+                            "fir/closure-reference-source",
+                            "reference closure capture has no local source place",
+                        );
+                        capture_values.push(self.poison(expr.span, Ty::Error));
+                        continue;
+                    };
+                    let Some(place) = self.place_for_local(source) else {
+                        self.diagnostic(
+                            expr.span,
+                            "fir/closure-reference-source",
+                            "reference closure capture source has no FIR place",
+                        );
+                        capture_values.push(self.poison(expr.span, Ty::Error));
+                        continue;
+                    };
+                    let mutable = capture.mode == CaptureMode::MutableReference;
+                    let reference_ty = Ty::Reference {
+                        mutable,
+                        inner: Box::new(capture.ty.clone()),
+                    };
+                    self.emit_value(
+                        expr.span,
+                        reference_ty,
+                        FirInstructionKind::AddressOf { place, mutable },
+                    )
+                }
+            };
+            capture_values.push(value);
+        }
+
+        let saved_current = self.current;
+        let saved_active = self.active_closure;
+        let saved_return = self.active_return_type.clone();
+        let saved_capture_places = std::mem::take(&mut self.closure_capture_places);
+        let saved_cleanups = std::mem::take(&mut self.cleanup_scopes);
+        let saved_loops = std::mem::take(&mut self.loops);
+        let saved_in_cleanup = self.in_cleanup;
+
+        self.active_closure = Some(expr.id);
+        self.active_return_type = plan.result.clone();
+        self.in_cleanup = false;
+        for (index, capture) in plan.captures.iter().enumerate() {
+            self.closure_capture_places
+                .insert(capture.local, (expr.id, index as u32));
+        }
+        let entry = self.new_block();
+        self.switch_to(entry);
+        self.lower_block(body);
+        if !self.terminated() {
+            if plan.result == Ty::Void {
+                self.terminate(FirTerminator::Return { value: None });
+            } else {
+                self.diagnostic(
+                    body.span,
+                    "fir/closure-missing-return",
+                    "control reaches the end of a non-void closure",
+                );
+                self.terminate(FirTerminator::Unreachable);
+            }
+        }
+
+        let params = plan
+            .params
+            .iter()
+            .filter_map(|(source, _)| self.local_map.get(source).copied())
+            .collect::<Vec<_>>();
+        if params.len() != plan.params.len() {
+            self.diagnostic(
+                expr.span,
+                "fir/closure-parameter-local",
+                "typed closure parameter has no FIR local",
+            );
+        }
+        self.function.closures.insert(
+            expr.id,
+            FirClosure {
+                id: expr.id,
+                captures: plan
+                    .captures
+                    .iter()
+                    .map(|capture| FirClosureField {
+                        local: capture.local,
+                        ty: capture.ty.clone(),
+                        mode: capture.mode,
+                    })
+                    .collect(),
+                params,
+                return_type: plan.result.clone(),
+                entry,
+                function_pointer: plan.function_pointer,
+            },
+        );
+
+        self.current = saved_current;
+        self.active_closure = saved_active;
+        self.active_return_type = saved_return;
+        self.closure_capture_places = saved_capture_places;
+        self.cleanup_scopes = saved_cleanups;
+        self.loops = saved_loops;
+        self.in_cleanup = saved_in_cleanup;
+
+        self.emit_value(
+            expr.span,
+            result_ty,
+            FirInstructionKind::MakeClosure {
+                closure: expr.id,
+                captures: capture_values,
+            },
+        )
+    }
+
+    fn place_for_local(&self, local: LocalId) -> Option<FirPlace> {
+        if let Some((closure, index)) = self.closure_capture_places.get(&local).copied() {
+            Some(FirPlace::ClosureCapture { closure, index })
+        } else {
+            self.local_map
+                .get(&local)
+                .copied()
+                .map(|local| FirPlace::Local { local })
         }
     }
 
@@ -1693,17 +1885,23 @@ impl<'a> FunctionLowerer<'a> {
                         "named arguments on indirect calls need semantic parameter mapping",
                     );
                 }
+                let callee_ty = self.expr_ty(callee);
                 let callee = self.lower_expr(callee);
                 let args = args
                     .iter()
                     .map(arg_value)
                     .map(|arg| self.lower_expr(arg))
                     .collect();
-                self.emit_value(
-                    expr.span,
-                    typed.ty,
-                    FirInstructionKind::CallIndirect { callee, args, tail },
-                )
+                let kind = if matches!(callee_ty, Ty::Closure { .. }) {
+                    FirInstructionKind::CallClosure {
+                        closure: callee,
+                        args,
+                        tail,
+                    }
+                } else {
+                    FirInstructionKind::CallIndirect { callee, args, tail }
+                };
+                self.emit_value(expr.span, typed.ty, kind)
             }
         }
     }
@@ -1947,7 +2145,7 @@ impl<'a> FunctionLowerer<'a> {
         );
         let propagated = self.emit_value(
             expr.span,
-            self.function.return_type.clone(),
+            self.active_return_type.clone(),
             FirInstructionKind::MakeResultErr { error },
         );
         self.emit_cleanups_from(0);
@@ -1974,17 +2172,11 @@ impl<'a> FunctionLowerer<'a> {
                 if let Some(value) = self.local_constants.get(&local).cloned() {
                     return self.emit_const_value(span, ty, value);
                 }
-                let Some(local) = self.local_map.get(&local).copied() else {
+                let Some(place) = self.place_for_local(local) else {
                     self.diagnostic(span, "fir/local", "unknown local in FIR lowering");
                     return self.poison(span, ty);
                 };
-                self.emit_value(
-                    span,
-                    ty,
-                    FirInstructionKind::Load {
-                        place: FirPlace::Local { local },
-                    },
-                )
+                self.emit_value(span, ty, FirInstructionKind::Load { place })
             }
             ResolvedName::Def(def) => {
                 if let Some(value) = self.all_typed.constants.get(&def).cloned() {
@@ -2131,11 +2323,7 @@ impl<'a> FunctionLowerer<'a> {
     fn try_place(&mut self, expr: &HirExpr) -> Option<FirPlace> {
         match &expr.kind {
             HirExprKind::Name { reference } => match reference.root {
-                ResolvedName::Local(local) => self
-                    .local_map
-                    .get(&local)
-                    .copied()
-                    .map(|local| FirPlace::Local { local }),
+                ResolvedName::Local(local) => self.place_for_local(local),
                 _ => None,
             },
             HirExprKind::Member { base, name } => {
@@ -2421,6 +2609,32 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
             });
         }
     }
+    for closure in function.closures.values() {
+        if closure.entry.0 >= block_count
+            || function.blocks[closure.entry.0 as usize].closure != Some(closure.id)
+        {
+            diagnostics.push(FirDiagnostic {
+                span: Span::new(0, 0),
+                code: "fir/verify-closure-entry".into(),
+                message: format!("closure {:?} has an invalid entry block", closure.id),
+            });
+        }
+        if !fir_type_is_concrete(&closure.return_type)
+            || closure
+                .captures
+                .iter()
+                .any(|capture| !fir_type_is_concrete(&capture.ty))
+        {
+            diagnostics.push(FirDiagnostic {
+                span: Span::new(0, 0),
+                code: "fir/verify-closure-type".into(),
+                message: format!(
+                    "closure {:?} contains a non-concrete semantic type",
+                    closure.id
+                ),
+            });
+        }
+    }
 
     for block in &function.blocks {
         if block.terminator.is_none() {
@@ -2477,17 +2691,19 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                 }
             }
             if let FirTerminator::Return { value } = term {
-                match (value, &function.return_type) {
+                let expected = block
+                    .closure
+                    .and_then(|id| function.closures.get(&id))
+                    .map(|closure| &closure.return_type)
+                    .unwrap_or(&function.return_type);
+                match (value, expected) {
                     (None, Ty::Void) => {}
                     (Some(value), expected)
                         if function.value_types.get(value) == Some(expected) => {}
                     _ => diagnostics.push(FirDiagnostic {
                         span: Span::new(0, 0),
                         code: "fir/verify-return".into(),
-                        message: format!(
-                            "return value {:?} does not match {:?}",
-                            value, function.return_type
-                        ),
+                        message: format!("return value {:?} does not match {:?}", value, expected),
                     }),
                 }
             }

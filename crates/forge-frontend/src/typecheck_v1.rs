@@ -185,6 +185,30 @@ pub struct TypedExpr {
     pub kind: TypedExprKind,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CaptureMode {
+    Value,
+    SharedReference,
+    MutableReference,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TypedCapture {
+    pub local: LocalId,
+    pub source: ResolvedName,
+    pub ty: Ty,
+    pub mode: CaptureMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TypedClosurePlan {
+    pub captures: Vec<TypedCapture>,
+    pub params: Vec<(LocalId, Ty)>,
+    pub result: Ty,
+    pub function_pointer: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "source", rename_all = "snake_case")]
 pub enum ResolvedCallArgument {
@@ -203,6 +227,10 @@ pub enum TypedExprKind {
         method: bool,
         receiver: Option<ResolvedReceiver>,
         arguments: Vec<ResolvedCallArgument>,
+        hir: HirExpr,
+    },
+    ResolvedClosure {
+        plan: TypedClosurePlan,
         hir: HirExpr,
     },
     ResolvedTry {
@@ -967,6 +995,13 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     .as_ref()
                     .map(|e| self.check_expr(e, Some(&self.expected_return.clone())))
                     .unwrap_or(Ty::Void);
+                if matches!(actual, Ty::Closure { .. }) {
+                    self.diagnostic(
+                        stmt.span,
+                        "closure/escape",
+                        "Forge v1 closure values are non-escaping; return a function pointer or an explicit owned callable instead",
+                    );
+                }
                 if !self.is_assignable(&self.expected_return, &actual) {
                     self.diagnostic(
                         stmt.span,
@@ -1067,6 +1102,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
 
     fn check_expr(&mut self, expr: &HirExpr, expected: Option<&Ty>) -> Ty {
         let mut resolved_call: Option<ResolvedCallInfo> = None;
+        let mut resolved_closure: Option<TypedClosurePlan> = None;
         let mut resolved_try: Option<(Ty, Ty)> = None;
         let mut resolved_match: Option<TypedMatchPlan> = None;
         let mut ty = match &expr.kind {
@@ -1190,20 +1226,84 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 }
             },
             HirExprKind::Closure {
+                captures,
                 params,
                 return_type,
                 body,
-                ..
             } => {
-                let saved = std::mem::take(&mut self.local_types);
-                let ptys: Vec<Ty> = params
+                // Capture resolution is explicit in Forge v1.  Preserve the source
+                // type for transparent access inside the closure while recording
+                // the environment storage/aliasing mode separately.
+                let outer_types = self.local_types.clone();
+                let mut typed_captures = Vec::with_capacity(captures.len());
+                for capture in captures {
+                    let source_ty = match capture.source {
+                        ResolvedName::Local(id) => {
+                            outer_types.get(&id).cloned().unwrap_or(Ty::Error)
+                        }
+                        other => self.type_of_name(other),
+                    };
+                    let mode = if capture.by_reference {
+                        if capture.mutable {
+                            CaptureMode::MutableReference
+                        } else {
+                            CaptureMode::SharedReference
+                        }
+                    } else {
+                        if capture.mutable {
+                            self.diagnostic(
+                                expr.span,
+                                "closure/capture-mode",
+                                "mutable closure captures must use `&mut`",
+                            );
+                        }
+                        CaptureMode::Value
+                    };
+                    if matches!(
+                        mode,
+                        CaptureMode::SharedReference | CaptureMode::MutableReference
+                    ) && !matches!(capture.source, ResolvedName::Local(_))
+                    {
+                        self.diagnostic(
+                            expr.span,
+                            "closure/reference-capture-source",
+                            "reference captures require a local source binding in Forge v1",
+                        );
+                    }
+                    if mode == CaptureMode::MutableReference {
+                        match capture.source {
+                            ResolvedName::Local(id) if self.mutable_locals.contains(&id) => {}
+                            _ => self.diagnostic(
+                                expr.span,
+                                "closure/mutable-capture",
+                                "mutable-reference capture requires a mutable local source binding",
+                            ),
+                        }
+                    }
+                    typed_captures.push(TypedCapture {
+                        local: capture.local,
+                        source: capture.source,
+                        ty: source_ty,
+                        mode,
+                    });
+                }
+
+                let saved_types = std::mem::take(&mut self.local_types);
+                let saved_mutable = std::mem::take(&mut self.mutable_locals);
+                for capture in &typed_captures {
+                    self.local_types.insert(capture.local, capture.ty.clone());
+                    if capture.mode == CaptureMode::MutableReference {
+                        self.mutable_locals.insert(capture.local);
+                    }
+                }
+                let ptys: Vec<(LocalId, Ty)> = params
                     .iter()
                     .map(|(id, t)| {
                         let ty = self
                             .env
                             .lower_hir_type_with_locals(t, &self.local_constants);
                         self.local_types.insert(*id, ty.clone());
-                        ty
+                        (*id, ty)
                     })
                     .collect();
                 let result = return_type
@@ -1212,14 +1312,50 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         self.env
                             .lower_hir_type_with_locals(t, &self.local_constants)
                     })
-                    .unwrap_or(Ty::Unknown);
+                    .unwrap_or_else(|| {
+                        self.diagnostic(
+                            expr.span,
+                            "closure/return-type-required",
+                            "Forge v1 closures require an explicit return type",
+                        );
+                        Ty::Error
+                    });
                 let old_return = std::mem::replace(&mut self.expected_return, result.clone());
                 self.check_block(body);
                 self.expected_return = old_return;
-                self.local_types.extend(saved);
-                Ty::Closure {
+
+                // LocalIds are body-wide and unique, so retain closure-local types
+                // for FIR while restoring the outer lexical mutability view.
+                let closure_types = std::mem::take(&mut self.local_types);
+                self.local_types = saved_types;
+                self.local_types.extend(closure_types);
+                self.mutable_locals = saved_mutable;
+
+                let closure_ty = Ty::Closure {
+                    params: ptys.iter().map(|(_, ty)| ty.clone()).collect(),
+                    result: Box::new(result.clone()),
+                };
+                let function_pointer = matches!(
+                    expected,
+                    Some(Ty::Function {
+                        params: expected_params,
+                        result: expected_result,
+                        named_arguments: false,
+                    }) if typed_captures.is_empty()
+                        && *expected_params
+                            == ptys.iter().map(|(_, ty)| ty.clone()).collect::<Vec<_>>()
+                        && expected_result.as_ref() == &result
+                );
+                resolved_closure = Some(TypedClosurePlan {
+                    captures: typed_captures,
                     params: ptys,
-                    result: Box::new(result),
+                    result: result.clone(),
+                    function_pointer,
+                });
+                if function_pointer {
+                    expected.cloned().unwrap_or(closure_ty)
+                } else {
+                    closure_ty
                 }
             }
             HirExprKind::Match { value, arms } => {
@@ -1295,6 +1431,11 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 method: call.method,
                 receiver: call.receiver,
                 arguments: call.arguments,
+                hir: expr.clone(),
+            }
+        } else if let Some(plan) = resolved_closure {
+            TypedExprKind::ResolvedClosure {
+                plan,
                 hir: expr.clone(),
             }
         } else if let Some(plan) = resolved_match {
@@ -1680,11 +1821,39 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         }
         let callee_ty = self.check_expr(callee, None);
         match callee_ty {
-            Ty::Function { params, result, .. } | Ty::Closure { params, result } => {
+            Ty::Function { params, result, .. } => {
                 for (arg, param) in args.iter().zip(params.iter()) {
                     let value = arg_value(arg);
                     let actual = self.check_expr(value, Some(param));
                     self.require_assignable(value.span, param, &actual, "type/mismatch");
+                }
+                if args.len() != params.len() {
+                    self.diagnostic(
+                        span,
+                        "call/arity",
+                        "function pointer call has wrong argument count",
+                    );
+                }
+                (*result, None)
+            }
+            Ty::Closure { params, result } => {
+                if args
+                    .iter()
+                    .any(|arg| matches!(arg, HirCallArg::Named { .. }))
+                {
+                    self.diagnostic(
+                        span,
+                        "call/closure-named",
+                        "closure calls are positional in Forge v1",
+                    );
+                }
+                for (arg, param) in args.iter().zip(params.iter()) {
+                    let value = arg_value(arg);
+                    let actual = self.check_expr(value, Some(param));
+                    self.require_assignable(value.span, param, &actual, "type/mismatch");
+                }
+                if args.len() != params.len() {
+                    self.diagnostic(span, "call/arity", "closure call has wrong argument count");
                 }
                 (*result, None)
             }

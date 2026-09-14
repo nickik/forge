@@ -85,7 +85,8 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Step 6 complete: struct, sequence/rest, as, and OR patterns lower through typed alternatives/projections with short-circuit-safe structural tests.
 - Step 7 complete: exhaustiveness and unreachable-arm usefulness for planned patterns now consume the same semantic alternatives/conditions that FIR lowers.
 - Step 8 complete: direct/named calls carry complete parameter-order argument plans; omitted defaults remain callee-owned typed HIR and FIR evaluates them in parameter order with earlier parameter values materialized exactly once.
-- Steps 9-16 intentionally untouched.
+- Step 9 complete: explicit capture modes and typed closure environment fields are resolved above FIR; non-escaping closure bodies have dedicated FIR entries, reference captures remain aliasing places, and closure/function-pointer calls lower explicitly.
+- Steps 10-16 intentionally untouched.
 
 
 ## Step 8 acceptance tests

@@ -583,3 +583,95 @@ fn chained_defaults_can_read_earlier_materialized_parameters() {
             >= 2
     );
 }
+
+#[test]
+fn captured_closure_lowers_environment_body_and_call() {
+    let output = lower(
+        r#"
+        module test.fir_closure_capture;
+        fn main() -> u32 {
+            val factor: u32 = 4u32;
+            val scale = [factor](x: u32) -> u32 { return x * factor; };
+            return scale(3u32);
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let main = output.module.functions.values().next().unwrap();
+    assert_eq!(main.closures.len(), 1);
+    let closure = main.closures.values().next().unwrap();
+    assert_eq!(closure.captures.len(), 1);
+    assert_eq!(closure.captures[0].mode, forge_frontend::CaptureMode::Value);
+    assert!(main
+        .blocks
+        .iter()
+        .any(|block| block.closure == Some(closure.id)));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::MakeClosure { captures, .. } if captures.len() == 1
+    )));
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::CallClosure { .. })));
+}
+
+#[test]
+fn mutable_reference_closure_uses_aliasing_capture_place() {
+    let output = lower(
+        r#"
+        module test.fir_closure_mut_ref;
+        fn main() -> u32 {
+            var count: u32 = 0u32;
+            val next = [&mut count]() -> u32 {
+                count = count + 1u32;
+                return count;
+            };
+            next();
+            return count;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let main = output.module.functions.values().next().unwrap();
+    let closure = main.closures.values().next().unwrap();
+    assert_eq!(
+        closure.captures[0].mode,
+        forge_frontend::CaptureMode::MutableReference
+    );
+    assert!(main
+        .blocks
+        .iter()
+        .filter(|block| block.closure == Some(closure.id))
+        .any(|block| {
+            block.instructions.iter().any(|instruction| {
+                matches!(
+                    &instruction.kind,
+                    FirInstructionKind::Store {
+                        place: forge_frontend::FirPlace::ClosureCapture { .. },
+                        ..
+                    }
+                )
+            })
+        }));
+}
+
+#[test]
+fn capture_free_closure_function_pointer_has_no_environment() {
+    let output = lower(
+        r#"
+        module test.fir_closure_fn_ptr;
+        fn main() -> u32 {
+            val op: fn(u32) -> u32 = (x: u32) -> u32 { return x + 1u32; };
+            return op(8u32);
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let main = output.module.functions.values().next().unwrap();
+    let closure = main.closures.values().next().unwrap();
+    assert!(closure.function_pointer);
+    assert!(closure.captures.is_empty());
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::MakeClosure { captures, .. } if captures.is_empty()
+    )));
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::CallIndirect { .. })));
+}

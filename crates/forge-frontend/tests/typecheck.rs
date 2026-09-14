@@ -1272,3 +1272,111 @@ fn named_call_plan_materializes_defaults_in_final_parameter_order() {
         ]
     ));
 }
+
+#[test]
+fn closure_plan_records_explicit_capture_modes_and_types() {
+    let output = check(
+        r#"
+        module test.closure_capture_plan;
+        fn main() -> u32 {
+            val factor: u32 = 4u32;
+            var count: u32 = 0u32;
+            val by_value = [factor](x: u32) -> u32 { return x * factor; };
+            val by_ref = [&count]() -> u32 { return count; };
+            val by_mut = [&mut count]() -> u32 {
+                count = count + 1u32;
+                return count;
+            };
+            by_value(2u32);
+            by_ref();
+            return by_mut();
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let body = output.functions.values().next().expect("main body");
+    let plans = body
+        .expressions
+        .iter()
+        .filter_map(|expr| match &expr.kind {
+            forge_frontend::TypedExprKind::ResolvedClosure { plan, .. } => Some(plan),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(plans.len(), 3);
+    assert_eq!(
+        plans[0].captures[0].mode,
+        forge_frontend::CaptureMode::Value
+    );
+    assert_eq!(
+        plans[1].captures[0].mode,
+        forge_frontend::CaptureMode::SharedReference
+    );
+    assert_eq!(
+        plans[2].captures[0].mode,
+        forge_frontend::CaptureMode::MutableReference
+    );
+    assert_eq!(
+        plans[0].captures[0].ty,
+        forge_frontend::Ty::Int {
+            signed: false,
+            width: forge_frontend::IntWidth::W32,
+        }
+    );
+}
+
+#[test]
+fn mutable_reference_closure_capture_requires_mutable_source() {
+    let output = check(
+        r#"
+        module test.closure_bad_mut_capture;
+        fn main() -> u32 {
+            val count: u32 = 0u32;
+            val next = [&mut count]() -> u32 { return count; };
+            return next();
+        }
+        "#,
+    );
+    assert!(
+        has(&output, "closure/mutable-capture"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
+fn capture_free_closure_coerces_directly_to_function_pointer() {
+    let output = check(
+        r#"
+        module test.closure_fn_pointer;
+        fn main() -> u32 {
+            val op: fn(u32) -> u32 = (x: u32) -> u32 { return x + 1u32; };
+            return op(4u32);
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(output
+        .functions
+        .values()
+        .any(|body| body.expressions.iter().any(|expr| {
+            matches!(
+                &expr.kind,
+                forge_frontend::TypedExprKind::ResolvedClosure { plan, .. }
+                    if plan.function_pointer && plan.captures.is_empty()
+            )
+        })));
+}
+
+#[test]
+fn closure_values_cannot_escape_by_return() {
+    let output = check(
+        r#"
+        module test.closure_escape;
+        fn bad(value: u32) -> closure(u32) -> u32 {
+            return [value](x: u32) -> u32 { return x + value; };
+        }
+        "#,
+    );
+    assert!(has(&output, "closure/escape"), "{:?}", output.diagnostics);
+}
