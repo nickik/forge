@@ -125,5 +125,9 @@
     {:path #path "negative/09-duplicate-named-argument.fg" :kind :negative :expect :call/duplicate-name}
     {:path #path "negative/10-unknown-named-argument.fg" :kind :negative :expect :call/unknown-name}
     {:path #path "negative/11-tail-return-noncall.fg" :kind :negative :expect :control/tail-call-required}
+    {:path #path "negative/12-unknown-struct-member.fg" :kind :negative :expect :type/unknown-field}
+    {:path #path "negative/13-missing-struct-field.fg" :kind :negative :expect :type/missing-field}
+    {:path #path "negative/14-pattern-type-mismatch.fg" :kind :negative :expect :pattern/type}
+    {:path #path "negative/15-or-pattern-binding-type.fg" :kind :negative :expect :pattern/or-binding-type}
   ]
 }

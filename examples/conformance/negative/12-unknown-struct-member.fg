@@ -1,0 +1,3 @@
+module examples.conformance.unknown_struct_member;
+struct Point { x: i32; }
+fn bad(point: Point) -> i32 { return point.y; }

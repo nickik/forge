@@ -1,0 +1,11 @@
+module examples.conformance.or_pattern_binding_type;
+tagged Value {
+    Count { x: u32; },
+    Flag { x: bool; },
+}
+fn bad(value: Value) -> i32 {
+    return match (value) {
+        Value::Count{x} | Value::Flag{x} => 1,
+        _ => 0,
+    };
+}

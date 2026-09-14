@@ -1,0 +1,7 @@
+module examples.conformance.pattern_type_mismatch;
+struct Point { x: i32; }
+struct Other { x: i32; }
+fn bad(value: Other) -> i32 {
+    val Point{x} = value;
+    return x;
+}
