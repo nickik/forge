@@ -412,15 +412,38 @@ where
             .clone()
             .map_with(|block, e| Node::new(StmtKind::Block { block }, span(e.span())));
 
+        // Assignment is a statement in Forge v1, never an expression. A dotted
+        // path is kept as ExprKind::Path; semantic resolution later decides
+        // whether it names a local, struct field, or module-qualified symbol.
+        let assignment_target = path_parser()
+            .map_with(|path, e| Node::new(ExprKind::Path { path }, span(e.span())));
+        let assignment = assignment_target
+            .then_ignore(just(Token::Eq))
+            .then(expr_parser())
+            .then_ignore(just(Token::Semicolon))
+            .map_with(|(target, value), e| {
+                Node::new(StmtKind::Assignment { target, value }, span(e.span()))
+            });
+
         let expr_stmt = expr_parser()
             .then_ignore(just(Token::Semicolon))
             .map_with(|expr, e| Node::new(StmtKind::Expr { expr }, span(e.span())));
 
-        choice((value, ret, if_stmt, while_stmt, defer_stmt, unsafe_stmt, nested_block, expr_stmt))
-            .recover_with(skip_then_retry_until(
-                any().ignored(),
-                choice((just(Token::Semicolon).ignored(), just(Token::RBrace).ignored())),
-            ))
+        choice((
+            value,
+            ret,
+            if_stmt,
+            while_stmt,
+            defer_stmt,
+            unsafe_stmt,
+            nested_block,
+            assignment,
+            expr_stmt,
+        ))
+        .recover_with(skip_then_retry_until(
+            any().ignored(),
+            choice((just(Token::Semicolon).ignored(), just(Token::RBrace).ignored())),
+        ))
     })
 }
 
