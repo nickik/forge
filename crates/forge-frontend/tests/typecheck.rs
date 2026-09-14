@@ -532,3 +532,166 @@ fn or_pattern_same_binding_type_is_accepted() {
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
 }
+
+#[test]
+fn nested_struct_members_keep_exact_types() {
+    let output = check(
+        r#"
+        module test.nested_member_type;
+        struct Inner { value: u16; }
+        struct Outer { inner: Inner; }
+        fn read(outer: Outer) -> u16 { return outer.inner.value; }
+    "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+}
+
+#[test]
+fn direct_struct_member_assignment_tracks_root_mutability() {
+    let mutable = check(
+        r#"
+        module test.mutable_struct_member;
+        struct Point { x: i32; }
+        fn main() -> i32 {
+            var point = Point{x: 1i32};
+            point.x = 2i32;
+            return point.x;
+        }
+    "#,
+    );
+    assert!(mutable.diagnostics.is_empty(), "{:?}", mutable.diagnostics);
+
+    let immutable = check(
+        r#"
+        module test.immutable_struct_member;
+        struct Point { x: i32; }
+        fn main() -> i32 {
+            val point = Point{x: 1i32};
+            point.x = 2i32;
+            return point.x;
+        }
+    "#,
+    );
+    assert!(
+        has(&immutable, "assignment/immutable"),
+        "{:?}",
+        immutable.diagnostics
+    );
+}
+
+#[test]
+fn struct_and_tagged_constructors_reject_bad_field_sets() {
+    let duplicate = check(
+        r#"
+        module test.duplicate_struct_field;
+        struct Point { x: i32; }
+        fn main() -> i32 {
+            val point = Point{x: 1i32, x: 2i32};
+            return 0;
+        }
+    "#,
+    );
+    assert!(
+        has(&duplicate, "type/duplicate-field"),
+        "{:?}",
+        duplicate.diagnostics
+    );
+
+    let unknown = check(
+        r#"
+        module test.unknown_struct_field;
+        struct Point { x: i32; }
+        fn main() -> i32 {
+            val point = Point{x: 1i32, y: 2i32};
+            return 0;
+        }
+    "#,
+    );
+    assert!(
+        has(&unknown, "type/unknown-field"),
+        "{:?}",
+        unknown.diagnostics
+    );
+
+    let tagged = check(
+        r#"
+        module test.tagged_constructor_fields;
+        tagged Token { Number { value: i64; }, Plus, }
+        fn main() -> i32 {
+            val token = Token::Number{value: true};
+            return 0;
+        }
+    "#,
+    );
+    assert!(has(&tagged, "type/mismatch"), "{:?}", tagged.diagnostics);
+}
+
+#[test]
+fn optional_and_sequence_match_bindings_get_element_types() {
+    let optional = check(
+        r#"
+        module test.optional_pattern_binding;
+        fn read(value: u32?) -> u32 {
+            return match (value) {
+                Some(x) => x,
+                None => 0u32,
+            };
+        }
+    "#,
+    );
+    assert!(
+        optional.diagnostics.is_empty(),
+        "{:?}",
+        optional.diagnostics
+    );
+
+    let sequence = check(
+        r#"
+        module test.sequence_pattern_binding;
+        fn first(values: u16[]) -> u16 {
+            return match (values) {
+                [x, ..rest] => x,
+                _ => 0u16,
+            };
+        }
+    "#,
+    );
+    assert!(
+        sequence.diagnostics.is_empty(),
+        "{:?}",
+        sequence.diagnostics
+    );
+}
+
+#[test]
+fn destructuring_declarations_reject_refutable_patterns() {
+    let optional = check(
+        r#"
+        module test.refutable_optional_binding;
+        fn read(value: u32?) -> u32 {
+            val Some(x) = value;
+            return x;
+        }
+    "#,
+    );
+    assert!(
+        has(&optional, "pattern/refutable-binding"),
+        "{:?}",
+        optional.diagnostics
+    );
+
+    let slice = check(
+        r#"
+        module test.refutable_slice_binding;
+        fn read(values: u32[]) -> u32 {
+            val [first, ..rest] = values;
+            return first;
+        }
+    "#,
+    );
+    assert!(
+        has(&slice, "pattern/refutable-binding"),
+        "{:?}",
+        slice.diagnostics
+    );
+}

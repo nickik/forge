@@ -1,0 +1,5 @@
+module examples.conformance.refutable_destructuring_binding;
+fn read(value: u32?) -> u32 {
+    val Some(x) = value;
+    return x;
+}

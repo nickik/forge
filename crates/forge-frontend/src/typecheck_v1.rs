@@ -571,6 +571,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 } else {
                     self.materialize_literal(value.span, actual)
                 };
+                self.check_irrefutable_binding_pattern(pattern, &final_ty);
                 self.check_pattern(pattern, &final_ty);
                 if *mutable {
                     self.mark_pattern_mutable(pattern);
@@ -1434,6 +1435,101 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             | HirPatternKind::Literal { .. }
             | HirPatternKind::Range { .. }
             | HirPatternKind::None { .. } => {}
+        }
+    }
+
+    fn check_irrefutable_binding_pattern(&mut self, pattern: &HirPattern, ty: &Ty) {
+        if !self.pattern_is_irrefutable(pattern, ty) {
+            self.diagnostic(
+                pattern.span,
+                "pattern/refutable-binding",
+                "destructuring declarations require a statically irrefutable pattern",
+            );
+        }
+    }
+
+    fn pattern_is_irrefutable(&self, pattern: &HirPattern, ty: &Ty) -> bool {
+        match &pattern.kind {
+            HirPatternKind::Wildcard | HirPatternKind::Binding { .. } => true,
+            HirPatternKind::As { pattern, .. } => self.pattern_is_irrefutable(pattern, ty),
+            HirPatternKind::Struct { path, fields } => {
+                let expected = self.env.ty_from_ref(path);
+                if !matches!(expected, Ty::Unknown | Ty::Error)
+                    && !matches!(ty, Ty::Unknown | Ty::Error)
+                    && expected != *ty
+                {
+                    // The ordinary pattern type diagnostic owns this mismatch.
+                    return true;
+                }
+                let Ty::Nominal(id) = expected else {
+                    return true;
+                };
+                let Some(TypeInfoKind::Struct(defs)) =
+                    self.env.types.get(&id).map(|info| &info.kind)
+                else {
+                    return true;
+                };
+                fields.iter().all(|field| {
+                    let Some(info) = defs.get(&field.name) else {
+                        return true;
+                    };
+                    field
+                        .pattern
+                        .as_ref()
+                        .is_none_or(|nested| self.pattern_is_irrefutable(nested, &info.ty))
+                })
+            }
+            HirPatternKind::Variant {
+                namespace,
+                name,
+                fields,
+                ..
+            } => {
+                let expected = self.env.ty_from_ref(namespace);
+                if !matches!(expected, Ty::Unknown | Ty::Error)
+                    && !matches!(ty, Ty::Unknown | Ty::Error)
+                    && expected != *ty
+                {
+                    return true;
+                }
+                let Ty::Nominal(id) = expected else {
+                    return false;
+                };
+                match self.env.types.get(&id).map(|info| &info.kind) {
+                    Some(TypeInfoKind::Enum(variants)) => {
+                        variants.len() == 1 && variants.contains(name) && fields.is_empty()
+                    }
+                    Some(TypeInfoKind::Tagged(variants)) => {
+                        if variants.len() != 1 {
+                            return false;
+                        }
+                        let Some(defs) = variants.get(name) else {
+                            return false;
+                        };
+                        fields.iter().all(|field| {
+                            let Some(info) = defs.get(&field.name) else {
+                                return true;
+                            };
+                            field
+                                .pattern
+                                .as_ref()
+                                .is_none_or(|nested| self.pattern_is_irrefutable(nested, &info.ty))
+                        })
+                    }
+                    _ => false,
+                }
+            }
+            HirPatternKind::Or { patterns } => patterns
+                .iter()
+                .any(|branch| self.pattern_is_irrefutable(branch, ty)),
+            // Length-sensitive sequence declarations require fixed-array length to be
+            // retained in Ty. Until then, sequence declarations cannot be proven safe.
+            HirPatternKind::Sequence { .. }
+            | HirPatternKind::Map { .. }
+            | HirPatternKind::Literal { .. }
+            | HirPatternKind::Range { .. }
+            | HirPatternKind::None { .. }
+            | HirPatternKind::Some { .. } => false,
         }
     }
 

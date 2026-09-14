@@ -129,5 +129,6 @@
     {:path #path "negative/13-missing-struct-field.fg" :kind :negative :expect :type/missing-field}
     {:path #path "negative/14-pattern-type-mismatch.fg" :kind :negative :expect :pattern/type}
     {:path #path "negative/15-or-pattern-binding-type.fg" :kind :negative :expect :pattern/or-binding-type}
+    {:path #path "negative/16-refutable-destructuring-binding.fg" :kind :negative :expect :pattern/refutable-binding}
   ]
 }

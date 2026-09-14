@@ -296,6 +296,7 @@ fn execute_negative(test: &TestCase, path: &Path) -> Outcome {
         "type/missing-field",
         "pattern/type",
         "pattern/or-binding-type",
+        "pattern/refutable-binding",
         "call/duplicate-name",
         "call/unknown-name",
         "control/tail-call-required",
