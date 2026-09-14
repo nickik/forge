@@ -1140,10 +1140,14 @@ fn typed_hir_retains_fir_boundary_facts() {
     assert!(maybe.expressions.iter().all(|expr| expr.id.0 < u32::MAX));
     assert!(maybe.expressions.iter().any(|expr| matches!(
         &expr.kind,
-        forge_frontend::TypedExprKind::ResolvedCall {
-            argument_parameters,
-            ..
-        } if argument_parameters == &vec![1, 0]
+        forge_frontend::TypedExprKind::ResolvedCall { arguments, .. }
+            if matches!(
+                arguments.as_slice(),
+                [
+                    forge_frontend::ResolvedCallArgument::Explicit { argument: 1 },
+                    forge_frontend::ResolvedCallArgument::Explicit { argument: 0 },
+                ]
+            )
     )));
     assert!(maybe.expressions.iter().any(|expr| matches!(
         expr.kind,
@@ -1230,4 +1234,41 @@ fn match_plan_or_alternatives_cover_closed_domain() {
         "#,
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+}
+
+#[test]
+fn named_call_plan_materializes_defaults_in_final_parameter_order() {
+    let output = check(
+        r#"
+        module test.normalized_defaults;
+        nfn combine(first: u32, second: u32 = first + 1u32, third: u32 = second + 1u32) -> u32 {
+            return first + second + third;
+        }
+        fn main() -> u32 {
+            return combine(:third = 9u32, :first = 3u32);
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let arguments = output
+        .functions
+        .values()
+        .flat_map(|body| &body.expressions)
+        .find_map(|expr| match &expr.kind {
+            forge_frontend::TypedExprKind::ResolvedCall { arguments, .. }
+                if arguments.len() == 3 =>
+            {
+                Some(arguments)
+            }
+            _ => None,
+        })
+        .expect("normalized three-argument call plan");
+    assert!(matches!(
+        arguments.as_slice(),
+        [
+            forge_frontend::ResolvedCallArgument::Explicit { argument: 1 },
+            forge_frontend::ResolvedCallArgument::Default { .. },
+            forge_frontend::ResolvedCallArgument::Explicit { argument: 0 },
+        ]
+    ));
 }

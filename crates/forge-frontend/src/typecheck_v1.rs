@@ -186,6 +186,13 @@ pub struct TypedExpr {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "source", rename_all = "snake_case")]
+pub enum ResolvedCallArgument {
+    Explicit { argument: usize },
+    Default { parameter: LocalId, value: HirExpr },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "expr", rename_all = "snake_case")]
 pub enum TypedExprKind {
     Source {
@@ -195,7 +202,7 @@ pub enum TypedExprKind {
         target: DefId,
         method: bool,
         receiver: Option<ResolvedReceiver>,
-        argument_parameters: Vec<usize>,
+        arguments: Vec<ResolvedCallArgument>,
         hir: HirExpr,
     },
     ResolvedTry {
@@ -254,6 +261,7 @@ struct ParamSig {
     name: String,
     ty: Ty,
     has_default: bool,
+    default: Option<(LocalId, HirExpr)>,
 }
 
 #[derive(Debug, Clone)]
@@ -299,7 +307,7 @@ pub fn type_check_module(
     output.constants = constant_values.clone();
     output.diagnostics.extend(constant_diagnostics);
     validate_declaration_array_lengths(source, module, &constant_values, &mut output.diagnostics);
-    let env = ModuleTypeEnv::build(source, module, &constant_values);
+    let env = ModuleTypeEnv::build(source, module, &constant_values, bodies);
 
     for default in &bodies.field_defaults {
         let mut checker = BodyChecker::new(&env, Ty::Void, &mut output.diagnostics);
@@ -415,6 +423,7 @@ impl ModuleTypeEnv {
         source: &ast::SourceFile,
         module: &HirModule,
         constants: &BTreeMap<DefId, ConstValue>,
+        bodies: &BodyHirOutput,
     ) -> Self {
         let mut env = Self {
             types: BTreeMap::new(),
@@ -567,6 +576,7 @@ impl ModuleTypeEnv {
                         name: p.name.clone(),
                         ty: env.lower_ast_type(&p.ty, module),
                         has_default: p.default.is_some(),
+                        default: None,
                     })
                     .collect();
                 let result = function
@@ -611,6 +621,7 @@ impl ModuleTypeEnv {
                         name: p.name.clone(),
                         ty: env.lower_ast_type(&p.ty, module),
                         has_default: p.default.is_some(),
+                        default: None,
                     })
                     .collect::<Vec<_>>();
                 let result = method
@@ -631,6 +642,24 @@ impl ModuleTypeEnv {
                     env.methods
                         .insert((target_id, method.function.name.clone()), method_def.id);
                 }
+            }
+        }
+
+        // Defaults are owned by the callee body.  Keep their resolved HIR and
+        // source parameter LocalId in the signature so call checking can build a
+        // complete parameter-order semantic plan without cloning/re-resolving the
+        // expression in the caller.
+        for (owner, body) in &bodies.functions {
+            let Some(sig) = env.functions.get_mut(owner) else {
+                continue;
+            };
+            for (param, (local, _)) in sig.params.iter_mut().zip(&body.params) {
+                param.default = body
+                    .param_defaults
+                    .get(local)
+                    .cloned()
+                    .map(|value| (*local, value));
+                param.has_default = param.default.is_some();
             }
         }
         env
@@ -823,7 +852,7 @@ struct ResolvedCallInfo {
     target: DefId,
     method: bool,
     receiver: Option<ResolvedReceiver>,
-    argument_parameters: Vec<usize>,
+    arguments: Vec<ResolvedCallArgument>,
 }
 
 struct BodyChecker<'a, 'd> {
@@ -1265,7 +1294,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 target: call.target,
                 method: call.method,
                 receiver: call.receiver,
-                argument_parameters: call.argument_parameters,
+                arguments: call.arguments,
                 hir: expr.clone(),
             }
         } else if let Some(plan) = resolved_match {
@@ -1621,14 +1650,14 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     result: sig.result.clone(),
                     named_arguments: sig.named_arguments,
                 };
-                let argument_parameters = self.check_function_args(span, &reduced, args);
+                let arguments = self.check_function_args(span, &reduced, args);
                 return (
                     sig.result,
                     Some(ResolvedCallInfo {
                         target: method_id,
                         method: true,
                         receiver,
-                        argument_parameters,
+                        arguments,
                     }),
                 );
             }
@@ -1636,14 +1665,14 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         if let HirExprKind::Name { reference } = &callee.kind {
             if let ResolvedName::Def(id) = reference.root {
                 if let Some(sig) = self.env.functions.get(&id).cloned() {
-                    let argument_parameters = self.check_function_args(span, &sig, args);
+                    let arguments = self.check_function_args(span, &sig, args);
                     return (
                         sig.result,
                         Some(ResolvedCallInfo {
                             target: id,
                             method: false,
                             receiver: None,
-                            argument_parameters,
+                            arguments,
                         }),
                     );
                 }
@@ -1735,8 +1764,9 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         span: Span,
         sig: &FunctionSig,
         args: &[HirCallArg],
-    ) -> Vec<usize> {
+    ) -> Vec<ResolvedCallArgument> {
         let named = args.iter().any(|a| matches!(a, HirCallArg::Named { .. }));
+        let mut slots = vec![None; sig.params.len()];
         if named {
             if !sig.named_arguments {
                 self.diagnostic(
@@ -1747,9 +1777,13 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 return Vec::new();
             }
             let mut seen = BTreeSet::new();
-            let mut argument_parameters = Vec::with_capacity(args.len());
-            for arg in args {
+            for (argument, arg) in args.iter().enumerate() {
                 let HirCallArg::Named { name, value } = arg else {
+                    self.diagnostic(
+                        span,
+                        "call/mixed-arguments",
+                        "named calls cannot mix positional and named arguments",
+                    );
                     continue;
                 };
                 if !seen.insert(name.clone()) {
@@ -1763,7 +1797,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 if let Some((parameter, param)) =
                     sig.params.iter().enumerate().find(|(_, p)| p.name == *name)
                 {
-                    argument_parameters.push(parameter);
+                    slots[parameter] = Some(ResolvedCallArgument::Explicit { argument });
                     let actual = self.check_expr(value, Some(&param.ty));
                     self.require_assignable(value.span, &param.ty, &actual, "type/mismatch");
                 } else {
@@ -1774,37 +1808,40 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     );
                 }
             }
-            for param in &sig.params {
-                if !param.has_default && !seen.contains(&param.name) {
-                    self.diagnostic(
-                        span,
-                        "call/missing-argument",
-                        format!("missing required argument `{}`", param.name),
-                    );
-                }
-            }
-            argument_parameters
         } else {
-            for (index, arg) in args.iter().enumerate() {
+            if sig.named_arguments && !args.is_empty() {
+                self.diagnostic(span, "call/named-only", "nfn calls require named arguments");
+            }
+            for (argument, arg) in args.iter().enumerate() {
                 let value = arg_value(arg);
-                if let Some(param) = sig.params.get(index) {
+                if let Some(param) = sig.params.get(argument) {
+                    slots[argument] = Some(ResolvedCallArgument::Explicit { argument });
                     let actual = self.check_expr(value, Some(&param.ty));
                     self.require_assignable(value.span, &param.ty, &actual, "type/mismatch");
                 } else {
                     self.diagnostic(value.span, "call/arity", "too many arguments");
                 }
             }
-            for param in sig.params.iter().skip(args.len()) {
-                if !param.has_default {
-                    self.diagnostic(
-                        span,
-                        "call/missing-argument",
-                        format!("missing required argument `{}`", param.name),
-                    );
-                }
-            }
-            (0..args.len().min(sig.params.len())).collect()
         }
+
+        for (parameter, param) in sig.params.iter().enumerate() {
+            if slots[parameter].is_some() {
+                continue;
+            }
+            if let Some((local, value)) = &param.default {
+                slots[parameter] = Some(ResolvedCallArgument::Default {
+                    parameter: *local,
+                    value: value.clone(),
+                });
+            } else {
+                self.diagnostic(
+                    span,
+                    "call/missing-argument",
+                    format!("missing required argument `{}`", param.name),
+                );
+            }
+        }
+        slots.into_iter().flatten().collect()
     }
 
     fn check_type_call(&mut self, span: Span, target: &HirTypeRef, args: &[HirCallArg]) -> Ty {

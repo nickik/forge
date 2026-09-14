@@ -84,4 +84,15 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Step 5 complete: integer/char/string literal tests and integer/char ranges lower from semantic match conditions.
 - Step 6 complete: struct, sequence/rest, as, and OR patterns lower through typed alternatives/projections with short-circuit-safe structural tests.
 - Step 7 complete: exhaustiveness and unreachable-arm usefulness for planned patterns now consume the same semantic alternatives/conditions that FIR lowers.
-- Steps 8-16 intentionally untouched.
+- Step 8 complete: direct/named calls carry complete parameter-order argument plans; omitted defaults remain callee-owned typed HIR and FIR evaluates them in parameter order with earlier parameter values materialized exactly once.
+- Steps 9-16 intentionally untouched.
+
+
+## Step 8 acceptance tests
+
+- Typed HIR contains exactly one normalized call-plan entry per target parameter (excluding a separately normalized method receiver).
+- Named explicit arguments are mapped to final parameter order independent of source order.
+- Omitted defaults are represented explicitly in typed HIR and never rediscovered by FIR.
+- A default may reference an earlier parameter; FIR materializes earlier parameter values into synthetic locals before lowering that default.
+- Chained defaults therefore observe the already-evaluated earlier parameter/default value without re-evaluating an explicit source argument.
+- `fir/default-argument-not-materialized` is removed; an incomplete semantic plan is instead an internal `fir/call-plan-incomplete` boundary failure.

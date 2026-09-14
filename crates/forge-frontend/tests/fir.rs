@@ -524,3 +524,62 @@ fn as_pattern_binds_whole_value_before_body() {
             >= 3
     );
 }
+
+#[test]
+fn normalized_defaults_lower_without_fir_default_reconstruction() {
+    let output = lower(
+        r#"
+        module test.fir_defaults;
+        fn source() -> u32 { return 3u32; }
+        nfn combine(first: u32, second: u32 = first + 1u32, third: u32 = second + 1u32) -> u32 {
+            return first + second + third;
+        }
+        fn main() -> u32 {
+            return combine(:third = 9u32, :first = source());
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(!instructions(&output).any(|op| matches!(op, FirInstructionKind::Poison)));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Call { args, .. } if args.len() == 3
+    )));
+    assert_eq!(
+        instructions(&output)
+            .filter(|op| matches!(op, FirInstructionKind::Call { args, .. } if args.is_empty()))
+            .count(),
+        1,
+        "explicit source() argument must be evaluated exactly once"
+    );
+}
+
+#[test]
+fn chained_defaults_can_read_earlier_materialized_parameters() {
+    let output = lower(
+        r#"
+        module test.fir_chained_defaults;
+        nfn advance(first: u32, second: u32 = first + 1u32, third: u32 = second + 1u32) -> u32 {
+            return third;
+        }
+        fn main() -> u32 { return advance(:first = 5u32); }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Call { args, .. } if args.len() == 3
+    )));
+    assert!(
+        instructions(&output)
+            .filter(|op| matches!(
+                op,
+                FirInstructionKind::Binary {
+                    op: forge_frontend::ast::BinaryOp::Add,
+                    ..
+                }
+            ))
+            .count()
+            >= 2
+    );
+}
