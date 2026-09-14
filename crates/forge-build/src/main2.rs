@@ -4,7 +4,7 @@ use std::path::PathBuf;
 fn usage() -> ! {
     eprintln!(
         "usage: forge <build|check|run|test|graph> [--manifest-path PATH] [--target NAME] \
-         [--driver PROGRAM] [--driver-arg ARG]... [-- PROGRAM_ARGS...]"
+         [--platform NAME] [--driver PROGRAM] [--driver-arg ARG]... [-- PROGRAM_ARGS...]"
     );
     std::process::exit(64);
 }
@@ -67,6 +67,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut manifest = PathBuf::from("forge.fdn");
     let mut target = None;
+    let mut platform = None;
     let mut driver_program = std::env::var("FORGE_DRIVER").unwrap_or_else(|_| "forgec".into());
     let mut driver_args = Vec::new();
     let mut program_args = Vec::new();
@@ -81,6 +82,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
                 manifest = PathBuf::from(args.next().unwrap_or_else(|| usage()));
             }
             "--target" => target = Some(args.next().unwrap_or_else(|| usage())),
+            "--platform" => platform = Some(args.next().unwrap_or_else(|| usage())),
             "--driver" => driver_program = args.next().unwrap_or_else(|| usage()),
             "--driver-arg" => driver_args.push(args.next().unwrap_or_else(|| usage())),
             _ => usage(),
@@ -89,7 +91,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
 
     let graph = load_graph(&manifest)?;
     if action.is_none() {
-        if !program_args.is_empty() {
+        if !program_args.is_empty() || platform.is_some() {
             usage();
         }
         for name in &graph.order {
@@ -109,6 +111,10 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     driver_args.extend(library_driver_args(&graph)?);
+    if let Some(platform) = platform {
+        driver_args.push("--platform".to_owned());
+        driver_args.push(platform);
+    }
     for arg in program_args {
         driver_args.push("--program-arg".to_owned());
         driver_args.push(arg);
