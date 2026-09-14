@@ -8,4 +8,4 @@ license.workspace = true
 
 [[bin]]
 name = "forge"
-path = "src/main.rs"
+path = "src/main2.rs"
