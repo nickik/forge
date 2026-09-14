@@ -48,7 +48,12 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     if action.is_none() {
         for name in &graph.order {
             let package = &graph.packages[name];
-            println!("{} {} {}", package.name, package.version, package.manifest_path.display());
+            println!(
+                "{} {} {}",
+                package.name,
+                package.version,
+                package.manifest_path.display()
+            );
         }
         return Ok(());
     }
