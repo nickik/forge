@@ -133,7 +133,6 @@ where
         ))
         .repeated();
 
-        // Prefixes bind before postfix `?`/`[]`, so `&User?` means Option[&User].
         let prefixed = prefixes.foldr_with(base, |prefix, inner, e| {
             let kind = match prefix {
                 Prefix::Pointer => TypeKind::Pointer {
@@ -412,9 +411,6 @@ where
             .clone()
             .map_with(|block, e| Node::new(StmtKind::Block { block }, span(e.span())));
 
-        // Assignment is a statement in Forge v1, never an expression. A dotted
-        // path is kept as ExprKind::Path; semantic resolution later decides
-        // whether it names a local, struct field, or module-qualified symbol.
         let assignment_target = path_parser()
             .map_with(|path, e| Node::new(ExprKind::Path { path }, span(e.span())));
         let assignment = assignment_target
@@ -597,23 +593,26 @@ where
 pub fn parse_source(source: &str) -> ParseOutput {
     let mut diagnostics = Vec::new();
 
-    let token_iter = Token::lexer(source).spanned().map(|(token, range)| {
-        let token = match token {
-            Ok(token) => token,
-            Err(()) => {
-                diagnostics.push(Diagnostic {
-                    span: Span::new(range.start, range.end),
-                    message: format!("invalid token `{}`", &source[range.clone()]),
-                });
-                // Keep a real error token in the stream so parser recovery can continue
-                // without accidentally treating invalid source as a valid identifier.
-                Token::Error
-            }
-        };
-        (token, CSpan::from(range))
-    });
+    // Collect eagerly so the lexing closure's mutable borrow of diagnostics is
+    // finished before parser diagnostics are appended below.
+    let tokens = Token::lexer(source)
+        .spanned()
+        .map(|(token, range)| {
+            let token = match token {
+                Ok(token) => token,
+                Err(()) => {
+                    diagnostics.push(Diagnostic {
+                        span: Span::new(range.start, range.end),
+                        message: format!("invalid token `{}`", &source[range.clone()]),
+                    });
+                    Token::Error
+                }
+            };
+            (token, CSpan::from(range))
+        })
+        .collect::<Vec<_>>();
 
-    let stream = Stream::from_iter(token_iter)
+    let stream = Stream::from_iter(tokens)
         .map((0..source.len()).into(), |(token, span): (_, _)| (token, span));
 
     let (ast, parse_errors) = source_file_parser().parse(stream).into_output_errors();
