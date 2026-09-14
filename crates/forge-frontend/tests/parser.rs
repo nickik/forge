@@ -1,4 +1,7 @@
-use forge_frontend::{ast::{DeclKind, StmtKind}, parse_source};
+use forge_frontend::{
+    ast::{DeclKind, StmtKind},
+    parse_source,
+};
 
 #[test]
 fn parses_hello_program() {
@@ -18,10 +21,15 @@ fn parses_hello_program() {
     let file = parsed.ast.expect("AST");
     assert_eq!(file.module.segments, ["examples", "hello"]);
     assert_eq!(file.imports[0].segments, ["std", "io"]);
-    let DeclKind::Function(main) = &file.declarations[0].kind else { panic!("expected function") };
+    let DeclKind::Function(main) = &file.declarations[0].kind else {
+        panic!("expected function")
+    };
     assert_eq!(main.name, "main");
     assert!(matches!(main.body.statements[0].kind, StmtKind::Value(_)));
-    assert!(matches!(main.body.statements[2].kind, StmtKind::Return { .. }));
+    assert!(matches!(
+        main.body.statements[2].kind,
+        StmtKind::Return { .. }
+    ));
 }
 
 #[test]
@@ -66,7 +74,25 @@ fn parses_plain_and_field_assignment() {
     let parsed = parse_source(source);
     assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
     let file = parsed.ast.expect("AST");
-    let DeclKind::Function(bump) = &file.declarations[1].kind else { panic!("expected function") };
-    assert!(matches!(bump.body.statements[1].kind, StmtKind::Assignment { .. }));
-    assert!(matches!(bump.body.statements[2].kind, StmtKind::Assignment { .. }));
+    let DeclKind::Function(bump) = &file.declarations[1].kind else {
+        panic!("expected function")
+    };
+    assert!(matches!(
+        bump.body.statements[1].kind,
+        StmtKind::Assignment { .. }
+    ));
+    assert!(matches!(
+        bump.body.statements[2].kind,
+        StmtKind::Assignment { .. }
+    ));
+}
+
+#[test]
+fn parses_generated_native_collections() {
+    let source = include_str!("../../../packages/forge-collections-native/src/lib.fg");
+    let parsed = parse_source(source);
+    assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+    let file = parsed.ast.expect("generated collections AST");
+    assert_eq!(file.module.segments, ["forge_collections_native"]);
+    assert!(file.declarations.len() > 20);
 }
