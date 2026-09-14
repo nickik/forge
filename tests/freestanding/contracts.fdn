@@ -1,0 +1,55 @@
+{
+  :suite :forge/freestanding
+  :version 1
+  :tests [
+    {:id :mem/non-overlap-detection :area :mem :kind :run :expect :pass}
+    {:id :mem/move-overlap-safe :area :mem :kind :run :expect :pass}
+    {:id :mem/copy-overlap-rejected :area :mem :kind :run :expect :error :error :Overlap}
+    {:id :mem/set-and-compare :area :mem :kind :run :expect :pass}
+
+    {:id :bits/bswap16 :area :bits :kind :run :expect :pass}
+    {:id :bits/bswap32 :area :bits :kind :run :expect :pass}
+    {:id :bits/extract-insert :area :bits :kind :run :expect :pass}
+    {:id :bits/endian-roundtrip :area :bits :kind :run :expect :pass}
+
+    {:id :mmio/volatile-read-write :area :mmio :kind :run :expect :pass}
+    {:id :mmio/access-order-observable :area :mmio :kind :run :expect :pass}
+
+    {:id :atomic/load-store :area :atomic :kind :run :expect :pass}
+    {:id :atomic/fetch-add :area :atomic :kind :run :expect :pass}
+    {:id :atomic/compare-exchange :area :atomic :kind :run :expect :pass}
+    {:id :atomic/memory-order-explicit :area :atomic :kind :contract :expect :pass}
+
+    {:id :sync/spin-lock-exclusive :area :sync :kind :run :expect :pass}
+    {:id :sync/critical-section-capability :area :sync :kind :run :expect :pass}
+    {:id :sync/no-scheduler-dependency :area :sync :kind :contract :expect :pass}
+
+    {:id :fixed/vector-capacity :area :fixed :kind :run :expect :pass}
+    {:id :fixed/vector-full-error :area :fixed :kind :run :expect :error :error :Full}
+    {:id :fixed/ring-fifo-wraparound :area :fixed :kind :run :expect :pass}
+
+    {:id :intrusive/fifo-order :area :intrusive :kind :run :expect :pass}
+    {:id :intrusive/double-insert-rejected :area :intrusive :kind :run :expect :error :error :AlreadyLinked}
+    {:id :intrusive/no-node-allocation :area :intrusive :kind :contract :expect :pass}
+
+    {:id :layout/alignment-arithmetic :area :layout :kind :run :expect :pass}
+    {:id :layout/struct-padding :area :layout :kind :run :expect :pass}
+    {:id :layout/static-assert :area :layout :kind :contract :expect :pass}
+
+    {:id :io/fixed-writer :area :io :kind :run :expect :pass}
+    {:id :io/full-is-error :area :io :kind :run :expect :error :error :Full}
+    {:id :io/integer-format-no-heap :area :io :kind :contract :expect :pass}
+
+    {:id :target/pointer-width :area :target :kind :run :expect :pass}
+    {:id :target/endian-explicit :area :target :kind :run :expect :pass}
+
+    {:id :integration/os-foundation-kernel-provider
+     :area :integration :kind :run :expect :pass}
+    {:id :integration/os-foundation-hosted-provider
+     :area :integration :kind :run :expect :pass}
+    {:id :integration/kernel-hosted-observable-equivalence
+     :area :integration :kind :run :expect :pass}
+    {:id :integration/object-cache-reclaim
+     :area :integration :kind :run :expect :pass :reclaimed-bytes 4096}
+  ]
+}
