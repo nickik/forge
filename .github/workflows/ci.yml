@@ -18,7 +18,13 @@ jobs:
       - name: Verify generated native collections snapshot
         run: |
           cargo run --quiet -p forge-build --bin forge-collections-gen -- /tmp/forge-collections-native.fg
-          cmp /tmp/forge-collections-native.fg packages/forge-collections-native/src/lib.fg
+          python3 - <<'PY'
+          from pathlib import Path
+          generated = Path('/tmp/forge-collections-native.fg').read_text().rstrip('\n')
+          committed = Path('packages/forge-collections-native/src/lib.fg').read_text().rstrip('\n')
+          if generated != committed:
+              raise SystemExit('generated collection source differs from committed snapshot')
+          PY
 
   frontend-collections:
     runs-on: ubuntu-latest
