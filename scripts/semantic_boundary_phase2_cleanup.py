@@ -27,8 +27,8 @@ text = text.replace('''                            has_default: default.is_some(
                             default,
 ''', '''                            default,
 ''')
-if 'has_default:' in text:
-    raise SystemExit("stale has_default field remains")
+if 'struct ParamSig {\n    name: String,\n    ty: Ty,\n    has_default:' in text:
+    raise SystemExit("stale ParamSig has_default field remains")
 p.write_text(text)
 
 p = Path("crates/forge-frontend/tests/typecheck.rs")
