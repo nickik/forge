@@ -73,9 +73,28 @@ Hosted facilities may include:
 - networking;
 - OS threads and synchronization;
 - clocks and entropy;
-- a process allocator implementation.
+- allocator/provider implementations.
+
+Providing an allocator implementation does not make it ambient. Ordinary `std` APIs that allocate, grow, clone owning storage, or free durable storage receive the allocator explicitly at the call site. `std` does not define a hidden process-global or thread-local allocator fallback for those operations.
 
 `std` must not redefine facilities already provided by `core`; it layers hosted policy and services on top.
+
+## Explicit allocator discipline
+
+The allocation rule is identical in hosted and freestanding builds:
+
+```forge
+list_u8_push(&mut list, &mut allocator, value)?;
+string_clone(text, &mut allocator)?;
+read_all(file, &mut allocator)?;
+list_u8_destroy(&mut list, &mut allocator);
+```
+
+Ordinary values do not retain allocator capabilities merely so future operations can allocate. A dynamic container stores its owned storage and metadata, not `&Allocator`/`&mut Allocator`.
+
+Objects whose explicit purpose is to implement a memory domain—`Allocator`, `Arena`, `ObjectCache`, slab allocators, pool managers—may retain their lower-level provider capabilities. That is memory-management implementation state, not a general convenience pattern for application data.
+
+A block remains associated with the allocator domain that created it. Later resize/free calls must use the same domain or an explicitly compatible one; the caller preserves that provenance.
 
 ## Build modes
 
@@ -149,9 +168,12 @@ Forge v1 bootstrap does not inject a broad standard-library prelude. Language pr
 | `core` | yes | yes |
 | `std` | yes | no |
 | OS required | normally yes | no |
-| allocator required | only by APIs that allocate | only by APIs that allocate |
+| allocator required | explicit argument to APIs that allocate/free durable storage | explicit argument to APIs that allocate/free durable storage |
+| default/global allocator for ordinary APIs | no | no |
 | `main()` required | normal hosted convention | no |
 
 ## Design principle
 
 The same portable algorithms should be usable in a Cosmic kernel, firmware image, bootloader, hosted program, and test harness. Environment-specific policy belongs behind explicit backing providers and platform modules, not in the allocator algorithms or fundamental containers.
+
+For durable allocation, “explicit provider” means visible at the operation call site, not remembered invisibly inside an ordinary value.
