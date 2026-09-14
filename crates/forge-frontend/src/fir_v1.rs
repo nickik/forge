@@ -12,8 +12,8 @@ use crate::{
     resolution::{LocalId, ResolvedName},
     typecheck::{
         ConstValue, IntWidth, MatchCondition, MatchProjection, MatchScalar, MatchTest,
-        ResolvedReceiver, Ty, TypeCheckOutput, TypedBody, TypedExpr, TypedExprKind,
-        TypedMatchBinding, TypedMatchPlan,
+        ResolvedCallArgument, ResolvedReceiver, Ty, TypeCheckOutput, TypedBody, TypedExpr,
+        TypedExprKind, TypedMatchBinding, TypedMatchPlan,
     },
 };
 
@@ -333,6 +333,7 @@ struct FunctionLowerer<'a> {
     all_typed: &'a TypeCheckOutput,
     exprs: BTreeMap<ExprId, &'a TypedExpr>,
     local_map: BTreeMap<LocalId, FirLocalId>,
+    local_constants: BTreeMap<LocalId, ConstValue>,
     overflow: OverflowMode,
     function: FirFunction,
     current: FirBlockId,
@@ -409,6 +410,7 @@ impl<'a> FunctionLowerer<'a> {
             all_typed,
             exprs,
             local_map,
+            local_constants: typed.local_constants.clone(),
             overflow,
             function,
             current: entry,
@@ -975,16 +977,10 @@ impl<'a> FunctionLowerer<'a> {
                 target,
                 method,
                 receiver,
-                argument_parameters,
+                arguments,
                 ..
             } => self.lower_resolved_call(
-                expr,
-                *target,
-                *method,
-                *receiver,
-                argument_parameters,
-                result_ty,
-                false,
+                expr, *target, *method, *receiver, arguments, result_ty, false,
             ),
             TypedExprKind::ResolvedTry {
                 source_error,
@@ -1672,17 +1668,11 @@ impl<'a> FunctionLowerer<'a> {
                 target,
                 method,
                 receiver,
-                argument_parameters,
+                arguments,
                 ..
-            } => self.lower_resolved_call(
-                expr,
-                target,
-                method,
-                receiver,
-                &argument_parameters,
-                typed.ty,
-                tail,
-            ),
+            } => {
+                self.lower_resolved_call(expr, target, method, receiver, &arguments, typed.ty, tail)
+            }
             TypedExprKind::OptionalPromote {
                 inner, source_type, ..
             } => {
@@ -1725,7 +1715,7 @@ impl<'a> FunctionLowerer<'a> {
         target: DefId,
         method: bool,
         receiver: Option<ResolvedReceiver>,
-        argument_parameters: &[usize],
+        arguments: &[ResolvedCallArgument],
         result_ty: Ty,
         tail: bool,
     ) -> FirValueId {
@@ -1745,7 +1735,9 @@ impl<'a> FunctionLowerer<'a> {
             );
             return self.poison(expr.span, result_ty);
         };
-        let mut placed: Vec<Option<FirValueId>> = vec![None; target_body.params.len()];
+        let target_params = target_body.params.clone();
+        let mut placed: Vec<Option<FirValueId>> = vec![None; target_params.len()];
+        let mut parameter_locals = BTreeMap::new();
         let offset = if method { 1 } else { 0 };
 
         if method {
@@ -1760,8 +1752,7 @@ impl<'a> FunctionLowerer<'a> {
             let receiver_value = match receiver.unwrap_or(ResolvedReceiver::Value) {
                 ResolvedReceiver::Value => self.lower_expr(base),
                 ResolvedReceiver::SharedReference | ResolvedReceiver::MutableReference => {
-                    let expected_ref = target_body
-                        .params
+                    let expected_ref = target_params
                         .first()
                         .map(|(_, ty)| ty.clone())
                         .unwrap_or(Ty::Error);
@@ -1790,31 +1781,82 @@ impl<'a> FunctionLowerer<'a> {
                     }
                 }
             };
-            if !placed.is_empty() {
+            if let Some((source, ty)) = target_params.first() {
+                let local = self.synthetic_local(ty.clone());
+                self.emit_void(
+                    base.span,
+                    FirInstructionKind::Store {
+                        place: FirPlace::Local { local },
+                        value: receiver_value,
+                    },
+                );
+                parameter_locals.insert(*source, local);
                 placed[0] = Some(receiver_value);
             }
         }
 
-        for (written, arg) in args.iter().enumerate() {
-            let Some(parameter) = argument_parameters.get(written).copied() else {
+        if arguments.len() + offset != target_params.len() {
+            self.diagnostic(
+                expr.span,
+                "fir/call-plan",
+                "resolved call plan does not contain exactly one entry per non-receiver parameter",
+            );
+        }
+
+        for (slot, argument) in arguments.iter().enumerate() {
+            let parameter = slot + offset;
+            let Some((source_local, parameter_ty)) = target_params.get(parameter).cloned() else {
+                self.diagnostic(
+                    expr.span,
+                    "fir/call-plan",
+                    "call plan references an invalid parameter",
+                );
                 continue;
             };
-            let parameter = parameter + offset;
-            if parameter < placed.len() {
-                placed[parameter] = Some(self.lower_expr(arg_value(arg)));
-            }
+            let value = match argument {
+                ResolvedCallArgument::Explicit { argument } => {
+                    let Some(arg) = args.get(*argument) else {
+                        self.diagnostic(
+                            expr.span,
+                            "fir/call-plan",
+                            "call plan references a missing explicit argument",
+                        );
+                        continue;
+                    };
+                    self.lower_expr(arg_value(arg))
+                }
+                ResolvedCallArgument::Default { parameter, value } => {
+                    if *parameter != source_local {
+                        self.diagnostic(
+                            expr.span,
+                            "fir/call-plan",
+                            "default argument is attached to the wrong target parameter",
+                        );
+                    }
+                    self.lower_default_argument(target, value, &parameter_locals)
+                }
+            };
+            let local = self.synthetic_local(parameter_ty);
+            self.emit_void(
+                expr.span,
+                FirInstructionKind::Store {
+                    place: FirPlace::Local { local },
+                    value,
+                },
+            );
+            parameter_locals.insert(source_local, local);
+            placed[parameter] = Some(value);
         }
 
         if placed.iter().any(Option::is_none) {
             self.diagnostic(
                 expr.span,
-                "fir/default-argument-not-materialized",
-                "call uses omitted default arguments; typed HIR validates defaults but does not yet materialize them at the call site",
+                "fir/call-plan-incomplete",
+                "typed HIR call plan left a target parameter without a value",
             );
             for (index, slot) in placed.iter_mut().enumerate() {
                 if slot.is_none() {
-                    let ty = target_body
-                        .params
+                    let ty = target_params
                         .get(index)
                         .map(|(_, ty)| ty.clone())
                         .unwrap_or(Ty::Error);
@@ -1828,6 +1870,39 @@ impl<'a> FunctionLowerer<'a> {
             result_ty,
             FirInstructionKind::Call { target, args, tail },
         )
+    }
+
+    fn lower_default_argument(
+        &mut self,
+        target: DefId,
+        value: &HirExpr,
+        parameter_locals: &BTreeMap<LocalId, FirLocalId>,
+    ) -> FirValueId {
+        let all_typed = self.all_typed;
+        let Some(target_body) = all_typed.functions.get(&target) else {
+            self.diagnostic(
+                value.span,
+                "fir/call-target-signature",
+                format!("missing typed body for default argument target {target:?}"),
+            );
+            return self.poison(value.span, Ty::Error);
+        };
+        let target_exprs = target_body
+            .expressions
+            .iter()
+            .map(|expr| (expr.id, expr))
+            .collect();
+        let saved_exprs = std::mem::replace(&mut self.exprs, target_exprs);
+        let saved_locals = std::mem::replace(&mut self.local_map, parameter_locals.clone());
+        let saved_constants = std::mem::replace(
+            &mut self.local_constants,
+            target_body.local_constants.clone(),
+        );
+        let result = self.lower_expr(value);
+        self.exprs = saved_exprs;
+        self.local_map = saved_locals;
+        self.local_constants = saved_constants;
+        result
     }
 
     fn lower_try(
@@ -1896,7 +1971,7 @@ impl<'a> FunctionLowerer<'a> {
     fn lower_name(&mut self, span: Span, name: ResolvedName, ty: Ty) -> FirValueId {
         match name {
             ResolvedName::Local(local) => {
-                if let Some(value) = self.typed.local_constants.get(&local).cloned() {
+                if let Some(value) = self.local_constants.get(&local).cloned() {
                     return self.emit_const_value(span, ty, value);
                 }
                 let Some(local) = self.local_map.get(&local).copied() else {
