@@ -1,0 +1,60 @@
+{
+  :suite :forge/core-library
+  :version 1
+  :tests [
+    {:id :panic/core-has-no-std-dependency
+     :area :panic :kind :contract :expect :pass}
+    {:id :panic/info-allocation-free
+     :area :panic :kind :contract :expect :pass}
+    {:id :panic/freestanding-custom-handler
+     :area :panic :kind :link :expect :pass}
+    {:id :panic/missing-handler
+     :area :panic :kind :link :expect :reject :category :runtime/panic-handler-missing}
+    {:id :panic/duplicate-handler
+     :area :panic :kind :link :expect :reject :category :runtime/panic-handler-duplicate}
+    {:id :panic/handler-must-not-return
+     :area :panic :kind :check :expect :reject :category :runtime/panic-handler-return}
+    {:id :panic/no-unwinder-required
+     :area :panic :kind :contract :expect :pass}
+    {:id :panic/overflow-maps-kind
+     :area :panic :kind :run :expect :panic :panic-kind :IntegerOverflow}
+    {:id :panic/bounds-maps-kind
+     :area :panic :kind :run :expect :panic :panic-kind :Bounds}
+    {:id :panic/divide-by-zero-maps-kind
+     :area :panic :kind :run :expect :panic :panic-kind :DivideByZero}
+    {:id :panic/invalid-shift-maps-kind
+     :area :panic :kind :run :expect :panic :panic-kind :InvalidShift}
+    {:id :alloc/oom-is-result
+     :area :allocator :kind :run :expect :error :error :OutOfMemory}
+    {:id :alloc/arbitrary-size-supported
+     :area :allocator :kind :contract :expect :pass}
+    {:id :alloc/alignment-power-of-two
+     :area :allocator :kind :run :expect :pass}
+    {:id :alloc/zero-size-invalid
+     :area :allocator :kind :run :expect :error :error :InvalidSize}
+    {:id :alloc/bad-alignment-invalid
+     :area :allocator :kind :run :expect :error :error :InvalidAlignment}
+    {:id :alloc/resize-supported
+     :area :allocator :kind :contract :expect :pass}
+    {:id :cache/24-byte-object-4k-slab
+     :area :object-cache :kind :run :expect :pass :stride 24 :objects-per-slab 170}
+    {:id :cache/33-byte-object-align16
+     :area :object-cache :kind :run :expect :pass :stride 48 :objects-per-slab 85}
+    {:id :cache/object-size-zero-invalid
+     :area :object-cache :kind :run :expect :error :error :InvalidSize}
+    {:id :cache/non-power-two-align-invalid
+     :area :object-cache :kind :run :expect :error :error :InvalidAlignment}
+    {:id :cache/object-larger-than-slab-invalid
+     :area :object-cache :kind :run :expect :error :error :InvalidSize}
+    {:id :cache/reclaim-explicit
+     :area :object-cache :kind :contract :expect :pass}
+    {:id :cache/stats-observable
+     :area :object-cache :kind :contract :expect :pass}
+    {:id :cache/nowait-never-sleeps
+     :area :object-cache :kind :contract :expect :pass}
+    {:id :sharing/same-core-kernel-hosted
+     :area :sharing :kind :contract :expect :pass}
+    {:id :sharing/environment-supplies-arena-provider
+     :area :sharing :kind :contract :expect :pass}
+  ]
+}
