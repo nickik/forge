@@ -22,6 +22,39 @@ There is no library named `nostd`. `--no-std` selects a freestanding build envir
 
 The normative design and planned contents of `core` are described in `core-library.md`.
 
+## 2.1 Freestanding companion libraries
+
+Forge may ship optional freestanding libraries layered on `core`. They are ordinary compilation units, remain available in `--no-std` builds, and are imported explicitly rather than injected as a prelude.
+
+The initial OS-foundation set uses these logical module names:
+
+```text
+core.mem
+core.bits
+core.mmio
+core.atomic
+core.sync
+core.fixed
+core.intrusive
+core.layout
+core.io
+core.target
+```
+
+These libraries may depend on `core`; `core.sync` may additionally depend on `core.atomic`. They must not depend on hosted `std`, libc, Cosmic, a scheduler, a default heap, or platform services that are not passed explicitly or represented by a compiler/runtime primitive.
+
+The `core.*` namespace does **not** mean their declarations are implicitly part of the `core` root module. For example:
+
+```forge
+import core;
+import core.mem;
+import core.atomic;
+```
+
+imports three explicit semantic compilation units. A program pays source/API dependency only for the units it actually imports.
+
+The shipped bootstrap files live under `lib/freestanding/`, but source compatibility is defined by logical module names rather than that filesystem path. Their roadmap and acceptance criteria are documented in `freestanding-libraries.md`.
+
 ## 3. `std`
 
 `std` imports and builds on `core`. It may rely on a target's hosted platform contract and can provide startup, terminal/stream I/O, filesystems, networking, clocks, entropy, OS threads, process services, and a hosted allocator implementation.
