@@ -83,4 +83,5 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Step 4 complete: tagged-union discriminant tests plus typed payload-field extraction/bindings.
 - Step 5 complete: integer/char/string literal tests and integer/char ranges lower from semantic match conditions.
 - Step 6 complete: struct, sequence/rest, as, and OR patterns lower through typed alternatives/projections with short-circuit-safe structural tests.
-- Steps 7-16 intentionally untouched.
+- Step 7 complete: exhaustiveness and unreachable-arm usefulness for planned patterns now consume the same semantic alternatives/conditions that FIR lowers.
+- Steps 8-16 intentionally untouched.
