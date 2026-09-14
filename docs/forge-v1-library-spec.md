@@ -32,9 +32,15 @@ An API belongs in `core`, not `std`, when its semantics can be implemented witho
 
 Compiler lowering may require a small runtime ABI. That ABI is below both `core` and `std` and must not imply hosted execution.
 
-The exact ABI is implementation work, but expected service classes include panic/trap dispatch, bounds failure, checked-arithmetic failure, and low-level memory transfer primitives.
+All defined panic/trap paths converge on one canonical non-returning runtime provider described in `runtime-abi.md`. The portable conceptual interface is:
 
-Freestanding targets may supply these hooks themselves. Hosted targets normally receive them from the Forge runtime associated with `std`.
+```text
+__forge_panic(info: &core.PanicInfo) -> never
+```
+
+`core` may raise a panic or defined trap but does not own the final panic policy. A hosted build normally receives the provider from `std`; a freestanding final artifact provides its own implementation.
+
+The runtime ABI also includes low-level memory transfer or target primitives where compiler lowering requires them. Such primitives must not imply an OS, heap, scheduler, or C runtime.
 
 ## 5. Build environments
 
@@ -115,6 +121,8 @@ Forge v1 has no language-level global allocator and no implicit `malloc` operati
 
 Durable allocation requires an explicit allocator or owning object. The common allocator interfaces and object-cache algorithms belong in `core` so they can be shared between kernels and hosted programs.
 
+Forge supports both general variable-sized allocation and fixed-size object caches. Variable-sized allocation is the explicit Forge equivalent of the traditional malloc workload; fixed-size caches optimize known object shapes and may also be used internally as size classes by a general allocator.
+
 The environment supplies the backing resource:
 
 ```text
@@ -128,11 +136,13 @@ core allocation algorithms
 
 Fixed-size object allocation is a first-class standard-library facility. `core` shall provide an object-cache abstraction capable of obtaining slabs/extents from an explicit backing arena and returning fixed-size objects efficiently.
 
-The common algorithm must not depend on kernel-only VM APIs or hosted-only system calls.
+The common algorithm must not depend on kernel-only VM APIs or hosted-only system calls. The detailed architecture is specified in `core-allocation.md`.
 
 ## 11. Allocation failure
 
 Primitive allocation is fallible. Standard allocation interfaces return `Result` (or an equivalent explicitly fallible Forge value). A higher layer may deliberately convert failure into panic, but `core` must not make this an implicit global policy.
+
+Allocation failure therefore remains distinct from the panic ABI. `core.PanicKind::AllocationFailure` is available only for callers or wrappers that intentionally choose fatal allocation semantics.
 
 ## 12. Kernel and user-mode reuse
 
@@ -147,6 +157,30 @@ Kernel/user divergence belongs at explicit provider boundaries such as:
 - panic/diagnostic sink;
 - platform I/O.
 
-## 13. Evolution
+## 13. Freestanding panic contract
+
+A final `--no-std` executable, kernel, firmware image, or boot environment does not receive a hosted panic implementation.
+
+Libraries may contain operations that can panic or trap. They do not define the process/kernel policy. The final freestanding environment supplies the canonical panic provider, which receives allocation-free `core.PanicInfo` and never returns.
+
+Required defined-trap classes include explicit panic, assertion failure, bounds failure, checked integer overflow, divide-by-zero, invalid checked shifts, and compiler-generated unreachable/invariant failures.
+
+Forge v1 panic does **not** unwind the stack. `defer` is not executed as panic unwinding. Panic terminates the current execution unit according to the environment's provider policy.
+
+An implementation may offer a build option that synthesizes a minimal trap/halt provider for extremely small firmware, but this is a build-system policy and does not change `core` semantics.
+
+## 14. Entry points
+
+Hosted `std` may provide conventional startup and a `main()` contract. `--no-std` does not require or synthesize a conventional `main()` entry point.
+
+Kernel, firmware, bootloader, and embedded targets may bind whatever platform entry symbol is required. Entry-point selection and panic-provider selection are independent.
+
+## 15. ECS relationship
+
+The fixed-size allocation facilities in `core` are data-oriented and intentionally useful for ECS implementations, but are not themselves an ECS.
+
+`ObjectCache` provides homogeneous fixed-size storage, predictable layout, and efficient object reuse. Entity identity, component membership, archetype/query semantics, and system scheduling belong to an ECS layer built above `core`.
+
+## 16. Evolution
 
 The bootstrap uses single-file roots `lib/core.fg` and `lib/std.fg`. A later Forge version/toolchain may allow a logical library to contain multiple modules and files. That evolution must preserve semantic import names and must not make filesystem layout part of the source-language compatibility contract.
