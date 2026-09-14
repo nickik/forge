@@ -222,12 +222,38 @@ language/runtime intrinsics
 - [ ] dynamic owning `String` once allocator-backed collections are ready.
 - [ ] documented UTF-8 versus byte-oriented operation semantics.
 
-### `std.collections.string_map`
+### `std.collections`
 
-- [x] concrete string-to-string bootstrap API used by CKV.
-- [x] create/put/replace/contains/get/count provider tests.
-- [ ] replace bootstrap host/provider implementation with generated Forge `HashMapStringString`.
-- [ ] remove the provider-backed StringMap once CKV passes unchanged on the Forge collection implementation.
+Detailed collection work is tracked in `docs/collections-library-todo.md`.
+
+- [x] bootstrap `std.collections.string_map` API used by CKV.
+- [ ] generated `List*` families.
+- [ ] generated `HashSet*` families.
+- [ ] generated `HashMap*` families.
+- [ ] explicit allocator integration.
+- [ ] collision/growth/removal/allocation-failure tests.
+- [ ] replace CKV bootstrap host map with Forge `HashMapStringString`.
+
+### `std.transducers`
+
+Detailed transducer work is tracked in `docs/transducers-library-todo.md`.
+
+Purpose: provide source/destination-independent transformation pipelines without intermediate collections, and partly compensate for the absence of language-level generics by generating concrete typed reducer/transducer families.
+
+- [ ] reducer init/step/completion protocol.
+- [ ] explicit reduced/early-termination representation.
+- [ ] generated/type-specialized transducer composition.
+- [ ] `transduce`, `reduce`, and `into` adapters.
+- [ ] stateless: `identity`, `map`, `filter`, `remove`, `keep`, `cat`, `mapcat`, `replace`.
+- [ ] finite/early stop: `take`, `take_while`, `take_nth`, `halt_when`.
+- [ ] stateful: `drop`, `drop_while`, `dedupe`, `distinct`, `map_indexed`, `keep_indexed`, `interpose`.
+- [ ] buffered/completion: `partition_all`, `partition_by`; consider `scan`.
+- [ ] utility/debug: `tap` after the core semantics are stable.
+- [ ] terminal reducers: count, sum, min/max, first/last, any/all, find, collect-list/set/map.
+- [ ] same typed pipeline works over generated lists, fixed vectors and source walkers.
+- [ ] reference semantic contract tests green before Forge implementation is accepted.
+- [ ] CForge JVM and native-image execution tests for generated Forge pipelines.
+- [ ] later use CKV record loading as a real transducer integration test.
 
 ### `std.net`
 
@@ -255,15 +281,10 @@ language/runtime intrinsics
 
 These should not block Cosmic kernel bring-up.
 
-The detailed no-generics collection plan is tracked in [`collections-library-todo.md`](collections-library-todo.md). Forge will generate concrete typed collections rather than use type erasure or wait for language generics.
-
-- [ ] generated typed `List` family (contiguous growable vectors).
-- [ ] generated typed `HashSet` family.
-- [ ] generated typed `HashMap` family.
-- [ ] `HashMapStringString` replaces CKV's bootstrap host map.
 - [ ] dynamic `String` and byte buffers using explicit/default allocator policy.
-- [ ] optional deque/ring deque where concrete use cases justify it.
-- [ ] ordered map/set only if concrete use cases justify them.
+- [ ] dynamic vector/list.
+- [ ] general hash map/set via generated collection families.
+- [ ] ordered map/set if justified.
 - [ ] sorting/search algorithms.
 - [ ] hashing/checksum primitives.
 - [ ] text/encoding helpers beyond the bootstrap CKV helpers.
@@ -281,8 +302,9 @@ Before serious Cosmic implementation depends on Forge:
 - [x] cross-package public symbol import exercised by a runnable application.
 - [x] general cross-package function-call execution in CForge, including locals/loops.
 - [x] non-trivial Forge CKV application exercises local package, args, files, lock, clock, strings and map on hosted CForge/JVM.
-- [x] same canonical Forge CKV gate green through CForge native image.
-- [ ] CKV runs unchanged on Forge `HashMapStringString` instead of the bootstrap host map.
+- [x] same CKV gate green through CForge native image.
+- [ ] Forge `HashMapStringString` replaces CKV bootstrap host map.
+- [ ] at least one generated transducer pipeline executes on CForge JVM + native image and two source collection kinds.
 - [ ] raw memory/compiler primitives execute through native Forge backend.
 - [ ] MMIO and atomics validated in a freestanding/QEMU target.
 - [ ] non-allocating panic/debug Writer works on a QEMU serial console.
