@@ -1,0 +1,50 @@
+module core;
+
+// Forge freestanding standard library bootstrap.
+//
+// This file deliberately contains only facilities whose semantics are already clear.
+// It must remain usable without an OS, libc, process heap, filesystem, threads, or
+// conventional program entry point.
+
+pub fn min_i32(a: i32, b: i32) -> i32 {
+    if (a < b) {
+        return a;
+    }
+    return b;
+}
+
+pub fn max_i32(a: i32, b: i32) -> i32 {
+    if (a > b) {
+        return a;
+    }
+    return b;
+}
+
+pub fn min_u32(a: u32, b: u32) -> u32 {
+    if (a < b) {
+        return a;
+    }
+    return b;
+}
+
+pub fn max_u32(a: u32, b: u32) -> u32 {
+    if (a > b) {
+        return a;
+    }
+    return b;
+}
+
+// Planned core allocation surface, specified in docs/core-library.md:
+//
+//   Arena
+//   Allocator
+//   ObjectCache
+//   ObjectCacheSpec
+//   AllocError
+//   arena_alloc / arena_free
+//   alloc / free
+//   object_cache_create / object_cache_alloc / object_cache_free
+//   object_cache_reclaim
+//
+// These are intentionally not stubbed as fake implementations. They will be added
+// as the required struct, pointer, Result, and module semantics become executable.
