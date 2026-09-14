@@ -4,138 +4,117 @@
 
 `core` is the freestanding standard library shared by hosted programs, kernels, firmware, boot environments, and tests. It contains algorithms and abstractions that do not require an operating system or a default heap.
 
-## Goals
+## Design goals
 
-1. Make the same fundamental code usable in kernel and user mode.
-2. Keep allocation explicit and fallible.
-3. Separate allocation algorithms from the source of address space or physical memory.
-4. Treat fixed-size objects as a first-class allocator workload.
-5. Also support arbitrary-size malloc-like allocations through an explicit allocator.
-6. Permit debugging, accounting, reclaim, and statistics without changing callers.
-7. Avoid requiring libc or a process-global allocator.
+1. The same fundamental code must work in kernel and user mode.
+2. Allocation is explicit and fallible.
+3. Environment-specific resources enter through explicit capability objects.
+4. Fixed-size object allocation is first-class, while arbitrary-size allocation remains fully supported.
+5. Panic/trap handling must remain usable before an allocator, scheduler, console, or filesystem exists.
+6. `core` must not require libc, a process-global heap, or a conventional `main()`.
 
-The allocator architecture is intentionally similar in spirit to the Solaris slab/UMEM family: object caches manage fixed-size objects while a lower backing arena supplies larger extents. The same cache algorithms can therefore be reused with different backing providers in kernel and user environments.
+The allocation design is intentionally similar in spirit to Solaris slab/UMEM: object-cache algorithms are reusable while the environment supplies backing memory. It is also data-oriented/ECS-inspired in the limited sense that homogeneous object shapes can receive dedicated storage and lifecycle policy; `ObjectCache` itself is not an ECS.
 
-It is also data-oriented/ECS-inspired in the limited sense that homogeneous object shapes receive dedicated storage and management policy. `ObjectCache` is not an ECS: it has no entity IDs, component composition, queries, or systems. It is a lower-level memory primitive that ECS/component stores can use.
+## Core capability-object pattern
 
-## Initial `core` contents
+Forge v1 has no traits or interfaces. Dynamic provider abstraction uses ordinary data and function pointers:
 
-The first single-file `core.fg` is intentionally compact, but the logical API is expected to grow into these areas:
+```forge
+struct ArenaOps {
+    alloc: fn(*void, AllocRequest) -> Result[MemoryBlock, AllocError];
+    free: fn(*void, MemoryBlock) -> void;
+    reclaim: fn(*void, usize) -> usize;
+}
+
+struct Arena {
+    context: *void;
+    ops: &ArenaOps;
+}
+```
+
+This is an explicit capability object:
 
 ```text
-core
-  panic/trap information
-  integer/math helpers
-  bit manipulation
-  memory primitives
-  slices and byte spans
-  strings/views with no allocation
-  Option/Result helpers
-  target/layout information
-  atomics once language/runtime support is ready
-  Arena backing-resource abstraction
-  Allocator arbitrary-size allocation
-  ObjectCache fixed-size allocation
-  fixed pools and arenas
+Arena
+  context -> provider-specific state
+  ops     -> static operations table
 ```
+
+It is intentionally equivalent to explicit C-style dictionary/vtable passing, but there is no hidden object header, RTTI, inheritance, implicit allocation, or language-defined dynamic dispatch.
+
+The pattern is suitable for other low-level abstractions such as `Writer`, `Clock`, interrupt controllers, or entropy sources when dynamic substitution is genuinely required. Static concrete calls remain preferable when the provider type is already known.
 
 ## Panic in freestanding environments
 
-`core` defines `PanicKind`, `PanicLocation`, and `PanicInfo`, but does not define termination policy. Every reachable panic/trap path funnels to the runtime ABI hook:
+`core` defines `PanicKind`, `PanicLocation`, and `PanicInfo`, but not termination policy. All defined panic/trap paths converge on:
 
 ```text
 __forge_panic(info: &core.PanicInfo) -> never
 ```
 
-A hosted build receives the default implementation from `std`. A `--no-std` final artifact supplies exactly one implementation itself.
+A hosted build receives the default provider from `std`. A `--no-std` final artifact supplies exactly one implementation itself.
 
-Forge v1 panic is non-unwinding. It does not require exception tables, an unwinder, a heap, a scheduler, or an OS. This makes the same checked language semantics usable in kernel and embedded code.
+Forge v1 panic is non-unwinding. It requires no exception tables, heap, scheduler, filesystem, or OS. Primitive allocation failure is not panic; allocation returns `Result`, and callers explicitly choose whether to retry, reclaim, propagate, degrade, or panic.
 
-Primitive allocation failure is not a panic. Allocation returns `Result`; callers explicitly choose whether to propagate, reclaim/retry, fall back, or convert failure into `PanicKind::AllocationFailure`.
-
-See `runtime-abi.md` for the full contract.
-
-## Allocation model
-
-Forge does not define `malloc` as a language primitive. Allocation happens through an explicit allocator or an owning object.
-
-There are two peer upper allocation styles over a common resource layer:
+## Allocation architecture
 
 ```text
-                        callers
-                           |
-               +-----------+-----------+
-               |                       |
-       arbitrary-size Allocator    fixed-size ObjectCache
-               |                       |
-               +-----------+-----------+
-                           |
-                          Arena
-                           |
-          +----------------+----------------+
-          |                                 |
-      kernel VM                          hosted OS
-   pages/address ranges              mmap/platform VM
+                     callers
+                        |
+             +----------+----------+
+             |                     |
+     arbitrary Allocator       ObjectCache
+             |                 fixed objects
+             +----------+----------+
+                        |
+                      Arena
+                 context + ops
+                        |
+       +----------------+----------------+
+       |                |                |
+   Cosmic VM        hosted VM       static/test RAM
 ```
 
-### 1. Backing arena
+### Arena
 
-An arena manages ranges of a resource. Memory is the primary use, but the design does not require every resource to be ordinary RAM.
-
-Conceptual interface:
-
-```forge
-struct Arena {
-    provider: *void;
-}
-```
-
-A kernel arena may obtain virtual address ranges/pages from Cosmic VM. A hosted arena may use host virtual-memory interfaces. Test code may back an arena with a fixed byte region.
-
-The upper allocation algorithms must not care which provider is used.
-
-### 2. General arbitrary-size allocator
-
-The ordinary allocator interface is the old-school malloc-like path, but explicit and typed by request rather than hidden as a process-global facility.
-
-```forge
-struct AllocRequest {
-    size: usize;
-    align: usize;
-    wait: AllocWait;
-}
-
-struct MemoryBlock {
-    data: *byte;
-    size: usize;
-    align: usize;
-}
-
-struct Allocator {
-    arena: &mut Arena;
-}
-```
+`Arena` is the lower backing-resource capability. `core` knows only its operations table and provider context.
 
 Normative operations:
 
-```text
-allocator_alloc(allocator, request)
-    -> Result[MemoryBlock, AllocError]
-
-allocator_free(allocator, block)
-    -> void
-
-allocator_resize(allocator, block, new_size)
-    -> Result[MemoryBlock, AllocError]
+```forge
+arena_alloc(arena, request) -> Result[MemoryBlock, AllocError]
+arena_free(arena, block) -> void
+arena_reclaim(arena, target_bytes) -> usize
 ```
 
-This supports arbitrary byte sizes and alignments, including workloads for which a fixed object cache is inappropriate.
+A kernel provider may obtain pages/address ranges from Cosmic VM. A hosted provider may use platform virtual memory. Firmware may use a fixed RAM range. Tests may use a deterministic fake address space.
 
-Size and alignment stay explicit so simple allocators do not require hidden boundary tags. Implementations may still maintain internal metadata when their policy benefits from it.
+`AllocWait::NoWait` must propagate unchanged to the provider and must never silently become a sleeping allocation.
 
-### 3. Fixed-size object cache
+### Arbitrary-size Allocator
 
-Fixed-size objects are a first-class abstraction rather than merely an optimization hidden under general allocation.
+`Allocator` uses the same capability-object pattern:
+
+```forge
+struct AllocatorOps {
+    alloc: fn(*void, AllocRequest) -> Result[MemoryBlock, AllocError];
+    free: fn(*void, MemoryBlock) -> void;
+    resize: fn(*void, MemoryBlock, usize) -> Result[MemoryBlock, AllocError];
+}
+
+struct Allocator {
+    context: *void;
+    ops: &AllocatorOps;
+}
+```
+
+This is the traditional malloc-like workload without a hidden global heap. Requests carry size, alignment, and wait policy explicitly.
+
+A concrete general allocator may itself be implemented over an `Arena`, may use object caches as size classes, or may use another policy entirely.
+
+### Fixed-size ObjectCache
+
+`ObjectCacheSpec` describes one repeated object shape:
 
 ```forge
 struct ObjectCacheSpec {
@@ -145,34 +124,7 @@ struct ObjectCacheSpec {
 }
 ```
 
-Normative operations:
-
-```text
-object_cache_create(arena, spec)
-    -> Result[ObjectCache, AllocError]
-
-object_cache_alloc(cache, wait)
-    -> Result[*byte, AllocError]
-
-object_cache_free(cache, object)
-    -> void
-
-object_cache_reclaim(cache)
-    -> usize
-
-object_cache_stats(cache)
-    -> ObjectCacheStats
-```
-
-The cache obtains slabs/extents from its arena, divides them into equal-sized aligned objects, and maintains free objects efficiently.
-
-Useful examples include kernel process/thread objects, VFS nodes, packet descriptors, IPC endpoints, filesystem records, compiler AST nodes, database records, ECS component chunks, and fixed-size protocol objects.
-
-It also provides a natural foundation for size-class allocation in a hosted process allocator: a general allocator may internally route common sizes to object caches while keeping the public arbitrary-size API.
-
-## Object-cache geometry
-
-For a valid `ObjectCacheSpec`:
+Geometry:
 
 ```text
 stride = align_up(object_size, object_align)
@@ -181,116 +133,84 @@ objects_per_slab = slab_size / stride
 
 Initial validity rules:
 
-- `object_size > 0`;
-- `object_align` is a non-zero power of two;
-- `slab_size` is a non-zero power of two;
-- `slab_size >= object_size`;
-- aligned stride fits in one slab.
+- object size is non-zero;
+- object and slab alignment are powers of two;
+- the aligned object stride fits inside the slab;
+- the slab is large enough to hold at least one object.
 
-Future implementations may add slab-header/reserved-space accounting without changing caller-facing semantics.
+The cache obtains slabs through `Arena`, subdivides them into equal-size objects, tracks free/in-use objects, grows on demand, and may return completely unused slabs during explicit reclaim.
 
-## Constructors and destructors
+Typical direct users include process/thread records, VFS nodes, packet descriptors, IPC endpoints, driver requests, compiler nodes, database records, ECS component chunks, and protocol objects.
 
-Object caches should eventually support optional construction/destruction policy, but the initial API should not force function pointers into every cache object.
+A general allocator may also use several `ObjectCache` instances internally as size classes.
 
-Likely long-term policy:
+## Kernel/user sharing rule
 
-```forge
-struct ObjectCacheOps {
-    constructor: fn(*byte, *void) -> Result[void, AllocError]?;
-    destructor: fn(*byte, *void) -> void?;
-    reclaim: fn(*void) -> void?;
-    context: *void?;
-}
-```
+> Algorithms and policy-neutral mechanisms belong in `core`; acquisition of pages/address space and scheduler/platform integration belong to the environment.
 
-This lets a kernel keep expensive object initialization cached while retaining lightweight caches for plain fixed-size storage.
-
-## Kernel/user sharing
-
-The design rule is:
-
-> allocation policy and cache algorithms belong in `core`; acquisition of pages/address space and scheduler/locking integration belong to the environment.
+The same object-cache code must therefore pass against at least:
 
 ```text
-core ObjectCache / Allocator algorithms
-        |
-        +-- Cosmic kernel backing arena
-        |      VM pages, kernel locks, per-CPU state
-        |
-        +-- std hosted backing arena
-        |      host VM mappings, user synchronization
-        |
-        +-- firmware/static arena
-               fixed memory region, possibly no synchronization
+kernel-like Arena provider
+hosted/user-like Arena provider
+fixed deterministic test provider
 ```
 
-This is the Solaris-like property we want: the same allocator/cache implementation can be compiled into kernel and user mode with different providers.
+Provider identity must not affect cache semantics.
 
-## Concurrency and magazines
+## Concurrency
 
-The first implementation should be correct and simple, probably with externally supplied synchronization or a single lock per cache. Per-CPU/thread magazines are a later optimization and must not be part of the fundamental API contract.
+The first implementation prioritizes correctness. Synchronization is not hidden inside the basic provider contract.
+
+Later implementations may add environment-specific synchronization and Solaris-style per-CPU/per-thread magazines:
 
 ```text
 per-CPU/thread magazine
-        |
-central cache depot
-        |
-slab layer
-        |
-Arena
+        -> central depot
+        -> slab/cache
+        -> Arena
 ```
 
-The API remains unchanged when magazines are added.
+This must not alter the public object-cache contract.
 
-## Allocation failure policy
+## OS-foundation facilities that belong in `core`
 
-Primitive allocation is fallible:
-
-```forge
-Result[T, AllocError]
-```
-
-No allocator in `core` silently aborts merely because memory is unavailable. Higher-level applications or kernels may explicitly convert allocation failure into panic when appropriate.
-
-## Blocking policy
-
-Kernel allocation often needs waitable and non-waitable forms. This is explicit:
-
-```forge
-enum AllocWait {
-    MayWait,
-    NoWait,
-}
-```
-
-A `NoWait` request must never sleep waiting for memory. The environment decides exactly what sleeping/waiting means.
-
-## Reclaim and pressure
-
-Object caches support explicit reclaim so environments can respond to memory pressure:
+Before a production kernel starts depending on Forge, the following freestanding pieces should be stabilized:
 
 ```text
-object_cache_reclaim(cache) -> usize
+panic/trap records and runtime hook
+Arena / Allocator / ObjectCache
+memory copy/move/set and byte spans
+bit operations and endian conversion
+volatile/MMIO primitives
+atomics and memory ordering
+critical-section / spin-lock building blocks
+fixed-capacity vector/ring-buffer/string containers
+intrusive list/queue primitives
+Option/Result utilities
+layout/offset/static assertions
+non-allocating formatting/debug writer primitives
+target/ABI facts
 ```
 
-The result is backing storage released in bytes. The environment decides when reclaim is requested; `core` assumes no page daemon or hosted pressure mechanism.
+These are mechanism libraries shared by kernels, embedded targets, drivers, and hosted low-level code. Filesystems, sockets, process APIs, hosted threads, and OS virtual-memory syscalls stay out of `core`.
 
-## Statistics and diagnostics
+## Required testing
 
-`ObjectCacheStats` begins with counters for allocations, frees, failures, objects in use/free, slab counts, backing bytes, and reclaim calls.
+`core` must have executable reference tests for:
 
-Debug implementations may add poisoning, red zones, duplicate-free detection, ownership checks, and allocation-site metadata without changing normal caller APIs.
+- identical Arena dispatch over kernel-like and hosted-like providers;
+- arbitrary sizes and alignments;
+- OOM as an error rather than panic;
+- `NoWait` propagation;
+- free and resize dispatch;
+- object uniqueness while live;
+- object free/reuse;
+- slab growth;
+- empty-slab reclaim without reclaiming live slabs;
+- statistics invariants;
+- invalid object-cache geometry;
+- explicit provider reclaim dispatch;
+- panic operation without allocator or unwinder.
 
-## What stays out of `core`
-
-`core` does not provide:
-
-- a hidden process-global allocator;
-- OS virtual-memory syscalls;
-- kernel page-table manipulation;
-- filesystem/network services;
-- a mandatory thread implementation;
-- hosted process termination policy.
-
-Those belong in `std`, Cosmic, firmware/platform code, or application-specific libraries.
+The CForge suite supplies a deterministic provider/object-cache semantic model until both Forge implementations can execute the full raw-pointer implementation directly. Those model tests are not a substitute for later bare-metal integration tests; they establish the portable algorithm contract first.
