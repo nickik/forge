@@ -20,7 +20,9 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: Apply Step 6
-        run: python3 -B scripts/fir_step6_once.py
+        run: |
+          python3 -B scripts/fir_step6_once.py
+          python3 -B scripts/fir_step6_fix.py
       - run: cargo fmt --all
       - run: cargo fmt --all -- --check
       - run: cargo check --workspace --locked
