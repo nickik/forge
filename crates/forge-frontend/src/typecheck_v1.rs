@@ -279,6 +279,26 @@ pub struct TypedSelectPlan {
     pub arms: Vec<TypedSelectArm>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "operation", rename_all = "snake_case")]
+pub enum UnsafeOperationKind {
+    RawDereference { volatile: bool },
+    PointerOffset { subtract: bool },
+    PointerToInteger,
+    IntegerToPointer,
+    PointerReinterpret,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct UnsafeProvenance {
+    pub scope: Span,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct TypedUnsafeScope {
+    pub span: Span,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "source", rename_all = "snake_case")]
 pub enum ResolvedCallArgument {
@@ -316,6 +336,11 @@ pub enum TypedExprKind {
         plan: TypedMatchPlan,
         hir: HirExpr,
     },
+    UnsafeOperation {
+        operation: UnsafeOperationKind,
+        provenance: UnsafeProvenance,
+        hir: HirExpr,
+    },
     OptionalPromote {
         source_type: Ty,
         inner: Box<TypedExprKind>,
@@ -340,6 +365,7 @@ pub struct TypedBody {
     pub local_constants: BTreeMap<LocalId, ConstValue>,
     pub context_scopes: Vec<TypedContextScope>,
     pub select_plans: Vec<TypedSelectPlan>,
+    pub unsafe_scopes: Vec<TypedUnsafeScope>,
     pub expressions: Vec<TypedExpr>,
 }
 
@@ -492,6 +518,7 @@ pub fn type_check_module(
                 local_constants: checker.local_constants,
                 context_scopes: checker.context_scopes,
                 select_plans: checker.select_plans,
+                unsafe_scopes: checker.unsafe_scopes,
                 expressions: checker.expressions,
             },
         );
@@ -988,6 +1015,8 @@ struct BodyChecker<'a, 'd> {
     context_types: BTreeMap<ContextSlot, Ty>,
     context_scopes: Vec<TypedContextScope>,
     select_plans: Vec<TypedSelectPlan>,
+    unsafe_scopes: Vec<TypedUnsafeScope>,
+    unsafe_stack: Vec<Span>,
     expressions: Vec<TypedExpr>,
     diagnostics: &'d mut Vec<TypeDiagnostic>,
 }
@@ -1007,6 +1036,8 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             context_types: BTreeMap::new(),
             context_scopes: Vec::new(),
             select_plans: Vec::new(),
+            unsafe_scopes: Vec::new(),
+            unsafe_stack: Vec::new(),
             expressions: Vec::new(),
             diagnostics,
         }
@@ -1170,9 +1201,16 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             HirStmtKind::DeferExpr { expr } => {
                 self.check_expr(expr, None);
             }
-            HirStmtKind::DeferBlock { block }
-            | HirStmtKind::Unsafe { block }
-            | HirStmtKind::Block { block } => self.check_block(block),
+            HirStmtKind::DeferBlock { block } | HirStmtKind::Block { block } => {
+                self.check_block(block)
+            }
+            HirStmtKind::Unsafe { block } => {
+                self.unsafe_scopes
+                    .push(TypedUnsafeScope { span: stmt.span });
+                self.unsafe_stack.push(stmt.span);
+                self.check_block(block);
+                self.unsafe_stack.pop();
+            }
             HirStmtKind::WithContext { overrides, body } => {
                 let mut seen = BTreeSet::new();
                 let mut planned = Vec::new();
@@ -1295,6 +1333,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         let mut resolved_context: Option<ContextSlot> = None;
         let mut resolved_try: Option<(Ty, Ty)> = None;
         let mut resolved_match: Option<TypedMatchPlan> = None;
+        let mut resolved_unsafe: Option<(UnsafeOperationKind, UnsafeProvenance)> = None;
         let mut ty = match &expr.kind {
             HirExprKind::Integer { text } => integer_literal_ty(text),
             HirExprKind::Float { text } => float_literal_ty(text),
@@ -1372,17 +1411,28 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             }
             HirExprKind::Unary { op, value } => {
                 let v = self.check_expr(value, expected);
-                self.check_unary(expr.span, *op, v)
+                let result = self.check_unary(expr.span, *op, v.clone());
+                if *op == UnaryOp::Deref {
+                    if let Ty::Pointer { volatile, .. } = v {
+                        let operation = UnsafeOperationKind::RawDereference { volatile };
+                        if let Some(provenance) = self.authorize_unsafe(expr.span, operation) {
+                            resolved_unsafe = Some((operation, provenance));
+                        }
+                    }
+                }
+                result
             }
             HirExprKind::Binary { op, left, right } => {
-                self.check_binary(expr.span, *op, left, right, expected)
+                self.check_binary(expr.span, *op, left, right, expected, &mut resolved_unsafe)
             }
             HirExprKind::Call { callee, args } => {
                 let (result, call) = self.check_call(expr.span, callee, args);
                 resolved_call = call;
                 result
             }
-            HirExprKind::TypeCall { target, args } => self.check_type_call(expr.span, target, args),
+            HirExprKind::TypeCall { target, args } => {
+                self.check_type_call(expr.span, target, args, &mut resolved_unsafe)
+            }
             HirExprKind::Index { base, index } => {
                 let base_ty = self.check_expr(base, None);
                 if self.is_type_expr(index) {
@@ -1635,7 +1685,13 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 ty = expected.clone();
             }
         }
-        let base_kind = if let Some((source_error, target_error)) = resolved_try {
+        let base_kind = if let Some((operation, provenance)) = resolved_unsafe {
+            TypedExprKind::UnsafeOperation {
+                operation,
+                provenance,
+                hir: expr.clone(),
+            }
+        } else if let Some((source_error, target_error)) = resolved_try {
             TypedExprKind::ResolvedTry {
                 source_error,
                 target_error,
@@ -1683,6 +1739,23 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             kind,
         });
         ty
+    }
+
+    fn authorize_unsafe(
+        &mut self,
+        span: Span,
+        operation: UnsafeOperationKind,
+    ) -> Option<UnsafeProvenance> {
+        if let Some(scope) = self.unsafe_stack.last().copied() {
+            Some(UnsafeProvenance { scope })
+        } else {
+            self.diagnostic(
+                span,
+                "unsafe/required",
+                format!("{operation:?} requires an enclosing `unsafe` block"),
+            );
+            None
+        }
     }
 
     fn is_type_expr(&self, expr: &HirExpr) -> bool {
@@ -2234,7 +2307,13 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         slots.into_iter().flatten().collect()
     }
 
-    fn check_type_call(&mut self, span: Span, target: &HirTypeRef, args: &[HirCallArg]) -> Ty {
+    fn check_type_call(
+        &mut self,
+        span: Span,
+        target: &HirTypeRef,
+        args: &[HirCallArg],
+        resolved_unsafe: &mut Option<(UnsafeOperationKind, UnsafeProvenance)>,
+    ) -> Ty {
         let target_ty = self.env.ty_from_ref(target);
         if args.len() != 1 {
             self.diagnostic(
@@ -2245,6 +2324,26 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             return Ty::Error;
         }
         let source = self.check_expr(arg_value(&args[0]), None);
+
+        let unsafe_conversion = match (&source, &target_ty) {
+            (Ty::Pointer { .. }, Ty::Int { .. } | Ty::Byte) => {
+                Some(UnsafeOperationKind::PointerToInteger)
+            }
+            (Ty::Int { .. } | Ty::Byte, Ty::Pointer { .. }) => {
+                Some(UnsafeOperationKind::IntegerToPointer)
+            }
+            (Ty::Pointer { .. }, Ty::Pointer { .. }) if source != target_ty => {
+                Some(UnsafeOperationKind::PointerReinterpret)
+            }
+            _ => None,
+        };
+        if let Some(operation) = unsafe_conversion {
+            if let Some(provenance) = self.authorize_unsafe(span, operation) {
+                *resolved_unsafe = Some((operation, provenance));
+            }
+            return target_ty;
+        }
+
         match &target_ty {
             Ty::Nominal(id) => {
                 if let Some(underlying) = self.env.distinct_underlying(*id) {
@@ -2266,6 +2365,15 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     );
                 }
             }
+            Ty::Pointer { .. } => {
+                if source != target_ty {
+                    self.diagnostic(
+                        span,
+                        "type/mismatch",
+                        format!("invalid explicit conversion from {source:?} to {target_ty:?}"),
+                    );
+                }
+            }
             _ => {}
         }
         target_ty
@@ -2278,6 +2386,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         left: &HirExpr,
         right: &HirExpr,
         expected: Option<&Ty>,
+        resolved_unsafe: &mut Option<(UnsafeOperationKind, UnsafeProvenance)>,
     ) -> Ty {
         let l = self.check_expr(left, expected);
         let r = self.check_expr(
@@ -2288,6 +2397,18 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 expected
             },
         );
+        if matches!(op, BinaryOp::Add | BinaryOp::Sub)
+            && matches!(l, Ty::Pointer { .. })
+            && is_integer_like(&r)
+        {
+            let operation = UnsafeOperationKind::PointerOffset {
+                subtract: op == BinaryOp::Sub,
+            };
+            if let Some(provenance) = self.authorize_unsafe(span, operation) {
+                *resolved_unsafe = Some((operation, provenance));
+            }
+            return l;
+        }
         match op {
             BinaryOp::LogicalAnd | BinaryOp::LogicalOr | BinaryOp::LogicalXor => {
                 self.require_assignable(left.span, &Ty::Bool, &l, "type/mismatch");

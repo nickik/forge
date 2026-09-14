@@ -1590,3 +1590,161 @@ fn select_rejects_duplicate_timeout_arms() {
         output.diagnostics
     );
 }
+
+#[test]
+fn raw_pointer_dereference_requires_unsafe_authorization() {
+    let output = check(
+        r#"
+        module test.raw_deref_safe;
+        fn read(p: *u32) -> u32 { return *p; }
+        "#,
+    );
+    assert!(has(&output, "unsafe/required"), "{:?}", output.diagnostics);
+}
+
+#[test]
+fn unsafe_raw_pointer_dereference_records_scope_provenance() {
+    let output = check(
+        r#"
+        module test.raw_deref_unsafe;
+        fn read(p: *u32) -> u32 {
+            unsafe { return *p; }
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let body = output.functions.values().next().unwrap();
+    assert_eq!(body.unsafe_scopes.len(), 1);
+    let raw = body
+        .expressions
+        .iter()
+        .find_map(|expr| match &expr.kind {
+            forge_frontend::TypedExprKind::UnsafeOperation {
+                operation: forge_frontend::UnsafeOperationKind::RawDereference { volatile: false },
+                provenance,
+                ..
+            } => Some((expr.span, *provenance)),
+            _ => None,
+        })
+        .expect("typed raw dereference");
+    assert_eq!(raw.1.scope, body.unsafe_scopes[0].span);
+    assert!(raw.1.scope.start <= raw.0.start && raw.1.scope.end >= raw.0.end);
+}
+
+#[test]
+fn safe_reference_dereference_needs_no_unsafe_provenance() {
+    let output = check(
+        r#"
+        module test.reference_deref;
+        fn read(p: &u32) -> u32 { return *p; }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let body = output.functions.values().next().unwrap();
+    assert!(body.unsafe_scopes.is_empty());
+    assert!(!body.expressions.iter().any(|expr| matches!(
+        expr.kind,
+        forge_frontend::TypedExprKind::UnsafeOperation { .. }
+    )));
+}
+
+#[test]
+fn raw_pointer_arithmetic_requires_and_records_unsafe() {
+    let safe = check(
+        r#"
+        module test.pointer_offset_safe;
+        fn next(p: *u32) -> *u32 { return p + 1usize; }
+        "#,
+    );
+    assert!(has(&safe, "unsafe/required"), "{:?}", safe.diagnostics);
+
+    let unsafe_output = check(
+        r#"
+        module test.pointer_offset_unsafe;
+        fn next(p: *u32) -> *u32 {
+            unsafe { return p + 1usize; }
+        }
+        "#,
+    );
+    assert!(
+        unsafe_output.diagnostics.is_empty(),
+        "{:?}",
+        unsafe_output.diagnostics
+    );
+    let body = unsafe_output.functions.values().next().unwrap();
+    assert!(body.expressions.iter().any(|expr| matches!(
+        expr.kind,
+        forge_frontend::TypedExprKind::UnsafeOperation {
+            operation: forge_frontend::UnsafeOperationKind::PointerOffset { subtract: false },
+            ..
+        }
+    )));
+}
+
+#[test]
+fn pointer_integer_and_reinterpret_conversions_require_unsafe() {
+    let safe = check(
+        r#"
+        module test.pointer_cast_safe;
+        type BytePtr = *byte;
+        fn address(p: *u32) -> usize { return usize(p); }
+        fn cast(p: *u32) -> BytePtr { return BytePtr(p); }
+        "#,
+    );
+    assert!(
+        safe.diagnostics
+            .iter()
+            .filter(|d| d.code == "unsafe/required")
+            .count()
+            >= 2,
+        "{:?}",
+        safe.diagnostics
+    );
+
+    let unsafe_output = check(
+        r#"
+        module test.pointer_cast_unsafe;
+        type BytePtr = *byte;
+        fn address(p: *u32) -> usize { unsafe { return usize(p); } }
+        fn cast(p: *u32) -> BytePtr { unsafe { return BytePtr(p); } }
+        "#,
+    );
+    assert!(
+        unsafe_output.diagnostics.is_empty(),
+        "{:?}",
+        unsafe_output.diagnostics
+    );
+    let kinds = unsafe_output
+        .functions
+        .values()
+        .flat_map(|body| body.expressions.iter())
+        .filter_map(|expr| match &expr.kind {
+            forge_frontend::TypedExprKind::UnsafeOperation { operation, .. } => Some(*operation),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(kinds.contains(&forge_frontend::UnsafeOperationKind::PointerToInteger));
+    assert!(kinds.contains(&forge_frontend::UnsafeOperationKind::PointerReinterpret));
+}
+
+#[test]
+fn integer_to_pointer_alias_conversion_requires_unsafe() {
+    let output = check(
+        r#"
+        module test.address_to_pointer;
+        type Raw = *u32;
+        fn from_address(address: usize) -> Raw {
+            unsafe { return Raw(address); }
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let body = output.functions.values().next().unwrap();
+    assert!(body.expressions.iter().any(|expr| matches!(
+        expr.kind,
+        forge_frontend::TypedExprKind::UnsafeOperation {
+            operation: forge_frontend::UnsafeOperationKind::IntegerToPointer,
+            ..
+        }
+    )));
+}

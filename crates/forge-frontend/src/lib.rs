@@ -32,7 +32,7 @@ pub use typecheck::{
     MatchProjection, MatchScalar, MatchTest, ResolvedCallArgument, ResolvedReceiver, Ty,
     TypeCheckOutput, TypeDiagnostic, TypedBody, TypedCapture, TypedClosurePlan,
     TypedContextOverride, TypedContextScope, TypedExpr, TypedExprKind, TypedMatchArmPlan,
-    TypedMatchBinding, TypedMatchPlan,
+    TypedMatchBinding, TypedMatchPlan, TypedUnsafeScope, UnsafeOperationKind, UnsafeProvenance,
 };
 
 pub use fir::{

@@ -88,7 +88,8 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Step 9 complete: explicit capture modes and typed closure environment fields are resolved above FIR; non-escaping closure bodies have dedicated FIR entries, reference captures remain aliasing places, and closure/function-pointer calls lower explicitly.
 - Step 10 complete: core execution-context slot accesses and overrides are resolved in typed HIR; override values are checked as non-owning references/pointers, lexical slot types are scoped, and FIR uses cleanup-integrated save/set/load/restore operations.
 - Step 11 complete: select arms carry typed channel payload/timeout semantics and stable runtime-operation IDs; FIR lowers blocking select into an explicit multi-target terminator with receive payload destinations.
-- Steps 12-16 intentionally untouched.
+- Step 12 complete: unsafe scopes are semantic authorization scopes; raw dereference, pointer arithmetic, and pointer/integer or reinterpret conversions carry explicit source-scope provenance into dedicated FIR raw operations.
+- Steps 13-16 intentionally untouched.
 
 
 ## Step 8 acceptance tests
@@ -120,3 +121,14 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - FIR evaluates arm operands once in source order, then terminates the block with one atomic/select runtime operation and explicit arm targets.
 - A receive case supplies a typed synthetic payload destination which is bound through the ordinary pattern machinery on the selected edge.
 - Select FIR contains no `fir/select-not-resolved` fallback.
+
+
+## Step 12 acceptance tests
+
+- Raw pointer dereference is rejected with `unsafe/required` outside an `unsafe` block; safe-reference dereference remains ordinary safe code.
+- Every accepted raw operation carries `UnsafeProvenance` naming the exact enclosing semantic unsafe scope.
+- Raw pointer `+`/`-` integer arithmetic is accepted only with unsafe authorization and lowers to dedicated `PointerOffset` FIR rather than ordinary numeric `Binary`.
+- Pointer-to-integer, integer-to-pointer, and pointer reinterpret conversions require unsafe authorization and lower to dedicated `PointerConvert` FIR rather than ordinary `Convert`.
+- Raw pointer loads/stores use `FirPlace::RawDeref` with provenance; reference loads/stores continue to use `FirPlace::Deref`.
+- FIR validates that provenance refers to a typed unsafe scope enclosing the source operation before emitting a raw operation.
+- Entering `unsafe` does not disable array/slice bounds checks, checked arithmetic, or ordinary type checking.

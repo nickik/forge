@@ -867,3 +867,119 @@ fn selected_receive_struct_pattern_binds_exact_payload_fields() {
         |op| matches!(op, FirInstructionKind::ExtractField { field, .. } if field == "value")
     ));
 }
+
+#[test]
+fn raw_pointer_dereference_lowers_with_unsafe_provenance() {
+    let output = lower(
+        r#"
+        module test.fir_raw_deref;
+        fn read(p: *u32) -> u32 {
+            unsafe { return *p; }
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::Load {
+            place: forge_frontend::FirPlace::RawDeref {
+                volatile: false,
+                ..
+            }
+        }
+    )));
+}
+
+#[test]
+fn raw_pointer_store_uses_provenanced_raw_place() {
+    let output = lower(
+        r#"
+        module test.fir_raw_store;
+        fn write(p: *u32, value: u32) {
+            unsafe { *p = value; }
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::Store {
+            place: forge_frontend::FirPlace::RawDeref { .. },
+            ..
+        }
+    )));
+}
+
+#[test]
+fn pointer_offset_is_a_dedicated_provenanced_fir_operation() {
+    let output = lower(
+        r#"
+        module test.fir_pointer_offset;
+        fn previous(p: *u32) -> *u32 {
+            unsafe { return p - 2usize; }
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::PointerOffset { subtract: true, .. }
+    )));
+    assert!(!instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::Binary {
+            op: forge_frontend::ast::BinaryOp::Sub,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn pointer_conversions_are_not_plain_fir_converts() {
+    let output = lower(
+        r#"
+        module test.fir_pointer_convert;
+        type BytePtr = *byte;
+        fn address(p: *u32) -> usize { unsafe { return usize(p); } }
+        fn cast(p: *u32) -> BytePtr { unsafe { return BytePtr(p); } }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::PointerConvert {
+            operation: forge_frontend::UnsafeOperationKind::PointerToInteger,
+            ..
+        }
+    )));
+    assert!(instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::PointerConvert {
+            operation: forge_frontend::UnsafeOperationKind::PointerReinterpret,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn ordinary_reference_deref_remains_safe_fir_deref() {
+    let output = lower(
+        r#"
+        module test.fir_reference_deref;
+        fn read(p: &u32) -> u32 { return *p; }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::Load {
+            place: forge_frontend::FirPlace::Deref { .. }
+        }
+    )));
+    assert!(!instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::Load {
+            place: forge_frontend::FirPlace::RawDeref { .. }
+        }
+    )));
+}
