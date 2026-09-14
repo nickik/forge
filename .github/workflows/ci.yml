@@ -15,6 +15,17 @@ jobs:
       - run: cargo fmt --package forge-build -- --check
       - run: cargo clippy -p forge-build --all-targets -- -D warnings
       - run: cargo test -p forge-build
+      - name: Verify generated native collections snapshot
+        run: |
+          cargo run --quiet -p forge-build --bin forge-collections-gen -- /tmp/forge-collections-native.fg
+          cmp /tmp/forge-collections-native.fg packages/forge-collections-native/src/lib.fg
+
+  frontend-collections:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -p forge-frontend
 
   rust:
     runs-on: ubuntu-latest
