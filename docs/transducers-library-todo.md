@@ -18,7 +18,9 @@ The semantic reference is Clojure's transducer model: a transducer transforms a 
 - [ ] Early termination is part of the reducer protocol, not an exception/panic.
 - [ ] Completion must run exactly once for a finite transduction.
 - [ ] Freestanding-compatible operators must not depend on `std`.
-- [ ] Operators requiring allocation take an explicit allocator or use a destination-provided allocator policy.
+- [ ] Transducer values never retain allocator capabilities.
+- [ ] Any operator/reducer that allocates, grows, or frees durable memory receives an explicit allocator argument at that execution call site.
+- [ ] No destination-provided, global, thread-local, or remembered allocator policy may hide durable allocation.
 
 ## Type-specialized protocol
 
@@ -70,7 +72,7 @@ An invalid composition such as `MapStringToU64` followed by `FilterString` must 
 - [ ] reducer init/step/completion contract.
 - [ ] `transduce` over supported source iterators/collection walkers.
 - [ ] `reduce` without a transformation.
-- [ ] `into` adapters for generated lists, sets and maps.
+- [ ] `into` adapters for generated lists, sets and maps; any adapter that grows durable output receives an explicit allocator.
 - [ ] iterator/walker adapters for `List*`, `HashSet*`, `HashMap*`, fixed vectors and slices.
 - [ ] source-independent tests proving the same pipeline works over at least two source kinds.
 
@@ -149,7 +151,7 @@ Required tests:
 - [ ] interpose never emits a leading or trailing separator.
 - [ ] stateful transducer instances can be reused safely by creating fresh execution state.
 
-`distinct` requires a set and therefore depends on the generated HashSet implementation for its key type. This is an intentional integration point with the collections library.
+`distinct` requires a set and therefore depends on the generated HashSet implementation for its key type. The `transduce`/execution call supplying `distinct` state must also receive the explicit allocator used if that state requires durable dynamic storage; the transducer object does not retain it between executions.
 
 ## Phase 4 — buffering/completion transducers
 
@@ -166,6 +168,7 @@ Required tests:
 - [ ] partition_by flushes its final partition exactly once.
 - [ ] partition state is fresh for each transduction.
 - [ ] allocator failure while growing a partition is surfaced explicitly.
+- [ ] the allocator used for partition growth is an explicit execution argument and is not retained in the transducer.
 
 ## Phase 5 — diagnostics and utility operators
 
@@ -338,9 +341,11 @@ Transducers are most useful if terminal reducers are also standardized.
 - [ ] `last`.
 - [ ] `any` / `all`.
 - [ ] `find` with early termination.
-- [ ] `collect_list`.
-- [ ] `collect_set`.
-- [ ] map-entry collection where key/value output types permit it.
+- [ ] `collect_list` with explicit allocator argument.
+- [ ] `collect_set` with explicit allocator argument.
+- [ ] map-entry collection with explicit allocator argument where key/value output types permit it.
+
+Collection-producing reducers must never infer their allocator from the destination value or transducer state.
 
 ## Integration milestones
 
@@ -349,6 +354,7 @@ Transducers are most useful if terminal reducers are also standardized.
 - [ ] Forge implementation of map/filter/take and composition.
 - [ ] Generated specialized pipeline passes CForge JVM tests.
 - [ ] Same pipeline passes CForge native-image tests.
+- [ ] Explicit allocator is threaded through every collection-producing/state-allocating execution path.
 - [ ] Replace ad-hoc CKV full-file record loop with a transducer pipeline once `String -> record` parsing shape is clean.
 - [ ] Use transducers with generated `HashMapStringString` rather than the bootstrap host map.
 - [ ] Exercise a freestanding pipeline in Cosmic/kernel-oriented tests with no `std` dependency.
