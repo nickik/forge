@@ -1,0 +1,524 @@
+module forge_collections_bootstrap;
+
+import std.collections.raw_u8;
+import std.collections.raw_u64;
+import std.collections.raw_usize;
+import std.collections.raw_string;
+import std.string;
+
+// BOOTSTRAP-ONLY semantic implementation for CForge.
+//
+// This package exists so collection algorithms can be exercised before the
+// compiled backend is able to execute allocator-backed MemoryBlock mutation.
+// Production/native collection layout lives in forge-collections-native and is
+// generated around core.Allocator + core.MemoryBlock.
+//
+// Numeric hash-table keys/values are encoded as decimal strings here solely to
+// avoid adding bootstrap-only numeric-cast semantics to CForge. Do not copy
+// this representation into the native backend.
+
+// ---------------------------------------------------------------------------
+// ListU8 / ListU64
+//
+// Public handle is a raw_usize metadata block:
+//   [0] typed data-handle
+//   [1] logical length
+//   [2] logical capacity
+// ---------------------------------------------------------------------------
+
+fn list_meta(data: usize, capacity: usize) -> usize {
+    val meta: usize = raw_usize.create(3);
+    raw_usize.set(meta, 0, data);
+    raw_usize.set(meta, 1, 0);
+    raw_usize.set(meta, 2, capacity);
+    return meta;
+}
+
+fn list_len(meta: usize) -> usize {
+    return raw_usize.get(meta, 1);
+}
+
+fn list_capacity(meta: usize) -> usize {
+    return raw_usize.get(meta, 2);
+}
+
+fn list_data(meta: usize) -> usize {
+    return raw_usize.get(meta, 0);
+}
+
+fn next_capacity(current: usize, requested: usize) -> usize {
+    var next: usize = current;
+    if (next == 0) { next = 4; }
+    while (next < requested) {
+        next = next * 2;
+    }
+    return next;
+}
+
+pub fn list_u8_create(capacity: usize) -> usize {
+    return list_meta(raw_u8.create(capacity), capacity);
+}
+
+pub fn list_u8_len(list: usize) -> usize {
+    return list_len(list);
+}
+
+pub fn list_u8_capacity(list: usize) -> usize {
+    return list_capacity(list);
+}
+
+pub fn list_u8_is_empty(list: usize) -> bool {
+    return list_len(list) == 0;
+}
+
+pub fn list_u8_reserve(list: usize, requested: usize) -> void {
+    val current: usize = list_capacity(list);
+    if (requested > current) {
+        val next: usize = next_capacity(current, requested);
+        raw_u8.resize(list_data(list), next);
+        raw_usize.set(list, 2, next);
+    }
+}
+
+pub fn list_u8_push(list: usize, value: u8) -> void {
+    val len: usize = list_len(list);
+    if (len == list_capacity(list)) {
+        list_u8_reserve(list, len + 1);
+    }
+    raw_u8.set(list_data(list), len, value);
+    raw_usize.set(list, 1, len + 1);
+}
+
+pub fn list_u8_get(list: usize, index: usize) -> u8 {
+    return raw_u8.get(list_data(list), index);
+}
+
+pub fn list_u8_set(list: usize, index: usize, value: u8) -> void {
+    raw_u8.set(list_data(list), index, value);
+}
+
+pub fn list_u8_pop_or(list: usize, fallback: u8) -> u8 {
+    val len: usize = list_len(list);
+    if (len == 0) { return fallback; }
+    val new_len: usize = len - 1;
+    val value: u8 = raw_u8.get(list_data(list), new_len);
+    raw_usize.set(list, 1, new_len);
+    return value;
+}
+
+pub fn list_u8_remove(list: usize, index: usize) -> u8 {
+    val data: usize = list_data(list);
+    val len: usize = list_len(list);
+    val removed: u8 = raw_u8.get(data, index);
+    var i: usize = index;
+    while ((i + 1) < len) {
+        raw_u8.set(data, i, raw_u8.get(data, i + 1));
+        i = i + 1;
+    }
+    raw_usize.set(list, 1, len - 1);
+    return removed;
+}
+
+pub fn list_u8_swap_remove(list: usize, index: usize) -> u8 {
+    val data: usize = list_data(list);
+    val len: usize = list_len(list);
+    val removed: u8 = raw_u8.get(data, index);
+    val last: usize = len - 1;
+    if (index != last) {
+        raw_u8.set(data, index, raw_u8.get(data, last));
+    }
+    raw_usize.set(list, 1, last);
+    return removed;
+}
+
+pub fn list_u8_clear(list: usize) -> void {
+    raw_usize.set(list, 1, 0);
+}
+
+pub fn list_u8_truncate(list: usize, requested: usize) -> void {
+    val len: usize = list_len(list);
+    if (requested < len) {
+        raw_usize.set(list, 1, requested);
+    }
+}
+
+pub fn list_u64_create(capacity: usize) -> usize {
+    return list_meta(raw_u64.create(capacity), capacity);
+}
+
+pub fn list_u64_len(list: usize) -> usize {
+    return list_len(list);
+}
+
+pub fn list_u64_capacity(list: usize) -> usize {
+    return list_capacity(list);
+}
+
+pub fn list_u64_is_empty(list: usize) -> bool {
+    return list_len(list) == 0;
+}
+
+pub fn list_u64_reserve(list: usize, requested: usize) -> void {
+    val current: usize = list_capacity(list);
+    if (requested > current) {
+        val next: usize = next_capacity(current, requested);
+        raw_u64.resize(list_data(list), next);
+        raw_usize.set(list, 2, next);
+    }
+}
+
+pub fn list_u64_push(list: usize, value: u64) -> void {
+    val len: usize = list_len(list);
+    if (len == list_capacity(list)) {
+        list_u64_reserve(list, len + 1);
+    }
+    raw_u64.set(list_data(list), len, value);
+    raw_usize.set(list, 1, len + 1);
+}
+
+pub fn list_u64_get(list: usize, index: usize) -> u64 {
+    return raw_u64.get(list_data(list), index);
+}
+
+pub fn list_u64_set(list: usize, index: usize, value: u64) -> void {
+    raw_u64.set(list_data(list), index, value);
+}
+
+pub fn list_u64_pop_or(list: usize, fallback: u64) -> u64 {
+    val len: usize = list_len(list);
+    if (len == 0) { return fallback; }
+    val new_len: usize = len - 1;
+    val value: u64 = raw_u64.get(list_data(list), new_len);
+    raw_usize.set(list, 1, new_len);
+    return value;
+}
+
+pub fn list_u64_remove(list: usize, index: usize) -> u64 {
+    val data: usize = list_data(list);
+    val len: usize = list_len(list);
+    val removed: u64 = raw_u64.get(data, index);
+    var i: usize = index;
+    while ((i + 1) < len) {
+        raw_u64.set(data, i, raw_u64.get(data, i + 1));
+        i = i + 1;
+    }
+    raw_usize.set(list, 1, len - 1);
+    return removed;
+}
+
+pub fn list_u64_swap_remove(list: usize, index: usize) -> u64 {
+    val data: usize = list_data(list);
+    val len: usize = list_len(list);
+    val removed: u64 = raw_u64.get(data, index);
+    val last: usize = len - 1;
+    if (index != last) {
+        raw_u64.set(data, index, raw_u64.get(data, last));
+    }
+    raw_usize.set(list, 1, last);
+    return removed;
+}
+
+pub fn list_u64_clear(list: usize) -> void {
+    raw_usize.set(list, 1, 0);
+}
+
+pub fn list_u64_truncate(list: usize, requested: usize) -> void {
+    val len: usize = list_len(list);
+    if (requested < len) {
+        raw_usize.set(list, 1, requested);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Shared bootstrap string table.
+//
+// [0] live length (decimal)
+// [1] bucket count (decimal)
+// per bucket: state, key, value
+// state: "" empty, "1" occupied, "2" tombstone
+// ---------------------------------------------------------------------------
+
+fn table_state_slot(index: usize) -> usize { return 2 + (index * 3); }
+fn table_key_slot(index: usize) -> usize { return 3 + (index * 3); }
+fn table_value_slot(index: usize) -> usize { return 4 + (index * 3); }
+
+fn table_len(table: usize) -> usize {
+    return string.parse_usize(raw_string.get(table, 0));
+}
+
+fn table_buckets(table: usize) -> usize {
+    return string.parse_usize(raw_string.get(table, 1));
+}
+
+fn table_hash(key: str, buckets: usize) -> usize {
+    var hash: usize = 2166136261;
+    var i: usize = 0;
+    val bytes: usize = string.byte_len(key);
+    while (i < bytes) {
+        hash = ((hash ^ string.byte_at(key, i)) * 16777619) % 4294967291;
+        i = i + 1;
+    }
+    return hash % buckets;
+}
+
+fn table_create_exact(buckets: usize) -> usize {
+    val table: usize = raw_string.create(2 + (buckets * 3));
+    raw_string.set(table, 0, "0");
+    raw_string.set(table, 1, string.from_usize(buckets));
+    return table;
+}
+
+fn table_create() -> usize {
+    return table_create_exact(8);
+}
+
+fn table_put_no_grow(table: usize, key: str, value: str) -> bool {
+    val buckets: usize = table_buckets(table);
+    val start: usize = table_hash(key, buckets);
+    var probe: usize = 0;
+    var first_deleted: usize = buckets;
+    var inserted: bool = false;
+    var done: bool = false;
+
+    while ((probe < buckets) && !done) {
+        val index: usize = (start + probe) % buckets;
+        val state: str = raw_string.get(table, table_state_slot(index));
+        if (state == "1") {
+            if (raw_string.get(table, table_key_slot(index)) == key) {
+                raw_string.set(table, table_value_slot(index), value);
+                done = true;
+            }
+        } else {
+            if (state == "2") {
+                if (first_deleted == buckets) { first_deleted = index; }
+            } else {
+                var target: usize = index;
+                if (first_deleted < buckets) { target = first_deleted; }
+                raw_string.set(table, table_state_slot(target), "1");
+                raw_string.set(table, table_key_slot(target), key);
+                raw_string.set(table, table_value_slot(target), value);
+                raw_string.set(table, 0, string.from_usize(table_len(table) + 1));
+                inserted = true;
+                done = true;
+            }
+        }
+        probe = probe + 1;
+    }
+
+    if (!done && (first_deleted < buckets)) {
+        raw_string.set(table, table_state_slot(first_deleted), "1");
+        raw_string.set(table, table_key_slot(first_deleted), key);
+        raw_string.set(table, table_value_slot(first_deleted), value);
+        raw_string.set(table, 0, string.from_usize(table_len(table) + 1));
+        inserted = true;
+    }
+    return inserted;
+}
+
+fn table_rehash(table: usize, new_buckets: usize) -> void {
+    val old_buckets: usize = table_buckets(table);
+    val replacement: usize = table_create_exact(new_buckets);
+    var i: usize = 0;
+    while (i < old_buckets) {
+        if (raw_string.get(table, table_state_slot(i)) == "1") {
+            table_put_no_grow(
+                replacement,
+                raw_string.get(table, table_key_slot(i)),
+                raw_string.get(table, table_value_slot(i))
+            );
+        }
+        i = i + 1;
+    }
+    raw_string.swap(table, replacement);
+}
+
+fn table_put(table: usize, key: str, value: str) -> bool {
+    val len: usize = table_len(table);
+    val buckets: usize = table_buckets(table);
+    val projected: usize = (len + 1) * 10;
+    val limit: usize = buckets * 7;
+    if (projected >= limit) {
+        table_rehash(table, buckets * 2);
+    }
+    return table_put_no_grow(table, key, value);
+}
+
+fn table_contains(table: usize, key: str) -> bool {
+    val buckets: usize = table_buckets(table);
+    val start: usize = table_hash(key, buckets);
+    var probe: usize = 0;
+    var found: bool = false;
+    var done: bool = false;
+    while ((probe < buckets) && !done) {
+        val index: usize = (start + probe) % buckets;
+        val state: str = raw_string.get(table, table_state_slot(index));
+        if (state == "") {
+            done = true;
+        } else {
+            if (state == "1") {
+                if (raw_string.get(table, table_key_slot(index)) == key) {
+                    found = true;
+                    done = true;
+                }
+            }
+        }
+        probe = probe + 1;
+    }
+    return found;
+}
+
+fn table_get_or(table: usize, key: str, fallback: str) -> str {
+    val buckets: usize = table_buckets(table);
+    val start: usize = table_hash(key, buckets);
+    var probe: usize = 0;
+    var result: str = fallback;
+    var done: bool = false;
+    while ((probe < buckets) && !done) {
+        val index: usize = (start + probe) % buckets;
+        val state: str = raw_string.get(table, table_state_slot(index));
+        if (state == "") {
+            done = true;
+        } else {
+            if (state == "1") {
+                if (raw_string.get(table, table_key_slot(index)) == key) {
+                    result = raw_string.get(table, table_value_slot(index));
+                    done = true;
+                }
+            }
+        }
+        probe = probe + 1;
+    }
+    return result;
+}
+
+fn table_remove(table: usize, key: str) -> bool {
+    val buckets: usize = table_buckets(table);
+    val start: usize = table_hash(key, buckets);
+    var probe: usize = 0;
+    var removed: bool = false;
+    var done: bool = false;
+    while ((probe < buckets) && !done) {
+        val index: usize = (start + probe) % buckets;
+        val state: str = raw_string.get(table, table_state_slot(index));
+        if (state == "") {
+            done = true;
+        } else {
+            if (state == "1") {
+                if (raw_string.get(table, table_key_slot(index)) == key) {
+                    raw_string.set(table, table_state_slot(index), "2");
+                    raw_string.set(table, table_key_slot(index), "");
+                    raw_string.set(table, table_value_slot(index), "");
+                    raw_string.set(table, 0, string.from_usize(table_len(table) - 1));
+                    removed = true;
+                    done = true;
+                }
+            }
+        }
+        probe = probe + 1;
+    }
+    return removed;
+}
+
+fn table_clear(table: usize) -> void {
+    val buckets: usize = table_buckets(table);
+    var i: usize = 0;
+    while (i < buckets) {
+        raw_string.set(table, table_state_slot(i), "");
+        raw_string.set(table, table_key_slot(i), "");
+        raw_string.set(table, table_value_slot(i), "");
+        i = i + 1;
+    }
+    raw_string.set(table, 0, "0");
+}
+
+// ---------------------------------------------------------------------------
+// HashSetU64
+// ---------------------------------------------------------------------------
+
+pub fn hash_set_u64_create() -> usize { return table_create(); }
+pub fn hash_set_u64_len(set: usize) -> usize { return table_len(set); }
+pub fn hash_set_u64_is_empty(set: usize) -> bool { return table_len(set) == 0; }
+
+pub fn hash_set_u64_contains(set: usize, value: u64) -> bool {
+    return table_contains(set, string.from_u64(value));
+}
+
+pub fn hash_set_u64_insert(set: usize, value: u64) -> bool {
+    return table_put(set, string.from_u64(value), "1");
+}
+
+pub fn hash_set_u64_remove(set: usize, value: u64) -> bool {
+    return table_remove(set, string.from_u64(value));
+}
+
+pub fn hash_set_u64_clear(set: usize) -> void { table_clear(set); }
+
+// ---------------------------------------------------------------------------
+// HashMapStringUsize
+// ---------------------------------------------------------------------------
+
+pub fn hash_map_string_usize_create() -> usize { return table_create(); }
+pub fn hash_map_string_usize_len(map: usize) -> usize { return table_len(map); }
+pub fn hash_map_string_usize_is_empty(map: usize) -> bool { return table_len(map) == 0; }
+pub fn hash_map_string_usize_contains(map: usize, key: str) -> bool { return table_contains(map, key); }
+
+pub fn hash_map_string_usize_put(map: usize, key: str, value: usize) -> bool {
+    return table_put(map, key, string.from_usize(value));
+}
+
+pub fn hash_map_string_usize_get_or(map: usize, key: str, fallback: usize) -> usize {
+    if (!table_contains(map, key)) { return fallback; }
+    return string.parse_usize(table_get_or(map, key, "0"));
+}
+
+pub fn hash_map_string_usize_remove(map: usize, key: str) -> bool { return table_remove(map, key); }
+pub fn hash_map_string_usize_clear(map: usize) -> void { table_clear(map); }
+
+// ---------------------------------------------------------------------------
+// HashMapStringU64
+// ---------------------------------------------------------------------------
+
+pub fn hash_map_string_u64_create() -> usize { return table_create(); }
+pub fn hash_map_string_u64_len(map: usize) -> usize { return table_len(map); }
+pub fn hash_map_string_u64_is_empty(map: usize) -> bool { return table_len(map) == 0; }
+pub fn hash_map_string_u64_contains(map: usize, key: str) -> bool { return table_contains(map, key); }
+
+pub fn hash_map_string_u64_put(map: usize, key: str, value: u64) -> bool {
+    return table_put(map, key, string.from_u64(value));
+}
+
+pub fn hash_map_string_u64_get_or(map: usize, key: str, fallback: u64) -> u64 {
+    if (!table_contains(map, key)) { return fallback; }
+    return string.parse_u64(table_get_or(map, key, "0"));
+}
+
+pub fn hash_map_string_u64_remove(map: usize, key: str) -> bool { return table_remove(map, key); }
+pub fn hash_map_string_u64_clear(map: usize) -> void { table_clear(map); }
+
+// ---------------------------------------------------------------------------
+// HashMapU64U64
+// ---------------------------------------------------------------------------
+
+pub fn hash_map_u64_u64_create() -> usize { return table_create(); }
+pub fn hash_map_u64_u64_len(map: usize) -> usize { return table_len(map); }
+pub fn hash_map_u64_u64_is_empty(map: usize) -> bool { return table_len(map) == 0; }
+
+pub fn hash_map_u64_u64_contains(map: usize, key: u64) -> bool {
+    return table_contains(map, string.from_u64(key));
+}
+
+pub fn hash_map_u64_u64_put(map: usize, key: u64, value: u64) -> bool {
+    return table_put(map, string.from_u64(key), string.from_u64(value));
+}
+
+pub fn hash_map_u64_u64_get_or(map: usize, key: u64, fallback: u64) -> u64 {
+    val encoded: str = string.from_u64(key);
+    if (!table_contains(map, encoded)) { return fallback; }
+    return string.parse_u64(table_get_or(map, encoded, "0"));
+}
+
+pub fn hash_map_u64_u64_remove(map: usize, key: u64) -> bool {
+    return table_remove(map, string.from_u64(key));
+}
+
+pub fn hash_map_u64_u64_clear(map: usize) -> void { table_clear(map); }
