@@ -1,0 +1,55 @@
+module std.string;
+
+import core;
+
+// Small hosted/string bootstrap surface used by real integration programs.
+// These operations are intended to become ordinary Forge implementations as
+// the String/collection substrate matures.
+nfn __forge_string_concat(a: str, b: str) -> str {
+}
+
+nfn __forge_string_line_count(text: str) -> usize {
+}
+
+nfn __forge_string_line_at(text: str, index: usize) -> str {
+}
+
+nfn __forge_string_has_tab(text: str) -> bool {
+}
+
+nfn __forge_string_before_tab(text: str) -> str {
+}
+
+nfn __forge_string_after_tab(text: str) -> str {
+}
+
+nfn __forge_string_from_u64(value: u64) -> str {
+}
+
+pub fn concat(a: str, b: str) -> str {
+    return __forge_string_concat(a, b);
+}
+
+pub fn line_count(text: str) -> usize {
+    return __forge_string_line_count(text);
+}
+
+pub fn line_at(text: str, index: usize) -> str {
+    return __forge_string_line_at(text, index);
+}
+
+pub fn has_tab(text: str) -> bool {
+    return __forge_string_has_tab(text);
+}
+
+pub fn before_tab(text: str) -> str {
+    return __forge_string_before_tab(text);
+}
+
+pub fn after_tab(text: str) -> str {
+    return __forge_string_after_tab(text);
+}
+
+pub fn from_u64(value: u64) -> str {
+    return __forge_string_from_u64(value);
+}
