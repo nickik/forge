@@ -1150,3 +1150,286 @@ fn typed_hir_retains_fir_boundary_facts() {
         forge_frontend::TypedExprKind::OptionalPromote { .. }
     )));
 }
+
+#[test]
+fn bitstruct_layout_is_semantic_and_lsb_first() {
+    let output = check(
+        r#"
+        module test.bitstruct_layout;
+        bitstruct Status: u16 {
+            ready: 1;
+            error: 1;
+            mode: 3;
+            code: 5;
+            reserved: 6;
+        }
+        fn mode(value: Status) -> u8 { return value.mode; }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let info = output.bitstructs.values().next().expect("bitstruct info");
+    assert_eq!(info.storage_bits, 16);
+    assert_eq!(info.fields["ready"].offset, 0);
+    assert_eq!(info.fields["ready"].ty, Ty::Bool);
+    assert_eq!(info.fields["mode"].offset, 2);
+    assert_eq!(info.fields["mode"].width, 3);
+    assert_eq!(
+        info.fields["mode"].ty,
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W8
+        }
+    );
+    assert_eq!(info.fields["reserved"].offset, 10);
+}
+
+#[test]
+fn bitstruct_rejects_bad_storage_and_incomplete_layout() {
+    let storage = check(
+        r#"
+        module test.bitstruct_bad_storage;
+        bitstruct Bad: i16 { all: 16; }
+        "#,
+    );
+    assert!(
+        has(&storage, "bitstruct/storage"),
+        "{:?}",
+        storage.diagnostics
+    );
+
+    let size = check(
+        r#"
+        module test.bitstruct_bad_size;
+        bitstruct Bad: u16 { low: 8; }
+        "#,
+    );
+    assert!(has(&size, "bitstruct/size"), "{:?}", size.diagnostics);
+}
+
+#[test]
+fn raw_pointer_deref_requires_unsafe_and_records_authorization() {
+    let bad = check(
+        r#"
+        module test.raw_deref_bad;
+        fn read(p: *u32) -> u32 { return *p; }
+        "#,
+    );
+    assert!(has(&bad, "unsafe/required"), "{:?}", bad.diagnostics);
+
+    let good = check(
+        r#"
+        module test.raw_deref_good;
+        fn read(p: *u32) -> u32 { unsafe { return *p; } }
+        "#,
+    );
+    assert!(good.diagnostics.is_empty(), "{:?}", good.diagnostics);
+    let body = good.functions.values().next().unwrap();
+    assert_eq!(body.unsafe_expressions.len(), 1);
+}
+
+#[test]
+fn map_patterns_stop_at_semantic_boundary() {
+    let output = check(
+        r#"
+        module test.map_pattern_deferred;
+        fn read(value: u32) -> i32 {
+            return match (value) { { :name name, .. } => 1, _ => 0 };
+        }
+        "#,
+    );
+    assert!(
+        has(&output, "pattern/map-deferred"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
+fn runtime_global_initializer_keeps_typed_body() {
+    let output = check(
+        r#"
+        module test.runtime_global;
+        fn seed() -> u32 { return 7u32; }
+        val runtime_value: u32 = seed();
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let global = output
+        .globals
+        .values()
+        .find(|global| !matches!(global.binding, forge_frontend::ast::BindingKind::Const))
+        .expect("runtime global");
+    assert_eq!(
+        global.ty,
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W32
+        }
+    );
+    assert!(!global.expressions.is_empty());
+}
+
+#[test]
+fn normalizes_named_defaults_before_fir() {
+    let output = check(
+        r#"
+        module test.default_plan;
+        nfn connect(host: str, port: u16 = 443u16) -> bool { return true; }
+        fn main() -> bool { return connect(:host = "example"); }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(output
+        .functions
+        .values()
+        .any(|body| body.call_plans.values().any(|plan| {
+            plan.arguments.iter().any(|arg| {
+                matches!(
+                    arg,
+                    forge_frontend::ResolvedCallArgument::Default { parameter: 1, .. }
+                )
+            })
+        })));
+}
+
+#[test]
+fn retains_typed_match_plan() {
+    let output = check(
+        r#"
+        module test.match_plan;
+        tagged Value { Left { x: u32; }, Right { x: u32; }, }
+        fn read(value: Value) -> u32 {
+            return match (value) {
+                Value::Left{x} => x,
+                Value::Right{x} => x,
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let plan = output
+        .functions
+        .values()
+        .flat_map(|body| body.match_plans.values())
+        .next()
+        .expect("match plan");
+    assert_eq!(plan.patterns.len(), 2);
+    assert!(matches!(
+        plan.patterns[0].kind,
+        forge_frontend::TypedPatternKind::Variant { .. }
+    ));
+}
+
+#[test]
+fn open_domain_match_requires_irrefutable_arm() {
+    let output = check(
+        r#"
+        module test.open_match;
+        fn read(value: u32) -> u32 {
+            return match (value) { 1u32 => 1u32 };
+        }
+        "#,
+    );
+    assert!(
+        has(&output, "match/non-exhaustive"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
+fn closure_capture_plan_keeps_source_type_and_mode() {
+    let output = check(
+        r#"
+        module test.closure_plan;
+        fn main() -> u32 {
+            var count: u32 = 1u32;
+            val f = [&mut count]() -> u32 { return count; };
+            return 0u32;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let plan = output
+        .functions
+        .values()
+        .flat_map(|body| body.closure_plans.values())
+        .next()
+        .expect("closure plan");
+    assert_eq!(plan.captures.len(), 1);
+    assert_eq!(
+        plan.captures[0].mode,
+        forge_frontend::CaptureMode::MutableReference
+    );
+    assert_eq!(
+        plan.captures[0].ty,
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W32
+        }
+    );
+}
+
+#[test]
+fn context_slots_are_concrete_and_validated() {
+    let good = check(
+        r#"
+        module test.context_good;
+        fn main(value: u32) -> u32 {
+            val slot = context.logger;
+            with context (:logger = value) { return value; }
+        }
+        "#,
+    );
+    assert!(good.diagnostics.is_empty(), "{:?}", good.diagnostics);
+
+    let bad = check(
+        r#"
+        module test.context_bad;
+        fn main(value: u32) -> u32 {
+            with context (:database = value) { return value; }
+        }
+        "#,
+    );
+    assert!(has(&bad, "context/unknown-slot"), "{:?}", bad.diagnostics);
+}
+
+#[test]
+fn select_resolves_nominal_recv_protocol() {
+    let output = check(
+        r#"
+        module test.select_protocol;
+        struct Jobs { marker: u32; }
+        impl Jobs {
+            fn receive(self: &Jobs) -> u32 { return self.marker; }
+        }
+        fn consume(jobs: Jobs) -> void {
+            select {
+                recv jobs -> job => { val x: u32 = job; }
+                timeout #duration "100ms" => { }
+            }
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(output
+        .functions
+        .values()
+        .any(|body| !body.select_receives.is_empty()));
+}
+
+#[test]
+fn bitstruct_constant_write_is_range_checked() {
+    let output = check(
+        r#"
+        module test.bitstruct_write;
+        bitstruct Status: u8 { mode: 3; reserved: 5; }
+        fn set(value: &mut Status) -> void { value.mode = 8u8; }
+        "#,
+    );
+    assert!(
+        has(&output, "bitstruct/value-range"),
+        "{:?}",
+        output.diagnostics
+    );
+}

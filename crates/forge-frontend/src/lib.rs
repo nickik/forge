@@ -28,8 +28,11 @@ pub use resolution::{
     ResolvedName,
 };
 pub use typecheck::{
-    type_check_module, ConstValue, IntWidth, ResolvedReceiver, Ty, TypeCheckOutput, TypeDiagnostic,
-    TypedBody, TypedExpr, TypedExprKind,
+    type_check_module, BitStructFieldInfo, BitStructInfo, CaptureMode, ConstValue, ContextSlot,
+    IntWidth, ResolvedCallArgument, ResolvedCallPlan, ResolvedReceiver, Ty, TypeCheckOutput,
+    TypeDiagnostic, TypedBody, TypedCapture, TypedClosurePlan, TypedExpr, TypedExprKind,
+    TypedGlobal, TypedMatchPlan, TypedPattern, TypedPatternField, TypedPatternKind,
+    TypedSelectReceive,
 };
 
 pub use fir::{

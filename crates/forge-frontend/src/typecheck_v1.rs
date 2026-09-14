@@ -33,6 +33,8 @@ pub enum Ty {
     Char,
     Str,
     Byte,
+    Duration,
+    ContextSlot(ContextSlot),
     Int {
         signed: bool,
         width: IntWidth,
@@ -84,6 +86,161 @@ pub enum ConstValue {
     Integer { value: i128 },
     Bool { value: bool },
     Char { value: char },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BitStructFieldInfo {
+    pub offset: u32,
+    pub width: u32,
+    pub ty: Ty,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BitStructInfo {
+    pub storage: Ty,
+    pub storage_bits: u32,
+    pub fields: BTreeMap<String, BitStructFieldInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TypedGlobal {
+    pub owner: DefId,
+    pub binding: ast::BindingKind,
+    pub ty: Ty,
+    pub initializer: HirExpr,
+    pub expressions: Vec<TypedExpr>,
+    pub unsafe_expressions: BTreeSet<ExprId>,
+    pub call_plans: BTreeMap<ExprId, ResolvedCallPlan>,
+    pub closure_plans: BTreeMap<ExprId, TypedClosurePlan>,
+    pub match_plans: BTreeMap<ExprId, TypedMatchPlan>,
+    pub select_receives: BTreeMap<ExprId, TypedSelectReceive>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextSlot {
+    Scratch,
+    Logger,
+    Clock,
+    Random,
+    Trace,
+}
+
+impl ContextSlot {
+    pub(crate) fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "scratch" => Some(Self::Scratch),
+            "logger" => Some(Self::Logger),
+            "clock" => Some(Self::Clock),
+            "random" => Some(Self::Random),
+            "trace" => Some(Self::Trace),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CaptureMode {
+    Value,
+    SharedReference,
+    MutableReference,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TypedCapture {
+    pub local: LocalId,
+    pub source: ResolvedName,
+    pub ty: Ty,
+    pub mode: CaptureMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TypedClosurePlan {
+    pub captures: Vec<TypedCapture>,
+    pub params: Vec<(LocalId, Ty)>,
+    pub result: Ty,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TypedPattern {
+    pub span: Span,
+    pub ty: Ty,
+    pub kind: TypedPatternKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "pattern_kind", rename_all = "snake_case")]
+pub enum TypedPatternKind {
+    Wildcard,
+    Binding {
+        local: LocalId,
+    },
+    Literal {
+        value: ast::PatternLiteral,
+    },
+    Range {
+        start: ast::PatternLiteral,
+        end: ast::PatternLiteral,
+        inclusive: bool,
+    },
+    Variant {
+        name: String,
+        fields: Vec<TypedPatternField>,
+    },
+    None,
+    Some {
+        value: Box<TypedPattern>,
+    },
+    Struct {
+        fields: Vec<TypedPatternField>,
+    },
+    Sequence {
+        items: Vec<TypedPattern>,
+        rest: Option<LocalId>,
+    },
+    Or {
+        patterns: Vec<TypedPattern>,
+    },
+    As {
+        local: LocalId,
+        pattern: Box<TypedPattern>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TypedPatternField {
+    pub name: String,
+    pub ty: Ty,
+    pub pattern: Option<Box<TypedPattern>>,
+    pub shorthand_local: Option<LocalId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TypedMatchPlan {
+    pub scrutinee_type: Ty,
+    pub patterns: Vec<TypedPattern>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ResolvedCallArgument {
+    Provided { parameter: usize, argument: usize },
+    Default { parameter: usize, value: HirExpr },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ResolvedCallPlan {
+    pub target: DefId,
+    pub method: bool,
+    pub receiver: Option<ResolvedReceiver>,
+    pub arguments: Vec<ResolvedCallArgument>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TypedSelectReceive {
+    pub recv_target: DefId,
+    pub payload_type: Ty,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -142,12 +299,19 @@ pub struct TypedBody {
     pub local_types: BTreeMap<LocalId, Ty>,
     pub local_constants: BTreeMap<LocalId, ConstValue>,
     pub expressions: Vec<TypedExpr>,
+    pub unsafe_expressions: BTreeSet<ExprId>,
+    pub call_plans: BTreeMap<ExprId, ResolvedCallPlan>,
+    pub closure_plans: BTreeMap<ExprId, TypedClosurePlan>,
+    pub match_plans: BTreeMap<ExprId, TypedMatchPlan>,
+    pub select_receives: BTreeMap<ExprId, TypedSelectReceive>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Default)]
 pub struct TypeCheckOutput {
     pub functions: BTreeMap<DefId, TypedBody>,
+    pub globals: BTreeMap<DefId, TypedGlobal>,
     pub global_types: BTreeMap<DefId, Ty>,
+    pub bitstructs: BTreeMap<DefId, BitStructInfo>,
     pub constants: BTreeMap<DefId, ConstValue>,
     pub enum_values: BTreeMap<DefId, BTreeMap<String, i128>>,
     pub metadata: MetadataTable,
@@ -165,7 +329,7 @@ struct FunctionSig {
 struct ParamSig {
     name: String,
     ty: Ty,
-    has_default: bool,
+    default: Option<HirExpr>,
 }
 
 #[derive(Debug, Clone)]
@@ -186,6 +350,7 @@ enum TypeInfoKind {
     Struct(BTreeMap<String, FieldInfo>),
     Enum(BTreeSet<String>),
     Tagged(BTreeMap<String, BTreeMap<String, FieldInfo>>),
+    BitStruct(BitStructInfo),
     Nominal,
 }
 
@@ -195,6 +360,130 @@ enum MemberLookup {
     MissingField,
     Unsupported,
     Unknown,
+}
+
+fn collect_bitstruct_info(
+    source: &ast::SourceFile,
+    diagnostics: &mut Vec<TypeDiagnostic>,
+) -> BTreeMap<DefId, BitStructInfo> {
+    let mut result = BTreeMap::new();
+    for (index, declaration) in source.declarations.iter().enumerate() {
+        let DeclKind::BitStruct(bitstruct) = &declaration.kind.kind else {
+            continue;
+        };
+        let owner = DefId(index as u32);
+        let (storage, storage_bits) = match &bitstruct.storage.kind {
+            ast::TypeKind::Named { path } if path.segments.len() == 1 => match path.segments[0]
+                .as_str()
+            {
+                "u8" => (
+                    Ty::Int {
+                        signed: false,
+                        width: IntWidth::W8,
+                    },
+                    8,
+                ),
+                "u16" => (
+                    Ty::Int {
+                        signed: false,
+                        width: IntWidth::W16,
+                    },
+                    16,
+                ),
+                "u32" => (
+                    Ty::Int {
+                        signed: false,
+                        width: IntWidth::W32,
+                    },
+                    32,
+                ),
+                "u64" => (
+                    Ty::Int {
+                        signed: false,
+                        width: IntWidth::W64,
+                    },
+                    64,
+                ),
+                _ => {
+                    diagnostics.push(TypeDiagnostic {
+                        span: bitstruct.storage.span,
+                        code: "bitstruct/storage".into(),
+                        message: "bitstruct storage must be exactly u8, u16, u32, or u64".into(),
+                    });
+                    continue;
+                }
+            },
+            _ => {
+                diagnostics.push(TypeDiagnostic {
+                    span: bitstruct.storage.span,
+                    code: "bitstruct/storage".into(),
+                    message: "bitstruct storage must be exactly u8, u16, u32, or u64".into(),
+                });
+                continue;
+            }
+        };
+        let mut offset = 0u32;
+        let mut fields = BTreeMap::new();
+        for field in &bitstruct.fields {
+            if field.width == 0 || field.width > storage_bits {
+                diagnostics.push(TypeDiagnostic {
+                    span: declaration.span,
+                    code: "bitstruct/field-width".into(),
+                    message: format!(
+                        "bitstruct field `{}` has invalid width {}; width must be in 1..={storage_bits}",
+                        field.name, field.width
+                    ),
+                });
+                continue;
+            }
+            let ty = match field.width {
+                1 => Ty::Bool,
+                2..=8 => Ty::Int {
+                    signed: false,
+                    width: IntWidth::W8,
+                },
+                9..=16 => Ty::Int {
+                    signed: false,
+                    width: IntWidth::W16,
+                },
+                17..=32 => Ty::Int {
+                    signed: false,
+                    width: IntWidth::W32,
+                },
+                _ => Ty::Int {
+                    signed: false,
+                    width: IntWidth::W64,
+                },
+            };
+            fields.insert(
+                field.name.clone(),
+                BitStructFieldInfo {
+                    offset,
+                    width: field.width,
+                    ty,
+                },
+            );
+            offset = offset.saturating_add(field.width);
+        }
+        if offset != storage_bits {
+            diagnostics.push(TypeDiagnostic {
+                span: declaration.span,
+                code: "bitstruct/size".into(),
+                message: format!(
+                    "bitstruct fields total {offset} bits but storage requires exactly {storage_bits}; spell unused bits as reserved fields"
+                ),
+            });
+        }
+        result.insert(
+            owner,
+            BitStructInfo {
+                storage,
+                storage_bits,
+                fields,
+            },
+        );
+    }
+    result
 }
 
 pub fn type_check_module(
@@ -211,7 +500,9 @@ pub fn type_check_module(
     output.constants = constant_values.clone();
     output.diagnostics.extend(constant_diagnostics);
     validate_declaration_array_lengths(source, module, &constant_values, &mut output.diagnostics);
-    let env = ModuleTypeEnv::build(source, module, &constant_values);
+    let bitstructs = collect_bitstruct_info(source, &mut output.diagnostics);
+    output.bitstructs = bitstructs.clone();
+    let env = ModuleTypeEnv::build(source, module, bodies, &constant_values, &bitstructs);
 
     for default in &bodies.field_defaults {
         let mut checker = BodyChecker::new(&env, Ty::Void, &mut output.diagnostics);
@@ -291,6 +582,11 @@ pub fn type_check_module(
                 local_types: checker.local_types,
                 local_constants: checker.local_constants,
                 expressions: checker.expressions,
+                unsafe_expressions: checker.unsafe_expressions,
+                call_plans: checker.call_plans,
+                closure_plans: checker.closure_plans,
+                match_plans: checker.match_plans,
+                select_receives: checker.select_receives,
             },
         );
     }
@@ -308,7 +604,22 @@ pub fn type_check_module(
         } else {
             checker.materialize_literal(global.value.span, value_ty)
         };
-        output.global_types.insert(*owner, ty);
+        output.global_types.insert(*owner, ty.clone());
+        output.globals.insert(
+            *owner,
+            TypedGlobal {
+                owner: *owner,
+                binding: global.binding,
+                ty,
+                initializer: global.value.clone(),
+                expressions: checker.expressions,
+                unsafe_expressions: checker.unsafe_expressions,
+                call_plans: checker.call_plans,
+                closure_plans: checker.closure_plans,
+                match_plans: checker.match_plans,
+                select_receives: checker.select_receives,
+            },
+        );
     }
 
     output
@@ -326,7 +637,9 @@ impl ModuleTypeEnv {
     fn build(
         source: &ast::SourceFile,
         module: &HirModule,
+        bodies: &BodyHirOutput,
         constants: &BTreeMap<DefId, ConstValue>,
+        bitstructs: &BTreeMap<DefId, BitStructInfo>,
     ) -> Self {
         let mut env = Self {
             types: BTreeMap::new(),
@@ -455,6 +768,16 @@ impl ModuleTypeEnv {
                         },
                     );
                 }
+                DeclKind::BitStruct(_) => {
+                    if let Some(info) = bitstructs.get(&id) {
+                        env.types.insert(
+                            id,
+                            TypeInfo {
+                                kind: TypeInfoKind::BitStruct(info.clone()),
+                            },
+                        );
+                    }
+                }
                 _ => {}
             }
         }
@@ -472,13 +795,21 @@ impl ModuleTypeEnv {
         for (index, declaration) in source.declarations.iter().enumerate() {
             let id = DefId(index as u32);
             if let DeclKind::Function(function) = &declaration.kind.kind {
+                let body = bodies.functions.get(&id);
                 let params = function
                     .params
                     .iter()
-                    .map(|p| ParamSig {
-                        name: p.name.clone(),
-                        ty: env.lower_ast_type(&p.ty, module),
-                        has_default: p.default.is_some(),
+                    .enumerate()
+                    .map(|(index, p)| {
+                        let local = body.and_then(|body| body.params.get(index).map(|(id, _)| *id));
+                        let default = local.and_then(|local| {
+                            body.and_then(|body| body.param_defaults.get(&local).cloned())
+                        });
+                        ParamSig {
+                            name: p.name.clone(),
+                            ty: env.lower_ast_type(&p.ty, module),
+                            default,
+                        }
                     })
                     .collect();
                 let result = function
@@ -515,14 +846,22 @@ impl ModuleTypeEnv {
                 .filter(|method| method.impl_owner == impl_owner)
                 .collect::<Vec<_>>();
             for (method, method_def) in value.methods.iter().zip(method_defs) {
+                let body = bodies.functions.get(&method_def.id);
                 let params = method
                     .function
                     .params
                     .iter()
-                    .map(|p| ParamSig {
-                        name: p.name.clone(),
-                        ty: env.lower_ast_type(&p.ty, module),
-                        has_default: p.default.is_some(),
+                    .enumerate()
+                    .map(|(index, p)| {
+                        let local = body.and_then(|body| body.params.get(index).map(|(id, _)| *id));
+                        let default = local.and_then(|local| {
+                            body.and_then(|body| body.param_defaults.get(&local).cloned())
+                        });
+                        ParamSig {
+                            name: p.name.clone(),
+                            ty: env.lower_ast_type(&p.ty, module),
+                            default,
+                        }
                     })
                     .collect::<Vec<_>>();
                 let result = method
@@ -682,6 +1021,7 @@ impl ModuleTypeEnv {
             | Some(TypeInfoKind::Struct(_))
             | Some(TypeInfoKind::Enum(_))
             | Some(TypeInfoKind::Tagged(_))
+            | Some(TypeInfoKind::BitStruct(_))
             | Some(TypeInfoKind::Nominal) => Ty::Nominal(id),
             None => Ty::Unknown,
         }
@@ -692,6 +1032,11 @@ impl ModuleTypeEnv {
             Ty::Reference { inner, .. } => self.lookup_member(inner, name),
             Ty::Nominal(id) => match self.types.get(id).map(|info| &info.kind) {
                 Some(TypeInfoKind::Struct(fields)) => fields
+                    .get(name)
+                    .map(|field| MemberLookup::Field(field.ty.clone()))
+                    .unwrap_or(MemberLookup::MissingField),
+                Some(TypeInfoKind::BitStruct(info)) => info
+                    .fields
                     .get(name)
                     .map(|field| MemberLookup::Field(field.ty.clone()))
                     .unwrap_or(MemberLookup::MissingField),
@@ -736,6 +1081,7 @@ struct ResolvedCallInfo {
     method: bool,
     receiver: Option<ResolvedReceiver>,
     argument_parameters: Vec<usize>,
+    arguments: Vec<ResolvedCallArgument>,
 }
 
 struct BodyChecker<'a, 'd> {
@@ -745,6 +1091,12 @@ struct BodyChecker<'a, 'd> {
     local_constants: BTreeMap<LocalId, ConstValue>,
     mutable_locals: BTreeSet<LocalId>,
     expressions: Vec<TypedExpr>,
+    unsafe_depth: u32,
+    unsafe_expressions: BTreeSet<ExprId>,
+    call_plans: BTreeMap<ExprId, ResolvedCallPlan>,
+    closure_plans: BTreeMap<ExprId, TypedClosurePlan>,
+    match_plans: BTreeMap<ExprId, TypedMatchPlan>,
+    select_receives: BTreeMap<ExprId, TypedSelectReceive>,
     diagnostics: &'d mut Vec<TypeDiagnostic>,
 }
 
@@ -761,6 +1113,12 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             local_constants: BTreeMap::new(),
             mutable_locals: BTreeSet::new(),
             expressions: Vec::new(),
+            unsafe_depth: 0,
+            unsafe_expressions: BTreeSet::new(),
+            call_plans: BTreeMap::new(),
+            closure_plans: BTreeMap::new(),
+            match_plans: BTreeMap::new(),
+            select_receives: BTreeMap::new(),
             diagnostics,
         }
     }
@@ -829,6 +1187,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 let target_ty = self.check_expr(target, None);
                 let value_ty = self.check_expr(value, Some(&target_ty));
                 self.require_assignable(value.span, &target_ty, &value_ty, "type/mismatch");
+                self.check_bitstruct_write(target, value);
             }
             HirStmtKind::Expr { expr } => {
                 self.check_expr(expr, None);
@@ -916,16 +1275,51 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             HirStmtKind::DeferExpr { expr } => {
                 self.check_expr(expr, None);
             }
-            HirStmtKind::DeferBlock { block }
-            | HirStmtKind::Unsafe { block }
-            | HirStmtKind::Block { block } => self.check_block(block),
+            HirStmtKind::DeferBlock { block } | HirStmtKind::Block { block } => {
+                self.check_block(block)
+            }
+            HirStmtKind::Unsafe { block } => {
+                self.unsafe_depth += 1;
+                self.check_block(block);
+                self.unsafe_depth -= 1;
+            }
             HirStmtKind::WithContext { overrides, body } => {
-                for (_, expr) in overrides {
-                    self.check_expr(expr, None);
+                let mut seen = BTreeSet::new();
+                for (name, expr) in overrides {
+                    if ContextSlot::from_name(name).is_none() {
+                        self.diagnostic(
+                            expr.span,
+                            "context/unknown-slot",
+                            format!("unknown core context slot `{name}`"),
+                        );
+                    }
+                    if !seen.insert(name.clone()) {
+                        self.diagnostic(
+                            expr.span,
+                            "context/duplicate-slot",
+                            format!("context slot `{name}` is overridden more than once"),
+                        );
+                    }
+                    let actual = self.check_expr(expr, None);
+                    if matches!(
+                        actual,
+                        Ty::Unknown
+                            | Ty::Error
+                            | Ty::IntLiteral
+                            | Ty::FloatLiteral
+                            | Ty::NoneLiteral
+                    ) {
+                        self.diagnostic(
+                            expr.span,
+                            "context/value-type",
+                            "context override requires a concrete typed value",
+                        );
+                    }
                 }
                 self.check_block(body);
             }
             HirStmtKind::Select { arms } => {
+                let mut timeout_seen = false;
                 for arm in arms {
                     match arm {
                         crate::body_hir::HirSelectArm::Receive {
@@ -933,12 +1327,64 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                             pattern,
                             body,
                         } => {
-                            self.check_expr(channel, None);
-                            self.check_pattern(pattern, &Ty::Unknown);
+                            let channel_ty = self.check_expr(channel, None);
+                            if let Some((recv_target, sig)) =
+                                self.env.lookup_method(&channel_ty, "receive")
+                            {
+                                let sig = sig.clone();
+                                if sig.params.len() != 1 {
+                                    self.diagnostic(
+                                        channel.span,
+                                        "select/channel-protocol",
+                                        "select channel `receive` method must take only its receiver",
+                                    );
+                                    self.check_pattern(pattern, &Ty::Error);
+                                } else {
+                                    let payload_type = sig.result.clone();
+                                    if !self.pattern_is_irrefutable(pattern, &payload_type) {
+                                        self.diagnostic(
+                                            pattern.span,
+                                            "select/refutable-pattern",
+                                            "select receive bindings must be irrefutable in Forge v1",
+                                        );
+                                    }
+                                    self.check_pattern(pattern, &payload_type);
+                                    self.select_receives.insert(
+                                        channel.id,
+                                        TypedSelectReceive {
+                                            recv_target,
+                                            payload_type,
+                                        },
+                                    );
+                                }
+                            } else {
+                                self.diagnostic(
+                                    channel.span,
+                                    "select/channel-protocol",
+                                    format!(
+                                        "type {channel_ty:?} does not provide the required `receive` method"
+                                    ),
+                                );
+                                self.check_pattern(pattern, &Ty::Error);
+                            }
                             self.check_block(body);
                         }
                         crate::body_hir::HirSelectArm::Timeout { duration, body } => {
-                            self.check_expr(duration, None);
+                            if timeout_seen {
+                                self.diagnostic(
+                                    duration.span,
+                                    "select/duplicate-timeout",
+                                    "select may contain at most one timeout arm",
+                                );
+                            }
+                            timeout_seen = true;
+                            let actual = self.check_expr(duration, Some(&Ty::Duration));
+                            self.require_assignable(
+                                duration.span,
+                                &Ty::Duration,
+                                &actual,
+                                "select/timeout-type",
+                            );
                             self.check_block(body);
                         }
                     }
@@ -962,7 +1408,20 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             },
             HirExprKind::Bool { .. } => Ty::Bool,
             HirExprKind::None => Ty::NoneLiteral,
-            HirExprKind::Keyword { .. } | HirExprKind::ReaderForm { .. } => Ty::Unknown,
+            HirExprKind::Keyword { .. } => Ty::Unknown,
+            HirExprKind::ReaderForm { tag, .. } if tag == "duration" => Ty::Duration,
+            HirExprKind::ReaderForm { .. } => Ty::Unknown,
+            HirExprKind::Context { name } => match ContextSlot::from_name(name) {
+                Some(slot) => Ty::ContextSlot(slot),
+                None => {
+                    self.diagnostic(
+                        expr.span,
+                        "context/unknown-slot",
+                        format!("unknown core context slot `{name}`"),
+                    );
+                    Ty::Error
+                }
+            },
             HirExprKind::Name { reference } => self.type_of_name(reference.root),
             HirExprKind::Qualified { namespace, name } => {
                 let ty = self.env.ty_from_ref(namespace);
@@ -1002,6 +1461,17 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             }
             HirExprKind::Unary { op, value } => {
                 let v = self.check_expr(value, expected);
+                if matches!(op, UnaryOp::Deref) && matches!(&v, Ty::Pointer { .. }) {
+                    if self.unsafe_depth == 0 {
+                        self.diagnostic(
+                            expr.span,
+                            "unsafe/required",
+                            "raw pointer dereference requires an `unsafe` block",
+                        );
+                    } else {
+                        self.unsafe_expressions.insert(expr.id);
+                    }
+                }
                 self.check_unary(expr.span, *op, v)
             }
             HirExprKind::Binary { op, left, right } => {
@@ -1012,7 +1482,9 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 resolved_call = call;
                 result
             }
-            HirExprKind::TypeCall { target, args } => self.check_type_call(expr.span, target, args),
+            HirExprKind::TypeCall { target, args } => {
+                self.check_type_call(expr.id, expr.span, target, args)
+            }
             HirExprKind::Index { base, index } => {
                 let base_ty = self.check_expr(base, None);
                 if self.is_type_expr(index) {
@@ -1072,20 +1544,60 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 }
             },
             HirExprKind::Closure {
+                captures,
                 params,
                 return_type,
                 body,
-                ..
             } => {
+                let outer_types = self.local_types.clone();
+                let mut typed_captures = Vec::with_capacity(captures.len());
+                for capture in captures {
+                    let source_ty = match capture.source {
+                        ResolvedName::Local(id) => {
+                            outer_types.get(&id).cloned().unwrap_or(Ty::Error)
+                        }
+                        other => self.type_of_name(other),
+                    };
+                    let mode = if capture.by_reference {
+                        if capture.mutable {
+                            CaptureMode::MutableReference
+                        } else {
+                            CaptureMode::SharedReference
+                        }
+                    } else {
+                        CaptureMode::Value
+                    };
+                    if mode == CaptureMode::MutableReference {
+                        if let ResolvedName::Local(id) = capture.source {
+                            if !self.mutable_locals.contains(&id) {
+                                self.diagnostic(
+                                    expr.span,
+                                    "closure/mutable-capture",
+                                    "mutable-reference capture requires a mutable source binding",
+                                );
+                            }
+                        }
+                    }
+                    typed_captures.push(TypedCapture {
+                        local: capture.local,
+                        source: capture.source,
+                        ty: source_ty,
+                        mode,
+                    });
+                }
+
                 let saved = std::mem::take(&mut self.local_types);
-                let ptys: Vec<Ty> = params
+                for capture in &typed_captures {
+                    self.local_types.insert(capture.local, capture.ty.clone());
+                }
+                let ptys: Vec<(LocalId, Ty)> = params
                     .iter()
                     .map(|(id, t)| {
                         let ty = self
                             .env
                             .lower_hir_type_with_locals(t, &self.local_constants);
                         self.local_types.insert(*id, ty.clone());
-                        ty
+                        (*id, ty)
                     })
                     .collect();
                 let result = return_type
@@ -1094,13 +1606,28 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         self.env
                             .lower_hir_type_with_locals(t, &self.local_constants)
                     })
-                    .unwrap_or(Ty::Unknown);
+                    .unwrap_or_else(|| {
+                        self.diagnostic(
+                            expr.span,
+                            "closure/return-type-required",
+                            "Forge v1 closures require an explicit return type",
+                        );
+                        Ty::Error
+                    });
                 let old_return = std::mem::replace(&mut self.expected_return, result.clone());
                 self.check_block(body);
                 self.expected_return = old_return;
                 self.local_types.extend(saved);
+                self.closure_plans.insert(
+                    expr.id,
+                    TypedClosurePlan {
+                        captures: typed_captures,
+                        params: ptys.clone(),
+                        result: result.clone(),
+                    },
+                );
                 Ty::Closure {
-                    params: ptys,
+                    params: ptys.into_iter().map(|(_, ty)| ty).collect(),
                     result: Box::new(result),
                 }
             }
@@ -1134,6 +1661,17 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     }
                 }
                 self.check_match_exhaustiveness(expr.span, &matched, arms);
+                let patterns = arms
+                    .iter()
+                    .map(|arm| self.resolve_typed_pattern(&arm.pattern, &matched))
+                    .collect();
+                self.match_plans.insert(
+                    expr.id,
+                    TypedMatchPlan {
+                        scrutinee_type: matched.clone(),
+                        patterns,
+                    },
+                );
                 result
             }
             HirExprKind::Error => Ty::Error,
@@ -1157,6 +1695,17 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             {
                 ty = expected.clone();
             }
+        }
+        if let Some(call) = resolved_call.as_ref() {
+            self.call_plans.insert(
+                expr.id,
+                ResolvedCallPlan {
+                    target: call.target,
+                    method: call.method,
+                    receiver: call.receiver,
+                    arguments: call.arguments.clone(),
+                },
+            );
         }
         let base_kind = if let Some((source_error, target_error)) = resolved_try {
             TypedExprKind::ResolvedTry {
@@ -1201,6 +1750,49 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 _ => false,
             },
             _ => false,
+        }
+    }
+
+    fn check_bitstruct_write(&mut self, target: &HirExpr, value: &HirExpr) {
+        let HirExprKind::Member { base, name } = &target.kind else {
+            return;
+        };
+        let base_ty = self.place_type(base);
+        let nominal = match base_ty {
+            Ty::Nominal(id) => Some(id),
+            Ty::Reference { inner, .. } => match *inner {
+                Ty::Nominal(id) => Some(id),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some(id) = nominal else {
+            return;
+        };
+        let Some(TypeInfoKind::BitStruct(info)) = self.env.types.get(&id).map(|info| &info.kind)
+        else {
+            return;
+        };
+        let Some(field) = info.fields.get(name) else {
+            return;
+        };
+        if field.width == 1 {
+            return;
+        }
+        if let Ok(ConstValue::Integer { value: integer }) =
+            eval_const_hir_with_locals(value, &self.env.constants, &self.local_constants)
+        {
+            let limit = 1i128.checked_shl(field.width).unwrap_or(i128::MAX);
+            if integer < 0 || integer >= limit {
+                self.diagnostic(
+                    value.span,
+                    "bitstruct/value-range",
+                    format!(
+                        "value {integer} does not fit the {width}-bit field `{name}`",
+                        width = field.width
+                    ),
+                );
+            }
         }
     }
 
@@ -1520,7 +2112,8 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     result: sig.result.clone(),
                     named_arguments: sig.named_arguments,
                 };
-                let argument_parameters = self.check_function_args(span, &reduced, args);
+                let (argument_parameters, arguments) =
+                    self.check_function_args(span, &reduced, args);
                 return (
                     sig.result,
                     Some(ResolvedCallInfo {
@@ -1528,6 +2121,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         method: true,
                         receiver,
                         argument_parameters,
+                        arguments,
                     }),
                 );
             }
@@ -1535,7 +2129,8 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         if let HirExprKind::Name { reference } = &callee.kind {
             if let ResolvedName::Def(id) = reference.root {
                 if let Some(sig) = self.env.functions.get(&id).cloned() {
-                    let argument_parameters = self.check_function_args(span, &sig, args);
+                    let (argument_parameters, arguments) =
+                        self.check_function_args(span, &sig, args);
                     return (
                         sig.result,
                         Some(ResolvedCallInfo {
@@ -1543,6 +2138,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                             method: false,
                             receiver: None,
                             argument_parameters,
+                            arguments,
                         }),
                     );
                 }
@@ -1634,21 +2230,18 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         span: Span,
         sig: &FunctionSig,
         args: &[HirCallArg],
-    ) -> Vec<usize> {
+    ) -> (Vec<usize>, Vec<ResolvedCallArgument>) {
         let named = args.iter().any(|a| matches!(a, HirCallArg::Named { .. }));
-        if named {
-            if !sig.named_arguments {
-                self.diagnostic(
-                    span,
-                    "call/unknown-name",
-                    "named arguments require an nfn declaration",
-                );
-                return Vec::new();
+        let mut provided = BTreeMap::<usize, usize>::new();
+        let mut argument_parameters = Vec::with_capacity(args.len());
+        if sig.named_arguments {
+            if !args.is_empty() && !named {
+                self.diagnostic(span, "call/named-only", "nfn calls require named arguments");
             }
             let mut seen = BTreeSet::new();
-            let mut argument_parameters = Vec::with_capacity(args.len());
-            for arg in args {
+            for (argument, arg) in args.iter().enumerate() {
                 let HirCallArg::Named { name, value } = arg else {
+                    self.check_expr(arg_value(arg), None);
                     continue;
                 };
                 if !seen.insert(name.clone()) {
@@ -1663,6 +2256,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     sig.params.iter().enumerate().find(|(_, p)| p.name == *name)
                 {
                     argument_parameters.push(parameter);
+                    provided.insert(parameter, argument);
                     let actual = self.check_expr(value, Some(&param.ty));
                     self.require_assignable(value.span, &param.ty, &actual, "type/mismatch");
                 } else {
@@ -1671,42 +2265,61 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         "call/unknown-name",
                         format!("unknown named argument `{name}`"),
                     );
+                    self.check_expr(value, None);
                 }
             }
-            for param in &sig.params {
-                if !param.has_default && !seen.contains(&param.name) {
-                    self.diagnostic(
-                        span,
-                        "call/missing-argument",
-                        format!("missing required argument `{}`", param.name),
-                    );
-                }
-            }
-            argument_parameters
         } else {
-            for (index, arg) in args.iter().enumerate() {
+            if named {
+                self.diagnostic(
+                    span,
+                    "call/unknown-name",
+                    "named arguments require an nfn declaration",
+                );
+            }
+            for (argument, arg) in args.iter().enumerate() {
                 let value = arg_value(arg);
-                if let Some(param) = sig.params.get(index) {
+                if let Some(param) = sig.params.get(argument) {
+                    argument_parameters.push(argument);
+                    provided.insert(argument, argument);
                     let actual = self.check_expr(value, Some(&param.ty));
                     self.require_assignable(value.span, &param.ty, &actual, "type/mismatch");
                 } else {
                     self.diagnostic(value.span, "call/arity", "too many arguments");
+                    self.check_expr(value, None);
                 }
             }
-            for param in sig.params.iter().skip(args.len()) {
-                if !param.has_default {
-                    self.diagnostic(
-                        span,
-                        "call/missing-argument",
-                        format!("missing required argument `{}`", param.name),
-                    );
-                }
-            }
-            (0..args.len().min(sig.params.len())).collect()
         }
+
+        let mut normalized = Vec::with_capacity(sig.params.len());
+        for (parameter, param) in sig.params.iter().enumerate() {
+            if let Some(argument) = provided.get(&parameter).copied() {
+                normalized.push(ResolvedCallArgument::Provided {
+                    parameter,
+                    argument,
+                });
+            } else if let Some(value) = &param.default {
+                normalized.push(ResolvedCallArgument::Default {
+                    parameter,
+                    value: value.clone(),
+                });
+            } else {
+                self.diagnostic(
+                    span,
+                    "call/missing-argument",
+                    format!("missing required argument `{}`", param.name),
+                );
+            }
+        }
+        (argument_parameters, normalized)
     }
 
-    fn check_type_call(&mut self, span: Span, target: &HirTypeRef, args: &[HirCallArg]) -> Ty {
+    fn check_type_call(
+        &mut self,
+        expr_id: ExprId,
+        span: Span,
+        target: &HirTypeRef,
+        args: &[HirCallArg],
+    ) -> Ty {
         let target_ty = self.env.ty_from_ref(target);
         if args.len() != 1 {
             self.diagnostic(
@@ -1717,6 +2330,23 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             return Ty::Error;
         }
         let source = self.check_expr(arg_value(&args[0]), None);
+        let raw_conversion = matches!(
+            (&target_ty, &source),
+            (Ty::Pointer { .. }, Ty::Int { .. } | Ty::Byte)
+                | (Ty::Int { .. } | Ty::Byte, Ty::Pointer { .. })
+                | (Ty::Pointer { .. }, Ty::Pointer { .. })
+        );
+        if raw_conversion {
+            if self.unsafe_depth == 0 {
+                self.diagnostic(
+                    span,
+                    "unsafe/required",
+                    "raw pointer conversion requires an `unsafe` block",
+                );
+            } else {
+                self.unsafe_expressions.insert(expr_id);
+            }
+        }
         match &target_ty {
             Ty::Nominal(id) => {
                 if let Some(underlying) = self.env.distinct_underlying(*id) {
@@ -1997,6 +2627,128 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         }
     }
 
+    fn resolve_typed_pattern(&mut self, pattern: &HirPattern, ty: &Ty) -> TypedPattern {
+        let kind = match &pattern.kind {
+            HirPatternKind::Wildcard => TypedPatternKind::Wildcard,
+            HirPatternKind::Binding { local, .. } => TypedPatternKind::Binding { local: *local },
+            HirPatternKind::Literal { value } => TypedPatternKind::Literal {
+                value: value.clone(),
+            },
+            HirPatternKind::Range {
+                start,
+                end,
+                inclusive,
+            } => TypedPatternKind::Range {
+                start: start.clone(),
+                end: end.clone(),
+                inclusive: *inclusive,
+            },
+            HirPatternKind::None { .. } => TypedPatternKind::None,
+            HirPatternKind::Some { value } => {
+                let inner = match ty {
+                    Ty::Optional { inner } => inner.as_ref().clone(),
+                    _ => Ty::Error,
+                };
+                TypedPatternKind::Some {
+                    value: Box::new(self.resolve_typed_pattern(value, &inner)),
+                }
+            }
+            HirPatternKind::Struct { path, fields } => {
+                let expected = self.env.ty_from_ref(path);
+                let defs = match &expected {
+                    Ty::Nominal(id) => match self.env.types.get(id).map(|info| &info.kind) {
+                        Some(TypeInfoKind::Struct(fields)) => Some(fields.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                TypedPatternKind::Struct {
+                    fields: self.resolve_typed_pattern_fields(fields, defs.as_ref()),
+                }
+            }
+            HirPatternKind::Variant {
+                namespace,
+                name,
+                fields,
+                ..
+            } => {
+                let expected = self.env.ty_from_ref(namespace);
+                let defs = match &expected {
+                    Ty::Nominal(id) => match self.env.types.get(id).map(|info| &info.kind) {
+                        Some(TypeInfoKind::Tagged(variants)) => variants.get(name).cloned(),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                TypedPatternKind::Variant {
+                    name: name.clone(),
+                    fields: self.resolve_typed_pattern_fields(fields, defs.as_ref()),
+                }
+            }
+            HirPatternKind::Sequence { items, rest } => {
+                let element = match ty {
+                    Ty::Array { element, .. } | Ty::Slice { element, .. } => {
+                        element.as_ref().clone()
+                    }
+                    _ => Ty::Error,
+                };
+                TypedPatternKind::Sequence {
+                    items: items
+                        .iter()
+                        .map(|item| self.resolve_typed_pattern(item, &element))
+                        .collect(),
+                    rest: *rest,
+                }
+            }
+            HirPatternKind::Or { patterns } => TypedPatternKind::Or {
+                patterns: patterns
+                    .iter()
+                    .map(|pattern| self.resolve_typed_pattern(pattern, ty))
+                    .collect(),
+            },
+            HirPatternKind::As { local, pattern } => TypedPatternKind::As {
+                local: *local,
+                pattern: Box::new(self.resolve_typed_pattern(pattern, ty)),
+            },
+            HirPatternKind::Map { .. } => TypedPatternKind::Wildcard,
+        };
+        TypedPattern {
+            span: pattern.span,
+            ty: ty.clone(),
+            kind,
+        }
+    }
+
+    fn resolve_typed_pattern_fields(
+        &mut self,
+        fields: &[crate::body_hir::HirPatternField],
+        defs: Option<&BTreeMap<String, FieldInfo>>,
+    ) -> Vec<TypedPatternField> {
+        fields
+            .iter()
+            .map(|field| {
+                let ty = defs
+                    .and_then(|defs| defs.get(&field.name))
+                    .map(|field| field.ty.clone())
+                    .or_else(|| {
+                        field
+                            .shorthand_local
+                            .and_then(|local| self.local_types.get(&local).cloned())
+                    })
+                    .unwrap_or(Ty::Error);
+                TypedPatternField {
+                    name: field.name.clone(),
+                    ty: ty.clone(),
+                    pattern: field
+                        .pattern
+                        .as_ref()
+                        .map(|pattern| Box::new(self.resolve_typed_pattern(pattern, &ty))),
+                    shorthand_local: field.shorthand_local,
+                }
+            })
+            .collect()
+    }
+
     fn check_match_exhaustiveness(
         &mut self,
         span: Span,
@@ -2004,6 +2756,16 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         arms: &[crate::body_hir::HirMatchArm],
     ) {
         let Some(required) = self.finite_match_cases(ty) else {
+            if !arms
+                .iter()
+                .any(|arm| arm.guard.is_none() && self.pattern_is_irrefutable(&arm.pattern, ty))
+            {
+                self.diagnostic(
+                    span,
+                    "match/non-exhaustive",
+                    "non-exhaustive match over an open domain; add an unguarded wildcard/irrefutable arm",
+                );
+            }
             return;
         };
         let mut covered = BTreeSet::new();
@@ -2130,6 +2892,14 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         ty: &Ty,
         out: &mut BTreeMap<LocalId, Ty>,
     ) {
+        if matches!(pattern.kind, HirPatternKind::Map { .. }) {
+            self.diagnostic(
+                pattern.span,
+                "pattern/map-deferred",
+                "map/collection patterns are reserved but not part of Forge v1 until a typed collection-pattern protocol is defined",
+            );
+            return;
+        }
         match &pattern.kind {
             HirPatternKind::Binding { local, .. } => {
                 out.insert(*local, ty.clone());
@@ -2507,6 +3277,14 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             return true;
         }
         if is_numeric_concrete(target) && is_numeric_concrete(source) {
+            return true;
+        }
+        if matches!(
+            (target, source),
+            (Ty::Pointer { .. }, Ty::Int { .. } | Ty::Byte)
+                | (Ty::Int { .. } | Ty::Byte, Ty::Pointer { .. })
+                | (Ty::Pointer { .. }, Ty::Pointer { .. })
+        ) {
             return true;
         }
         if let Ty::Nominal(id) = source {

@@ -53,6 +53,7 @@ pub struct HirBody {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct HirGlobalBody {
     pub owner: DefId,
+    pub binding: ast::BindingKind,
     pub ty: Option<HirType>,
     pub value: HirExpr,
 }
@@ -211,6 +212,9 @@ pub enum HirExprKind {
     },
     None,
     Keyword {
+        name: String,
+    },
+    Context {
         name: String,
     },
     Name {
@@ -459,6 +463,7 @@ pub fn lower_resolved_bodies(source: &ast::SourceFile, module: &HirModule) -> Bo
                     owner,
                     HirGlobalBody {
                         owner,
+                        binding: value.binding,
                         ty,
                         value: expr,
                     },
@@ -935,6 +940,7 @@ impl<'a, 'd> Lowerer<'a, 'd> {
             ExprKind::Bool { value } => HirExprKind::Bool { value: *value },
             ExprKind::None => HirExprKind::None,
             ExprKind::Keyword { name } => HirExprKind::Keyword { name: name.clone() },
+            ExprKind::Context { name } => HirExprKind::Context { name: name.clone() },
             ExprKind::Path { path } => HirExprKind::Name {
                 reference: self.lower_value_path(path, expr.span),
             },

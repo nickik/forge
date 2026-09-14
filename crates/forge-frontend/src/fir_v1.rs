@@ -105,6 +105,9 @@ pub enum FirInstructionKind {
     LoadGlobal {
         global: DefId,
     },
+    ContextGet {
+        slot: crate::typecheck::ContextSlot,
+    },
     Load {
         place: FirPlace,
     },
@@ -1038,6 +1041,12 @@ impl<'a> FunctionLowerer<'a> {
                 },
             ),
             HirExprKind::None => self.emit_value(expr.span, ty, FirInstructionKind::MakeNone),
+            HirExprKind::Context { name } => {
+                let Some(slot) = crate::typecheck::ContextSlot::from_name(name) else {
+                    return self.poison(expr.span, Ty::Error);
+                };
+                self.emit_value(expr.span, ty, FirInstructionKind::ContextGet { slot })
+            }
             HirExprKind::Name { reference } => self.lower_name(expr.span, reference.root, ty),
             HirExprKind::Qualified { name, .. } => self.emit_value(
                 expr.span,

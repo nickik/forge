@@ -639,6 +639,10 @@ where
         .map_with(|(namespace, name), e| {
             Node::new(ExprKind::Qualified { namespace, name }, span(e.span()))
         });
+    let context_expr = just(Token::Context)
+        .ignore_then(just(Token::Dot))
+        .ignore_then(ident())
+        .map_with(|name, e| Node::new(ExprKind::Context { name }, span(e.span())));
     let path_expr = ident().map_with(|name, e| {
         Node::new(
             ExprKind::Path {
@@ -768,6 +772,7 @@ where
         some_expr,
         keyword_expr,
         array_expr,
+        context_expr,
         path_expr,
         parenthesized,
     ))
@@ -1653,6 +1658,7 @@ fn validate_expr(expr: &Expr, diagnostics: &mut Vec<Diagnostic>) {
         | ExprKind::Bool { .. }
         | ExprKind::None
         | ExprKind::Keyword { .. }
+        | ExprKind::Context { .. }
         | ExprKind::Path { .. }
         | ExprKind::Qualified { .. }
         | ExprKind::ReaderForm { .. } => {}

@@ -550,6 +550,7 @@ impl<'a, 'd> Resolver<'a, 'd> {
 
     fn resolve_expr(&mut self, expr: &ast::Expr) {
         match &expr.kind {
+            ExprKind::Context { .. } => {}
             ExprKind::Path { path } if path.segments.len() == 1 => {
                 self.resolve_value_name(&path.segments[0], expr.span)
             }
