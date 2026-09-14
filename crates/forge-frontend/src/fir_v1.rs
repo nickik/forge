@@ -11,8 +11,8 @@ use crate::{
     hir::{DefId, MetadataTableExt, MetadataTarget},
     resolution::{LocalId, ResolvedName},
     typecheck::{
-        ConstValue, IntWidth, MatchTest, ResolvedReceiver, Ty, TypeCheckOutput, TypedBody,
-        TypedExpr, TypedExprKind, TypedMatchPlan,
+        ConstValue, IntWidth, MatchProjection, MatchTest, ResolvedReceiver, Ty, TypeCheckOutput,
+        TypedBody, TypedExpr, TypedExprKind, TypedMatchBinding, TypedMatchPlan,
     },
 };
 
@@ -1191,11 +1191,12 @@ impl<'a> FunctionLowerer<'a> {
             );
             return self.poison(expr.span, result_ty);
         };
-        if plan.scrutinee_type != Ty::Bool || plan.arms.len() != arms.len() {
+        let actual_scrutinee_type = self.expr_ty(value);
+        if plan.scrutinee_type != actual_scrutinee_type || plan.arms.len() != arms.len() {
             self.diagnostic(
                 expr.span,
                 "fir/match-plan",
-                "typed boolean match plan does not match the source match shape",
+                "typed match plan does not match the source match shape/type",
             );
             return self.poison(expr.span, result_ty);
         }
@@ -1212,35 +1213,58 @@ impl<'a> FunctionLowerer<'a> {
         for (arm, planned) in arms.iter().zip(&plan.arms) {
             let arm_entry = self.new_block();
             let next_arm = self.new_block();
-            match planned.test {
-                MatchTest::Bool { value: true } => {
-                    self.terminate(FirTerminator::Branch {
-                        condition: scrutinee,
-                        then_block: arm_entry,
-                        else_block: next_arm,
-                    });
-                }
-                MatchTest::Bool { value: false } => {
-                    let condition = self.emit_value(
+            let condition = match &planned.test {
+                MatchTest::Bool { value: true } => Some(scrutinee),
+                MatchTest::Bool { value: false } => Some(self.emit_value(
+                    arm.pattern.span,
+                    Ty::Bool,
+                    FirInstructionKind::Unary {
+                        op: FirUnaryOp::Not,
+                        value: scrutinee,
+                    },
+                )),
+                MatchTest::OptionSome => Some(self.emit_value(
+                    arm.pattern.span,
+                    Ty::Bool,
+                    FirInstructionKind::OptionIsSome { value: scrutinee },
+                )),
+                MatchTest::OptionNone => {
+                    let is_some = self.emit_value(
+                        arm.pattern.span,
+                        Ty::Bool,
+                        FirInstructionKind::OptionIsSome { value: scrutinee },
+                    );
+                    Some(self.emit_value(
                         arm.pattern.span,
                         Ty::Bool,
                         FirInstructionKind::Unary {
                             op: FirUnaryOp::Not,
-                            value: scrutinee,
+                            value: is_some,
                         },
-                    );
-                    self.terminate(FirTerminator::Branch {
-                        condition,
-                        then_block: arm_entry,
-                        else_block: next_arm,
-                    });
+                    ))
                 }
-                MatchTest::Always => {
-                    self.terminate(FirTerminator::Goto { target: arm_entry });
-                }
+                MatchTest::Variant { name } => Some(self.emit_value(
+                    arm.pattern.span,
+                    Ty::Bool,
+                    FirInstructionKind::VariantIs {
+                        value: scrutinee,
+                        name: name.clone(),
+                    },
+                )),
+                MatchTest::Always => None,
+            };
+            if let Some(condition) = condition {
+                self.terminate(FirTerminator::Branch {
+                    condition,
+                    then_block: arm_entry,
+                    else_block: next_arm,
+                });
+            } else {
+                self.terminate(FirTerminator::Goto { target: arm_entry });
             }
 
             self.switch_to(arm_entry);
+            self.lower_match_bindings(arm.pattern.span, scrutinee, &planned.bindings);
             if let Some(guard) = &arm.guard {
                 let guard_value = self.lower_expr(guard);
                 let body_entry = self.new_block();
@@ -1273,7 +1297,7 @@ impl<'a> FunctionLowerer<'a> {
             self.switch_to(next_arm);
         }
 
-        // Semantic exhaustiveness guarantees that valid boolean matches cannot
+        // Semantic exhaustiveness guarantees that valid finite matches cannot
         // fall through all unguarded coverage. Keep this explicit in FIR so a
         // broken semantic plan cannot become target-dependent behavior.
         if !self.terminated() {
@@ -1290,6 +1314,49 @@ impl<'a> FunctionLowerer<'a> {
             )
         } else {
             self.emit_value(expr.span, Ty::Void, FirInstructionKind::Unit)
+        }
+    }
+
+    fn lower_match_bindings(
+        &mut self,
+        span: Span,
+        scrutinee: FirValueId,
+        bindings: &[TypedMatchBinding],
+    ) {
+        for binding in bindings {
+            let mut value = scrutinee;
+            for projection in &binding.projections {
+                value = match projection {
+                    MatchProjection::OptionPayload { ty } => self.emit_value(
+                        span,
+                        ty.clone(),
+                        FirInstructionKind::OptionUnwrap { value },
+                    ),
+                    MatchProjection::Field { name, ty } => self.emit_value(
+                        span,
+                        ty.clone(),
+                        FirInstructionKind::ExtractField {
+                            base: value,
+                            field: name.clone(),
+                        },
+                    ),
+                };
+            }
+            let Some(local) = self.local_map.get(&binding.local).copied() else {
+                self.diagnostic(
+                    span,
+                    "fir/match-binding-local",
+                    format!("match binding {:?} has no FIR local", binding.local),
+                );
+                continue;
+            };
+            self.emit_void(
+                span,
+                FirInstructionKind::Store {
+                    place: FirPlace::Local { local },
+                    value,
+                },
+            );
         }
     }
 

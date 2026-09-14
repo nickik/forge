@@ -90,12 +90,30 @@ pub enum ConstValue {
 #[serde(tag = "test", rename_all = "snake_case")]
 pub enum MatchTest {
     Bool { value: bool },
+    OptionNone,
+    OptionSome,
+    Variant { name: String },
     Always,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "projection", rename_all = "snake_case")]
+pub enum MatchProjection {
+    OptionPayload { ty: Ty },
+    Field { name: String, ty: Ty },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypedMatchBinding {
+    pub local: LocalId,
+    pub ty: Ty,
+    pub projections: Vec<MatchProjection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TypedMatchArmPlan {
     pub test: MatchTest,
+    pub bindings: Vec<TypedMatchBinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1157,7 +1175,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     }
                 }
                 self.check_match_exhaustiveness(expr.span, &matched, arms);
-                resolved_match = self.build_bool_match_plan(&matched, arms);
+                resolved_match = self.build_match_plan(&matched, arms);
                 result
             }
             HirExprKind::Error => Ty::Error,
@@ -2026,29 +2044,168 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         }
     }
 
-    fn build_bool_match_plan(
+    fn build_match_plan(
         &self,
         ty: &Ty,
         arms: &[crate::body_hir::HirMatchArm],
     ) -> Option<TypedMatchPlan> {
-        if *ty != Ty::Bool {
+        let supported = match ty {
+            Ty::Bool | Ty::Optional { .. } => true,
+            Ty::Nominal(id) => matches!(
+                self.env.types.get(id).map(|info| &info.kind),
+                Some(TypeInfoKind::Enum(_)) | Some(TypeInfoKind::Tagged(_))
+            ),
+            _ => false,
+        };
+        if !supported {
             return None;
         }
+
         let mut planned = Vec::with_capacity(arms.len());
         for arm in arms {
-            let test = match &arm.pattern.kind {
-                HirPatternKind::Literal {
-                    value: ast::PatternLiteral::Bool { value },
-                } => MatchTest::Bool { value: *value },
-                HirPatternKind::Wildcard => MatchTest::Always,
-                _ => return None,
-            };
-            planned.push(TypedMatchArmPlan { test });
+            let (test, bindings) = self.plan_match_pattern(&arm.pattern, ty)?;
+            planned.push(TypedMatchArmPlan { test, bindings });
         }
         Some(TypedMatchPlan {
-            scrutinee_type: Ty::Bool,
+            scrutinee_type: ty.clone(),
             arms: planned,
         })
+    }
+
+    fn plan_match_pattern(
+        &self,
+        pattern: &HirPattern,
+        ty: &Ty,
+    ) -> Option<(MatchTest, Vec<TypedMatchBinding>)> {
+        match &pattern.kind {
+            HirPatternKind::Wildcard => Some((MatchTest::Always, Vec::new())),
+            HirPatternKind::Binding { local, .. } => Some((
+                MatchTest::Always,
+                vec![TypedMatchBinding {
+                    local: *local,
+                    ty: ty.clone(),
+                    projections: Vec::new(),
+                }],
+            )),
+            HirPatternKind::As { local, pattern } => {
+                let (test, mut bindings) = self.plan_match_pattern(pattern, ty)?;
+                bindings.insert(
+                    0,
+                    TypedMatchBinding {
+                        local: *local,
+                        ty: ty.clone(),
+                        projections: Vec::new(),
+                    },
+                );
+                Some((test, bindings))
+            }
+            HirPatternKind::Literal {
+                value: ast::PatternLiteral::Bool { value },
+            } if *ty == Ty::Bool => Some((MatchTest::Bool { value: *value }, Vec::new())),
+            HirPatternKind::None { .. } if matches!(ty, Ty::Optional { .. }) => {
+                Some((MatchTest::OptionNone, Vec::new()))
+            }
+            HirPatternKind::Some { value } => {
+                let Ty::Optional { inner } = ty else {
+                    return None;
+                };
+                let mut bindings = Vec::new();
+                let projections = vec![MatchProjection::OptionPayload {
+                    ty: inner.as_ref().clone(),
+                }];
+                if !self.collect_irrefutable_match_bindings(
+                    value,
+                    inner,
+                    &projections,
+                    &mut bindings,
+                ) {
+                    return None;
+                }
+                Some((MatchTest::OptionSome, bindings))
+            }
+            HirPatternKind::Variant {
+                namespace,
+                name,
+                fields,
+                ..
+            } => {
+                let expected = self.env.ty_from_ref(namespace);
+                if expected != *ty {
+                    return None;
+                }
+                let Ty::Nominal(id) = ty else {
+                    return None;
+                };
+                match self.env.types.get(id).map(|info| &info.kind) {
+                    Some(TypeInfoKind::Enum(variants)) => {
+                        if !variants.contains(name) || !fields.is_empty() {
+                            return None;
+                        }
+                        Some((MatchTest::Variant { name: name.clone() }, Vec::new()))
+                    }
+                    Some(TypeInfoKind::Tagged(variants)) => {
+                        let defs = variants.get(name)?;
+                        let mut bindings = Vec::new();
+                        for field in fields {
+                            let info = defs.get(&field.name)?;
+                            let projections = vec![MatchProjection::Field {
+                                name: field.name.clone(),
+                                ty: info.ty.clone(),
+                            }];
+                            if let Some(local) = field.shorthand_local {
+                                bindings.push(TypedMatchBinding {
+                                    local,
+                                    ty: info.ty.clone(),
+                                    projections: projections.clone(),
+                                });
+                            }
+                            if let Some(nested) = &field.pattern {
+                                if !self.collect_irrefutable_match_bindings(
+                                    nested,
+                                    &info.ty,
+                                    &projections,
+                                    &mut bindings,
+                                ) {
+                                    return None;
+                                }
+                            }
+                        }
+                        Some((MatchTest::Variant { name: name.clone() }, bindings))
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn collect_irrefutable_match_bindings(
+        &self,
+        pattern: &HirPattern,
+        ty: &Ty,
+        projections: &[MatchProjection],
+        out: &mut Vec<TypedMatchBinding>,
+    ) -> bool {
+        match &pattern.kind {
+            HirPatternKind::Wildcard => true,
+            HirPatternKind::Binding { local, .. } => {
+                out.push(TypedMatchBinding {
+                    local: *local,
+                    ty: ty.clone(),
+                    projections: projections.to_vec(),
+                });
+                true
+            }
+            HirPatternKind::As { local, pattern } => {
+                out.push(TypedMatchBinding {
+                    local: *local,
+                    ty: ty.clone(),
+                    projections: projections.to_vec(),
+                });
+                self.collect_irrefutable_match_bindings(pattern, ty, projections, out)
+            }
+            _ => false,
+        }
     }
 
     fn check_match_exhaustiveness(

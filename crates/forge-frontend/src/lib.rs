@@ -28,8 +28,9 @@ pub use resolution::{
     ResolvedName,
 };
 pub use typecheck::{
-    type_check_module, ConstValue, IntWidth, MatchTest, ResolvedReceiver, Ty, TypeCheckOutput,
-    TypeDiagnostic, TypedBody, TypedExpr, TypedExprKind, TypedMatchArmPlan, TypedMatchPlan,
+    type_check_module, ConstValue, IntWidth, MatchProjection, MatchTest, ResolvedReceiver, Ty,
+    TypeCheckOutput, TypeDiagnostic, TypedBody, TypedExpr, TypedExprKind, TypedMatchArmPlan,
+    TypedMatchBinding, TypedMatchPlan,
 };
 
 pub use fir::{

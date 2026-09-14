@@ -66,6 +66,19 @@ The remaining boundary gaps are intentionally diagnosed instead of guessed by FI
 
 The semantic plan intentionally starts narrower than a full Rust-style pattern matrix. Rust's architecture is useful here: usefulness/type semantics are established before MIR/CFG construction, while MIR building consumes resolved pattern decisions. Forge keeps this simpler and target-independent. The first increment proves that boundary with booleans before adding payload-bearing patterns.
 
+## Steps 2-4 acceptance tests
+
+- Optional `None`/`Some` tests lower through `OptionIsSome`; `Some` payloads are unwrapped only on the matching edge.
+- Optional payload bindings are stored before guards, so guards may reference those locals.
+- Closed enum arms lower through resolved `VariantIs` tests without FIR consulting enum definitions.
+- Tagged-union arms lower through resolved `VariantIs` plus typed payload-field projections and local bindings.
+- Guards retain source-order fallthrough for Option, enum, and tagged-union arms.
+- Structural/scalar/range/or/sequence patterns remain later milestones and still stop at the FIR boundary.
+
 ## Completion record
 
-Step 1: implementation attempted for typed boolean/wildcard match plans and FIR CFG lowering. Later steps intentionally untouched.
+- Step 1 complete: typed boolean/wildcard match plans and explicit FIR CFG lowering.
+- Step 2 complete: optional `None`/`Some` decisions, payload extraction, bindings, and guarded fallthrough.
+- Step 3 complete: enum discriminant decisions lowered as resolved FIR variant tests.
+- Step 4 complete: tagged-union discriminant tests plus typed payload-field extraction/bindings.
+- Steps 5-16 intentionally untouched.

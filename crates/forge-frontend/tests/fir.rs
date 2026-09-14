@@ -292,13 +292,80 @@ fn boolean_match_block_arms_lower_as_void_cfg() {
 }
 
 #[test]
-fn non_boolean_match_still_waits_for_later_pattern_steps() {
+fn optional_match_extracts_payload_before_guard_and_body() {
     let output = lower(
         r#"
-        module test.fir_enum_match_later;
-        enum Color { Red, Green }
+        module test.fir_option_match;
+        fn choose(value: u32?) -> u32 {
+            return match (value) {
+                Some(x) when x > 10u32 => x,
+                Some(x) => x,
+                None => 0u32,
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::OptionIsSome { .. })));
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::OptionUnwrap { .. })));
+}
+
+#[test]
+fn enum_match_uses_resolved_variant_tests() {
+    let output = lower(
+        r#"
+        module test.fir_enum_match;
+        enum Color { Red, Green, Blue }
         fn choose(value: Color) -> i32 {
-            return match (value) { Color::Red => 1i32, Color::Green => 2i32, };
+            return match (value) {
+                Color::Red => 1i32,
+                Color::Green => 2i32,
+                Color::Blue => 3i32,
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let tests = instructions(&output)
+        .filter(|op| matches!(op, FirInstructionKind::VariantIs { .. }))
+        .count();
+    assert_eq!(tests, 3);
+}
+
+#[test]
+fn tagged_match_extracts_typed_payload_bindings() {
+    let output = lower(
+        r#"
+        module test.fir_tagged_match;
+        tagged Token {
+            Number { value: u32; },
+            Empty,
+        }
+        fn read(token: Token, gate: bool) -> u32 {
+            return match (token) {
+                Token::Number{value} when gate => value,
+                Token::Number{value} => value,
+                Token::Empty => 0u32,
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::VariantIs { .. })));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::ExtractField { field, .. } if field == "value"
+    )));
+}
+
+#[test]
+fn structural_match_still_waits_for_later_pattern_step() {
+    let output = lower(
+        r#"
+        module test.fir_struct_match_later;
+        struct Point { x: i32; }
+        fn choose(value: Point) -> i32 {
+            return match (value) { Point{x} => x, };
         }
         "#,
     );
