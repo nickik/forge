@@ -91,7 +91,8 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Step 12 complete: unsafe scopes are semantic authorization scopes; raw dereference, pointer arithmetic, and pointer/integer or reinterpret conversions carry explicit source-scope provenance into dedicated FIR raw operations.
 - Step 13 complete: bitstruct storage/layout is materialized above FIR; field reads/writes lower through explicit checked mask/shift operations.
 - Step 14 complete: map patterns require a resolved nominal collection protocol (`pattern_get` + `pattern_has_only`); required/optional keyword bindings and closed/rest semantics lower through explicit FIR collection-pattern operations.
-- Steps 15-16 intentionally untouched.
+- Step 15 complete: compile-time `const` globals remain static data; `val`/`var` globals carry typed runtime initializer bodies, direct runtime-global dependencies, deterministic dependency-first/source-order initialization, and explicit FIR initializer functions.
+- Step 16 intentionally untouched.
 
 
 ## Step 8 acceptance tests
@@ -155,3 +156,15 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - A closed map pattern (no `..`) emits an allowed-keys-only protocol test; `..` deliberately skips that test.
 - Match plans retain resolved method `DefId`s and concrete value/optional types; no `Ty::Unknown` collection binding reaches successful FIR lowering.
 - FIR emits explicit `CollectionPatternLookup` and `CollectionPatternHasOnly` operations and never re-runs method/protocol resolution.
+
+
+## Step 15 acceptance tests
+
+- Compile-time `const` globals remain static FIR data and do not receive runtime initializer functions.
+- Every non-`const` global receives a typed runtime initializer body whose result type is the finalized global type.
+- Direct references from one runtime global initializer to another are recorded as semantic dependencies above FIR; references to compile-time constants do not create runtime dependencies.
+- Runtime initializers are topologically ordered so dependencies execute first; independent globals retain declaration/source order through stable `DefId` ordering.
+- Runtime dependency cycles are rejected semantically with `global/init-cycle` rather than left to backend/linker behavior.
+- FIR represents each runtime initializer as an explicit zero-argument initializer function returning the global value and publishes the deterministic module `global_init_order`.
+- FIR consumes the typed dependency plan without rediscovering global references or choosing an initialization order.
+- Each initializer source expression is lowered exactly once; ordinary expression evaluation order remains unchanged inside the initializer function.

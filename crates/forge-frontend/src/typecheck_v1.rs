@@ -425,10 +425,21 @@ pub struct TypedBody {
     pub expressions: Vec<TypedExpr>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TypedGlobalInitializer {
+    pub owner: DefId,
+    pub span: Span,
+    pub ty: Ty,
+    pub dependencies: Vec<DefId>,
+    pub body: TypedBody,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Default)]
 pub struct TypeCheckOutput {
     pub functions: BTreeMap<DefId, TypedBody>,
     pub global_types: BTreeMap<DefId, Ty>,
+    pub global_initializers: BTreeMap<DefId, TypedGlobalInitializer>,
+    pub global_init_order: Vec<DefId>,
     pub constants: BTreeMap<DefId, ConstValue>,
     pub enum_values: BTreeMap<DefId, BTreeMap<String, i128>>,
     pub bitstructs: BTreeMap<DefId, TypedBitStruct>,
@@ -609,10 +620,153 @@ pub fn type_check_module(
         } else {
             checker.materialize_literal(global.value.span, value_ty)
         };
-        output.global_types.insert(*owner, ty);
+        output.global_types.insert(*owner, ty.clone());
+
+        let is_runtime = source
+            .declarations
+            .get(owner.0 as usize)
+            .is_some_and(|declaration| {
+                matches!(
+                    &declaration.kind.kind,
+                    DeclKind::Global(value) if !matches!(value.binding, ast::BindingKind::Const)
+                )
+            });
+        if !is_runtime {
+            continue;
+        }
+
+        let dependencies = checker
+            .expressions
+            .iter()
+            .filter_map(|typed| typed_expr_hir(&typed.kind))
+            .filter_map(|hir| match &hir.kind {
+                HirExprKind::Name { reference } => match reference.root {
+                    ResolvedName::Def(id) if bodies.globals.contains_key(&id) => Some(id),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let body = TypedBody {
+            owner: *owner,
+            params: Vec::new(),
+            return_type: ty.clone(),
+            local_types: checker.local_types,
+            local_constants: checker.local_constants,
+            context_scopes: checker.context_scopes,
+            select_plans: checker.select_plans,
+            unsafe_scopes: checker.unsafe_scopes,
+            expressions: checker.expressions,
+        };
+        output.global_initializers.insert(
+            *owner,
+            TypedGlobalInitializer {
+                owner: *owner,
+                span: global.value.span,
+                ty,
+                dependencies,
+                body,
+            },
+        );
     }
 
+    let runtime_ids = output
+        .global_initializers
+        .keys()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    for initializer in output.global_initializers.values_mut() {
+        initializer
+            .dependencies
+            .retain(|dependency| runtime_ids.contains(dependency));
+    }
+    output.global_init_order =
+        order_global_initializers(&output.global_initializers, &mut output.diagnostics);
+
     output
+}
+
+fn typed_expr_hir(kind: &TypedExprKind) -> Option<&HirExpr> {
+    match kind {
+        TypedExprKind::Source { hir }
+        | TypedExprKind::ResolvedCall { hir, .. }
+        | TypedExprKind::ResolvedClosure { hir, .. }
+        | TypedExprKind::ResolvedContext { hir, .. }
+        | TypedExprKind::ResolvedTry { hir, .. }
+        | TypedExprKind::ResolvedMatch { hir, .. }
+        | TypedExprKind::UnsafeOperation { hir, .. }
+        | TypedExprKind::ResolvedBitField { hir, .. }
+        | TypedExprKind::OptionalPromote { hir, .. } => Some(hir),
+    }
+}
+
+fn order_global_initializers(
+    initializers: &BTreeMap<DefId, TypedGlobalInitializer>,
+    diagnostics: &mut Vec<TypeDiagnostic>,
+) -> Vec<DefId> {
+    let mut indegree = initializers
+        .keys()
+        .copied()
+        .map(|owner| (owner, 0usize))
+        .collect::<BTreeMap<_, _>>();
+    let mut dependents = BTreeMap::<DefId, Vec<DefId>>::new();
+    for (owner, initializer) in initializers {
+        for dependency in &initializer.dependencies {
+            if !initializers.contains_key(dependency) {
+                continue;
+            }
+            *indegree.get_mut(owner).expect("initializer owner") += 1;
+            dependents.entry(*dependency).or_default().push(*owner);
+        }
+    }
+    for values in dependents.values_mut() {
+        values.sort();
+        values.dedup();
+    }
+
+    let mut ready = indegree
+        .iter()
+        .filter_map(|(owner, degree)| (*degree == 0).then_some(*owner))
+        .collect::<BTreeSet<_>>();
+    let mut order = Vec::with_capacity(initializers.len());
+    while let Some(owner) = ready.pop_first() {
+        order.push(owner);
+        if let Some(users) = dependents.get(&owner) {
+            for user in users {
+                let degree = indegree.get_mut(user).expect("dependent initializer");
+                *degree -= 1;
+                if *degree == 0 {
+                    ready.insert(*user);
+                }
+            }
+        }
+    }
+
+    if order.len() != initializers.len() {
+        let ordered = order.iter().copied().collect::<BTreeSet<_>>();
+        let cyclic = initializers
+            .keys()
+            .copied()
+            .filter(|owner| !ordered.contains(owner))
+            .collect::<Vec<_>>();
+        for owner in &cyclic {
+            if let Some(initializer) = initializers.get(owner) {
+                diagnostics.push(TypeDiagnostic {
+                    span: initializer.span,
+                    code: "global/init-cycle".into(),
+                    message: format!(
+                        "runtime global initializer {:?} participates in a dependency cycle",
+                        owner
+                    ),
+                });
+            }
+        }
+        // Keep invalid semantic output deterministic for diagnostics/debug dumps.
+        order.extend(cyclic);
+    }
+    order
 }
 
 struct ModuleTypeEnv {

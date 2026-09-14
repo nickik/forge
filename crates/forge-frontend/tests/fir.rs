@@ -1106,3 +1106,59 @@ fn map_pattern_rest_skips_closed_key_check_and_optional_binds_option() {
     assert!(!instructions(&output)
         .any(|op| matches!(op, FirInstructionKind::CollectionPatternHasOnly { .. })));
 }
+
+#[test]
+fn runtime_globals_lower_to_explicit_initializer_functions() {
+    let output = lower(
+        r#"
+        module test.fir_global_init;
+        fn seed() -> u32 { return 4u32; }
+        val dependent: u32 = base + 1u32;
+        val base: u32 = seed();
+        const fixed: u32 = 9u32;
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert_eq!(output.module.global_initializers.len(), 2);
+    assert_eq!(output.module.global_init_order.len(), 2);
+    assert_eq!(
+        output
+            .module
+            .globals
+            .values()
+            .filter(|global| global.constant.is_some())
+            .count(),
+        1
+    );
+
+    let base = output.module.global_init_order[0];
+    let dependent = output.module.global_init_order[1];
+    assert!(output.module.global_initializers[&base]
+        .dependencies
+        .is_empty());
+    assert_eq!(
+        output.module.global_initializers[&dependent].dependencies,
+        vec![base]
+    );
+
+    let base_calls = output.module.global_initializers[&base]
+        .function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .filter(|instruction| matches!(instruction.kind, FirInstructionKind::Call { .. }))
+        .count();
+    assert_eq!(
+        base_calls, 1,
+        "runtime initializer expression must execute once"
+    );
+    assert!(output.module.global_initializers[&dependent]
+        .function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .any(|instruction| matches!(
+            instruction.kind,
+            FirInstructionKind::LoadGlobal { global } if global == base
+        )));
+}
