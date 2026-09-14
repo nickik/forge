@@ -216,6 +216,9 @@ pub enum HirExprKind {
     Name {
         reference: HirValueRef,
     },
+    Context {
+        name: String,
+    },
     Qualified {
         namespace: HirTypeRef,
         name: String,
@@ -938,6 +941,7 @@ impl<'a, 'd> Lowerer<'a, 'd> {
             ExprKind::Path { path } => HirExprKind::Name {
                 reference: self.lower_value_path(path, expr.span),
             },
+            ExprKind::Context { name } => HirExprKind::Context { name: name.clone() },
             ExprKind::Qualified { namespace, name } => HirExprKind::Qualified {
                 namespace: self.lower_type_ref(namespace, expr.span),
                 name: name.clone(),

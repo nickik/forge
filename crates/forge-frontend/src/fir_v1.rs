@@ -11,9 +11,9 @@ use crate::{
     hir::{DefId, MetadataTableExt, MetadataTarget},
     resolution::{LocalId, ResolvedName},
     typecheck::{
-        CaptureMode, ConstValue, IntWidth, MatchCondition, MatchProjection, MatchScalar, MatchTest,
-        ResolvedCallArgument, ResolvedReceiver, Ty, TypeCheckOutput, TypedBody, TypedClosurePlan,
-        TypedExpr, TypedExprKind, TypedMatchBinding, TypedMatchPlan,
+        CaptureMode, ConstValue, ContextSlot, IntWidth, MatchCondition, MatchProjection,
+        MatchScalar, MatchTest, ResolvedCallArgument, ResolvedReceiver, Ty, TypeCheckOutput,
+        TypedBody, TypedClosurePlan, TypedExpr, TypedExprKind, TypedMatchBinding, TypedMatchPlan,
     },
 };
 
@@ -125,6 +125,20 @@ pub enum FirInstructionKind {
     },
     LoadGlobal {
         global: DefId,
+    },
+    ContextLoad {
+        slot: ContextSlot,
+    },
+    ContextSave {
+        slot: ContextSlot,
+    },
+    ContextSet {
+        slot: ContextSlot,
+        value: FirValueId,
+    },
+    ContextRestore {
+        slot: ContextSlot,
+        saved: FirValueId,
     },
     Load {
         place: FirPlace,
@@ -350,6 +364,11 @@ fn function_overflow_mode(typed: &TypeCheckOutput, owner: DefId) -> OverflowMode
 enum Deferred {
     Expr(HirExpr),
     Block(HirBlock),
+    ContextRestore {
+        span: Span,
+        slot: ContextSlot,
+        saved: FirValueId,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -675,17 +694,80 @@ impl<'a> FunctionLowerer<'a> {
                 }
             }
             HirStmtKind::Unsafe { block } | HirStmtKind::Block { block } => self.lower_block(block),
-            HirStmtKind::WithContext { .. } => self.diagnostic(
-                stmt.span,
-                "fir/context-not-resolved",
-                "with-context semantics are not resolved in typed HIR yet",
-            ),
+            HirStmtKind::WithContext { overrides, body } => {
+                self.lower_with_context(stmt.span, overrides, body)
+            }
             HirStmtKind::Select { .. } => self.diagnostic(
                 stmt.span,
                 "fir/select-not-resolved",
                 "select/channel semantics are not typed strongly enough for FIR lowering yet",
             ),
         }
+    }
+
+    fn lower_with_context(&mut self, span: Span, overrides: &[(String, HirExpr)], body: &HirBlock) {
+        let Some(plan) = self
+            .typed
+            .context_scopes
+            .iter()
+            .find(|scope| scope.span == span)
+            .cloned()
+        else {
+            self.diagnostic(
+                span,
+                "fir/context-plan-missing",
+                "typed HIR has no execution-context plan for this scope",
+            );
+            return;
+        };
+        if plan.overrides.len() != overrides.len() {
+            self.diagnostic(
+                span,
+                "fir/context-plan-shape",
+                "typed execution-context plan does not match source override count",
+            );
+        }
+
+        self.cleanup_scopes.push(Vec::new());
+        let cleanup_scope = self.cleanup_scopes.len() - 1;
+        for (index, planned) in plan.overrides.iter().enumerate() {
+            let Some((_, source)) = overrides.get(index) else {
+                continue;
+            };
+            if planned.value != source.id {
+                self.diagnostic(
+                    source.span,
+                    "fir/context-plan-shape",
+                    "typed execution-context plan references a different override expression",
+                );
+            }
+            let saved = self.emit_value(
+                source.span,
+                Ty::ContextSlot { slot: planned.slot },
+                FirInstructionKind::ContextSave { slot: planned.slot },
+            );
+            let value = self.lower_expr(source);
+            self.emit_void(
+                source.span,
+                FirInstructionKind::ContextSet {
+                    slot: planned.slot,
+                    value,
+                },
+            );
+            if let Some(scope) = self.cleanup_scopes.get_mut(cleanup_scope) {
+                scope.push(Deferred::ContextRestore {
+                    span: source.span,
+                    slot: planned.slot,
+                    saved,
+                });
+            }
+        }
+
+        self.lower_block(body);
+        if !self.terminated() {
+            self.emit_scope_cleanups(cleanup_scope);
+        }
+        self.cleanup_scopes.pop();
     }
 
     fn lower_if(
@@ -985,6 +1067,9 @@ impl<'a> FunctionLowerer<'a> {
                     self.lower_expr(&expr);
                 }
                 Deferred::Block(block) => self.lower_block(&block),
+                Deferred::ContextRestore { span, slot, saved } => {
+                    self.emit_void(span, FirInstructionKind::ContextRestore { slot, saved })
+                }
             }
             self.in_cleanup = previous;
         }
@@ -1026,6 +1111,11 @@ impl<'a> FunctionLowerer<'a> {
             TypedExprKind::ResolvedClosure { plan, .. } => {
                 self.lower_closure(expr, plan, result_ty)
             }
+            TypedExprKind::ResolvedContext { slot, .. } => self.emit_value(
+                expr.span,
+                result_ty,
+                FirInstructionKind::ContextLoad { slot: *slot },
+            ),
             TypedExprKind::ResolvedTry {
                 source_error,
                 target_error,
@@ -1086,6 +1176,14 @@ impl<'a> FunctionLowerer<'a> {
             ),
             HirExprKind::None => self.emit_value(expr.span, ty, FirInstructionKind::MakeNone),
             HirExprKind::Name { reference } => self.lower_name(expr.span, reference.root, ty),
+            HirExprKind::Context { .. } => {
+                self.diagnostic(
+                    expr.span,
+                    "fir/context-not-resolved",
+                    "context slot reached FIR without semantic slot resolution",
+                );
+                self.poison(expr.span, ty)
+            }
             HirExprKind::Qualified { name, .. } => self.emit_value(
                 expr.span,
                 ty.clone(),

@@ -22,6 +22,29 @@ pub enum IntWidth {
     Pointer,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextSlot {
+    Scratch,
+    Logger,
+    Clock,
+    Random,
+    Trace,
+}
+
+impl ContextSlot {
+    fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "scratch" => Some(Self::Scratch),
+            "logger" => Some(Self::Logger),
+            "clock" => Some(Self::Clock),
+            "random" => Some(Self::Random),
+            "trace" => Some(Self::Trace),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Ty {
@@ -43,6 +66,9 @@ pub enum Ty {
     IntLiteral,
     FloatLiteral,
     NoneLiteral,
+    ContextSlot {
+        slot: ContextSlot,
+    },
     Nominal(DefId),
     Pointer {
         volatile: bool,
@@ -210,6 +236,19 @@ pub struct TypedClosurePlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TypedContextOverride {
+    pub slot: ContextSlot,
+    pub value: ExprId,
+    pub ty: Ty,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TypedContextScope {
+    pub span: Span,
+    pub overrides: Vec<TypedContextOverride>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "source", rename_all = "snake_case")]
 pub enum ResolvedCallArgument {
     Explicit { argument: usize },
@@ -231,6 +270,10 @@ pub enum TypedExprKind {
     },
     ResolvedClosure {
         plan: TypedClosurePlan,
+        hir: HirExpr,
+    },
+    ResolvedContext {
+        slot: ContextSlot,
         hir: HirExpr,
     },
     ResolvedTry {
@@ -264,6 +307,7 @@ pub struct TypedBody {
     pub return_type: Ty,
     pub local_types: BTreeMap<LocalId, Ty>,
     pub local_constants: BTreeMap<LocalId, ConstValue>,
+    pub context_scopes: Vec<TypedContextScope>,
     pub expressions: Vec<TypedExpr>,
 }
 
@@ -414,6 +458,7 @@ pub fn type_check_module(
                 return_type: expected_return,
                 local_types: checker.local_types,
                 local_constants: checker.local_constants,
+                context_scopes: checker.context_scopes,
                 expressions: checker.expressions,
             },
         );
@@ -889,6 +934,8 @@ struct BodyChecker<'a, 'd> {
     local_types: BTreeMap<LocalId, Ty>,
     local_constants: BTreeMap<LocalId, ConstValue>,
     mutable_locals: BTreeSet<LocalId>,
+    context_types: BTreeMap<ContextSlot, Ty>,
+    context_scopes: Vec<TypedContextScope>,
     expressions: Vec<TypedExpr>,
     diagnostics: &'d mut Vec<TypeDiagnostic>,
 }
@@ -905,6 +952,8 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             local_types: BTreeMap::new(),
             local_constants: BTreeMap::new(),
             mutable_locals: BTreeSet::new(),
+            context_types: BTreeMap::new(),
+            context_scopes: Vec::new(),
             expressions: Vec::new(),
             diagnostics,
         }
@@ -1072,10 +1121,52 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             | HirStmtKind::Unsafe { block }
             | HirStmtKind::Block { block } => self.check_block(block),
             HirStmtKind::WithContext { overrides, body } => {
-                for (_, expr) in overrides {
-                    self.check_expr(expr, None);
+                let mut seen = BTreeSet::new();
+                let mut planned = Vec::new();
+                for (name, expr) in overrides {
+                    let value_ty = self.check_expr(expr, None);
+                    let Some(slot) = ContextSlot::from_name(name) else {
+                        self.diagnostic(
+                            expr.span,
+                            "context/unknown-slot",
+                            format!("unknown core execution-context slot `{name}`"),
+                        );
+                        continue;
+                    };
+                    if !seen.insert(slot) {
+                        self.diagnostic(
+                            expr.span,
+                            "context/duplicate-override",
+                            format!("execution-context slot `{name}` is overridden more than once"),
+                        );
+                        continue;
+                    }
+                    if !matches!(value_ty, Ty::Reference { .. } | Ty::Pointer { .. }) {
+                        self.diagnostic(
+                            expr.span,
+                            "context/non-owning",
+                            "execution-context overrides must be non-owning references or pointers",
+                        );
+                        continue;
+                    }
+                    planned.push(TypedContextOverride {
+                        slot,
+                        value: expr.id,
+                        ty: value_ty,
+                    });
                 }
+
+                let saved = self.context_types.clone();
+                for override_plan in &planned {
+                    self.context_types
+                        .insert(override_plan.slot, override_plan.ty.clone());
+                }
+                self.context_scopes.push(TypedContextScope {
+                    span: stmt.span,
+                    overrides: planned,
+                });
                 self.check_block(body);
+                self.context_types = saved;
             }
             HirStmtKind::Select { arms } => {
                 for arm in arms {
@@ -1103,6 +1194,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
     fn check_expr(&mut self, expr: &HirExpr, expected: Option<&Ty>) -> Ty {
         let mut resolved_call: Option<ResolvedCallInfo> = None;
         let mut resolved_closure: Option<TypedClosurePlan> = None;
+        let mut resolved_context: Option<ContextSlot> = None;
         let mut resolved_try: Option<(Ty, Ty)> = None;
         let mut resolved_match: Option<TypedMatchPlan> = None;
         let mut ty = match &expr.kind {
@@ -1118,6 +1210,25 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             HirExprKind::None => Ty::NoneLiteral,
             HirExprKind::Keyword { .. } | HirExprKind::ReaderForm { .. } => Ty::Unknown,
             HirExprKind::Name { reference } => self.type_of_name(reference.root),
+            HirExprKind::Context { name } => {
+                let slot = ContextSlot::from_name(name);
+                if slot.is_none() {
+                    self.diagnostic(
+                        expr.span,
+                        "context/unknown-slot",
+                        format!("unknown core execution-context slot `{name}`"),
+                    );
+                }
+                if let Some(slot) = slot {
+                    resolved_context = Some(slot);
+                    self.context_types
+                        .get(&slot)
+                        .cloned()
+                        .unwrap_or(Ty::ContextSlot { slot })
+                } else {
+                    Ty::Error
+                }
+            }
             HirExprKind::Qualified { namespace, name } => {
                 let ty = self.env.ty_from_ref(namespace);
                 self.check_qualified_variant(expr.span, &ty, name);
@@ -1436,6 +1547,11 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         } else if let Some(plan) = resolved_closure {
             TypedExprKind::ResolvedClosure {
                 plan,
+                hir: expr.clone(),
+            }
+        } else if let Some(slot) = resolved_context {
+            TypedExprKind::ResolvedContext {
+                slot,
                 hir: expr.clone(),
             }
         } else if let Some(plan) = resolved_match {

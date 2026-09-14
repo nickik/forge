@@ -652,7 +652,8 @@ impl<'a, 'd> Resolver<'a, 'd> {
             | ExprKind::Bool { .. }
             | ExprKind::None
             | ExprKind::Keyword { .. }
-            | ExprKind::ReaderForm { .. } => {}
+            | ExprKind::ReaderForm { .. }
+            | ExprKind::Context { .. } => {}
         }
     }
 }

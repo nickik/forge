@@ -28,10 +28,11 @@ pub use resolution::{
     ResolvedName,
 };
 pub use typecheck::{
-    type_check_module, CaptureMode, ConstValue, IntWidth, MatchCondition, MatchProjection,
-    MatchScalar, MatchTest, ResolvedCallArgument, ResolvedReceiver, Ty, TypeCheckOutput,
-    TypeDiagnostic, TypedBody, TypedCapture, TypedClosurePlan, TypedExpr, TypedExprKind,
-    TypedMatchArmPlan, TypedMatchBinding, TypedMatchPlan,
+    type_check_module, CaptureMode, ConstValue, ContextSlot, IntWidth, MatchCondition,
+    MatchProjection, MatchScalar, MatchTest, ResolvedCallArgument, ResolvedReceiver, Ty,
+    TypeCheckOutput, TypeDiagnostic, TypedBody, TypedCapture, TypedClosurePlan,
+    TypedContextOverride, TypedContextScope, TypedExpr, TypedExprKind, TypedMatchArmPlan,
+    TypedMatchBinding, TypedMatchPlan,
 };
 
 pub use fir::{

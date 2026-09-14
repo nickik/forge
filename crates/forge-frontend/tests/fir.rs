@@ -675,3 +675,112 @@ fn capture_free_closure_function_pointer_has_no_environment() {
     )));
     assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::CallIndirect { .. })));
 }
+
+#[test]
+fn execution_context_lowers_save_set_load_and_restore() {
+    let output = lower(
+        r#"
+        module test.context_fir;
+        fn main() -> u32 {
+            var scratch: u32 = 7u32;
+            with context(:scratch = &scratch) {
+                val current = context.scratch;
+            }
+            return scratch;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let ops = instructions(&output).collect::<Vec<_>>();
+    assert!(ops.iter().any(|op| matches!(
+        op,
+        FirInstructionKind::ContextSave {
+            slot: forge_frontend::ContextSlot::Scratch
+        }
+    )));
+    assert!(ops.iter().any(|op| matches!(
+        op,
+        FirInstructionKind::ContextSet {
+            slot: forge_frontend::ContextSlot::Scratch,
+            ..
+        }
+    )));
+    assert!(ops.iter().any(|op| matches!(
+        op,
+        FirInstructionKind::ContextLoad {
+            slot: forge_frontend::ContextSlot::Scratch
+        }
+    )));
+    assert!(ops.iter().any(|op| matches!(
+        op,
+        FirInstructionKind::ContextRestore {
+            slot: forge_frontend::ContextSlot::Scratch,
+            ..
+        }
+    )));
+    assert!(!output
+        .diagnostics
+        .iter()
+        .any(|d| d.code == "fir/context-not-resolved"));
+}
+
+#[test]
+fn execution_context_restore_runs_on_return_cleanup_edge() {
+    let output = lower(
+        r#"
+        module test.context_return;
+        fn main() -> u32 {
+            var scratch: u32 = 7u32;
+            with context(:scratch = &scratch) {
+                return scratch;
+            }
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let function = output.module.functions.values().next().unwrap();
+    let return_block = function
+        .blocks
+        .iter()
+        .find(|block| matches!(block.terminator, Some(FirTerminator::Return { .. })))
+        .expect("return block");
+    assert!(return_block.instructions.iter().any(|instruction| matches!(
+        instruction.kind,
+        FirInstructionKind::ContextRestore {
+            slot: forge_frontend::ContextSlot::Scratch,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn nested_execution_context_restores_in_lifo_order() {
+    let output = lower(
+        r#"
+        module test.context_nested_fir;
+        fn main() -> u32 {
+            var scratch: u32 = 7u32;
+            var logger: u64 = 9u64;
+            with context(:scratch = &scratch, :logger = &logger) {
+                val a = context.scratch;
+                val b = context.logger;
+            }
+            return scratch;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let restores = instructions(&output)
+        .filter_map(|op| match op {
+            FirInstructionKind::ContextRestore { slot, .. } => Some(*slot),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        restores,
+        vec![
+            forge_frontend::ContextSlot::Logger,
+            forge_frontend::ContextSlot::Scratch,
+        ]
+    );
+}

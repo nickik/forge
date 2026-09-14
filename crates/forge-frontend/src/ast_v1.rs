@@ -322,6 +322,9 @@ pub enum ExprKind {
     Path {
         path: Path,
     },
+    Context {
+        name: String,
+    },
     Qualified {
         namespace: Path,
         name: String,

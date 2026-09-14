@@ -86,7 +86,8 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Step 7 complete: exhaustiveness and unreachable-arm usefulness for planned patterns now consume the same semantic alternatives/conditions that FIR lowers.
 - Step 8 complete: direct/named calls carry complete parameter-order argument plans; omitted defaults remain callee-owned typed HIR and FIR evaluates them in parameter order with earlier parameter values materialized exactly once.
 - Step 9 complete: explicit capture modes and typed closure environment fields are resolved above FIR; non-escaping closure bodies have dedicated FIR entries, reference captures remain aliasing places, and closure/function-pointer calls lower explicitly.
-- Steps 10-16 intentionally untouched.
+- Step 10 complete: core execution-context slot accesses and overrides are resolved in typed HIR; override values are checked as non-owning references/pointers, lexical slot types are scoped, and FIR uses cleanup-integrated save/set/load/restore operations.
+- Steps 11-16 intentionally untouched.
 
 
 ## Step 8 acceptance tests
@@ -97,3 +98,14 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - A default may reference an earlier parameter; FIR materializes earlier parameter values into synthetic locals before lowering that default.
 - Chained defaults therefore observe the already-evaluated earlier parameter/default value without re-evaluating an explicit source argument.
 - `fir/default-argument-not-materialized` is removed; an incomplete semantic plan is instead an internal `fir/call-plan-incomplete` boundary failure.
+
+
+## Step 10 acceptance tests
+
+- `context.scratch`, `context.logger`, `context.clock`, `context.random`, and `context.trace` resolve to closed semantic slot IDs before FIR.
+- Within an override body, a slot access carries the exact reference/pointer type of that override; nested overrides restore the previous lexical type after the inner scope.
+- Unknown slots, duplicate overrides, and owning override values are rejected before FIR.
+- FIR evaluates override expressions once, left-to-right, then emits explicit context save/set operations.
+- Context restoration is registered on the existing cleanup stack, so it runs after inner `defer`s on normal scope exit and on `return`, `break`, `continue`, and `?` cleanup edges.
+- Multiple slot restores occur in reverse installation order.
+- Valid context code no longer emits `fir/context-not-resolved`.

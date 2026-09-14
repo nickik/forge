@@ -753,11 +753,16 @@ where
             )
         });
 
+    let context_expr = just(Token::Context)
+        .ignore_then(just(Token::Dot))
+        .ignore_then(ident())
+        .map_with(|name, e| Node::new(ExprKind::Context { name }, span(e.span())));
     let parenthesized = expr
         .clone()
         .delimited_by(just(Token::LParen), just(Token::RParen));
     let atom = choice((
         match_expr,
+        context_expr,
         reader_expr,
         captured_closure,
         capture_free_closure,
@@ -1655,7 +1660,8 @@ fn validate_expr(expr: &Expr, diagnostics: &mut Vec<Diagnostic>) {
         | ExprKind::Keyword { .. }
         | ExprKind::Path { .. }
         | ExprKind::Qualified { .. }
-        | ExprKind::ReaderForm { .. } => {}
+        | ExprKind::ReaderForm { .. }
+        | ExprKind::Context { .. } => {}
     }
 }
 

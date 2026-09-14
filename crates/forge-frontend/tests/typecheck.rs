@@ -1380,3 +1380,116 @@ fn closure_values_cannot_escape_by_return() {
     );
     assert!(has(&output, "closure/escape"), "{:?}", output.diagnostics);
 }
+
+#[test]
+fn execution_context_resolves_slots_and_scoped_types() {
+    let output = check(
+        r#"
+        module test.context_slots;
+        fn main() -> u32 {
+            var scratch: u32 = 7u32;
+            with context(:scratch = &scratch) {
+                val current = context.scratch;
+            }
+            return scratch;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let body = output.functions.values().next().expect("body");
+    assert_eq!(body.context_scopes.len(), 1);
+    assert!(matches!(
+        body.context_scopes[0].overrides.as_slice(),
+        [forge_frontend::TypedContextOverride {
+            slot: forge_frontend::ContextSlot::Scratch,
+            ty: Ty::Reference { mutable: false, .. },
+            ..
+        }]
+    ));
+    assert!(body.expressions.iter().any(|expr| matches!(
+        (&expr.kind, &expr.ty),
+        (
+            forge_frontend::TypedExprKind::ResolvedContext {
+                slot: forge_frontend::ContextSlot::Scratch,
+                ..
+            },
+            Ty::Reference { mutable: false, inner }
+        ) if inner.as_ref() == &Ty::Int { signed: false, width: forge_frontend::IntWidth::W32 }
+    )));
+}
+
+#[test]
+fn execution_context_rejects_unknown_duplicate_and_owning_overrides() {
+    let output = check(
+        r#"
+        module test.context_errors;
+        fn main() -> u32 {
+            var a: u32 = 1u32;
+            var b: u32 = 2u32;
+            with context(:scratch = &a, :scratch = &b, :bogus = &a, :logger = a) {
+                val current = context.scratch;
+            }
+            return a;
+        }
+        "#,
+    );
+    assert!(
+        has(&output, "context/duplicate-override"),
+        "{:?}",
+        output.diagnostics
+    );
+    assert!(
+        has(&output, "context/unknown-slot"),
+        "{:?}",
+        output.diagnostics
+    );
+    assert!(
+        has(&output, "context/non-owning"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
+fn execution_context_nested_override_types_are_lexically_scoped() {
+    let output = check(
+        r#"
+        module test.context_nested;
+        fn main() -> u32 {
+            var outer: u32 = 1u32;
+            var inner: u64 = 2u64;
+            with context(:scratch = &outer) {
+                val a = context.scratch;
+                with context(:scratch = &inner) {
+                    val b = context.scratch;
+                }
+                val c = context.scratch;
+            }
+            return outer;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let body = output.functions.values().next().expect("body");
+    let context_types = body
+        .expressions
+        .iter()
+        .filter_map(|expr| {
+            if matches!(
+                expr.kind,
+                forge_frontend::TypedExprKind::ResolvedContext { .. }
+            ) {
+                Some(expr.ty.clone())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(context_types.len(), 3);
+    assert!(matches!(&context_types[0], Ty::Reference { inner, .. }
+        if inner.as_ref() == &Ty::Int { signed: false, width: forge_frontend::IntWidth::W32 }));
+    assert!(matches!(&context_types[1], Ty::Reference { inner, .. }
+        if inner.as_ref() == &Ty::Int { signed: false, width: forge_frontend::IntWidth::W64 }));
+    assert!(matches!(&context_types[2], Ty::Reference { inner, .. }
+        if inner.as_ref() == &Ty::Int { signed: false, width: forge_frontend::IntWidth::W32 }));
+}
