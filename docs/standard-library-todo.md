@@ -28,7 +28,8 @@ language/runtime intrinsics
 - [x] `library`, `executable`, `kernel`, and `test` targets.
 - [x] Build-driver protocol for `check`, `run`, and tests.
 - [x] Pass dependency library roots to compiler/interpreter drivers.
-- [ ] General multi-unit function calls without bootstrap inlining.
+- [x] General local/cross-package function-call execution in CForge; imported functions may contain locals, loops and calls.
+- [x] `forge run ... -- ARGS...` application argument forwarding.
 - [ ] Multiple source modules per package/library target.
 - [ ] Package-private versus public module visibility rules.
 - [ ] Library interface serialization/cache for incremental builds.
@@ -171,27 +172,65 @@ language/runtime intrinsics
 - [ ] line-oriented helpers.
 - [ ] formatting layered on `core.io` rather than a separate formatter.
 
-### `std.process`
+### `std.args` / `std.process`
 
+- [x] bootstrap argument count/index access API.
+- [x] CForge hosted provider and Forge-level tests.
+- [x] build-system forwarding for `forge run ... -- ARGS...`.
 - [ ] process exit.
-- [ ] command-line arguments.
 - [ ] environment access.
 - [ ] current working directory only when filesystem layer exists.
+- [ ] eventual consolidation/naming decision between `std.args` and `std.process.args`.
 
 ### `std.time`
 
-- [ ] monotonic clock.
+- [x] bootstrap monotonic microsecond clock API.
+- [x] CForge provider and deterministic provider tests.
+- [ ] `Instant` and `Duration` value types.
 - [ ] wall-clock time.
-- [ ] duration/instant arithmetic.
 - [ ] sleep belongs here only for hosted environments.
+- [ ] native Unix and Cosmic providers.
 
 ### `std.fs`
 
-- [ ] file open/close/read/write.
+- [x] bootstrap whole-file text read/write/append API.
+- [x] CForge real-filesystem/provider tests.
+- [ ] structured filesystem errors.
+- [ ] file handles/open/close/read/write.
+- [ ] flush/sync semantics.
 - [ ] metadata/stat.
 - [ ] directories.
 - [ ] path manipulation kept separate from actual filesystem I/O where practical.
 - [ ] buffered I/O after primitive file operations are stable.
+
+### `std.lock`
+
+- [x] bootstrap exclusive file-lock facade.
+- [x] real hosted CForge lock using an OS file lock.
+- [x] provider substitution/release tests.
+- [ ] shared locks.
+- [ ] `defer`-safe lock guard/release convention.
+- [ ] two-process exclusion tests.
+- [ ] native Unix and Cosmic implementations.
+
+### `std.string`
+
+- [x] CKV bootstrap helpers for concatenation, line parsing, delimiter parsing and integer formatting.
+- [x] Forge-level behavior tests through CForge.
+- [ ] move portable operations out of runtime hooks and into Forge code.
+- [ ] byte length/slicing/search.
+- [ ] dynamic owning `String` once allocator-backed collections are ready.
+- [ ] documented UTF-8 versus byte-oriented operation semantics.
+
+### `std.collections.string_map`
+
+- [x] concrete string-to-string bootstrap API used by CKV.
+- [x] create/put/replace/contains/get/count provider tests.
+- [ ] implement the hash table itself in Forge once struct/array mutation is executable.
+- [ ] explicit allocator integration.
+- [ ] collision/growth/removal tests.
+- [ ] allocation-failure tests.
+- [ ] replace concrete bootstrap map with/generalize into the final map collection model.
 
 ### `std.net`
 
@@ -221,11 +260,11 @@ These should not block Cosmic kernel bring-up.
 
 - [ ] dynamic `String` and byte buffers using explicit/default allocator policy.
 - [ ] dynamic vector.
-- [ ] hash map/set.
+- [ ] general hash map/set.
 - [ ] ordered map/set if justified.
 - [ ] sorting/search algorithms.
 - [ ] hashing/checksum primitives.
-- [ ] text/encoding helpers.
+- [ ] text/encoding helpers beyond the bootstrap CKV helpers.
 - [ ] parsers/serialization helpers.
 - [ ] random/entropy facade in hosted `std`; deterministic PRNG can be freestanding.
 
@@ -238,7 +277,9 @@ Before serious Cosmic implementation depends on Forge:
 - [x] freestanding library integration scenario.
 - [x] local Forge package graph drives CForge tests.
 - [x] cross-package public symbol import exercised by a runnable application.
-- [ ] general cross-module function-call execution, not only bootstrap inlineable functions.
+- [x] general cross-package function-call execution in CForge, including locals/loops.
+- [x] non-trivial Forge CKV application exercises local package, args, files, lock, clock, strings and map on hosted CForge/JVM.
+- [ ] same CKV gate green through CForge native image.
 - [ ] raw memory/compiler primitives execute through native Forge backend.
 - [ ] MMIO and atomics validated in a freestanding/QEMU target.
 - [ ] non-allocating panic/debug Writer works on a QEMU serial console.
