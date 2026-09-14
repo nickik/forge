@@ -12,7 +12,8 @@
 
 - [Library Model](library-model.md) — design rationale and bootstrap module/library graph.
 - [Core Library](core-library.md) — freestanding facilities shared by kernel and user mode.
-- [Core Allocation Architecture](core-allocation.md) — variable-sized allocators, fixed-size object caches, arenas, reclaim, and kernel/user reuse.
+- [Core Allocation Architecture](core-allocation.md) — explicit provider capabilities, variable-sized allocators, fixed-size object caches, reclaim, and kernel/user reuse.
+- [OS Foundation Profile](os-foundation.md) — the minimal `core` facilities to stabilize before a production kernel depends on Forge.
 
 ## Implementation
 
