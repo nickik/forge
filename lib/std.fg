@@ -2,11 +2,13 @@ module std;
 
 import core;
 
-// Forge hosted standard library bootstrap.
+// Forge hosted standard-library root.
 //
-// `std` is layered on `core`. Hosted startup, I/O, filesystem, networking,
-// clocks, OS threads, entropy, and process allocator policy will live here as
-// their platform contracts are defined.
+// `std` is layered on `core`. Hosted startup, console I/O, filesystem,
+// networking, clocks, OS threads, entropy, and process allocator policy live
+// behind platform/provider contracts rather than leaking target APIs into
+// portable application code.
 //
-// No fake print/allocator intrinsics are declared yet: the runtime ABI and
-// foreign/platform binding mechanism should be specified before std exposes them.
+// The first hosted companion module is `std.console` (`lib/std/console.fg`).
+// The root does not implicitly re-export it during the bootstrap: applications
+// import `std.console` explicitly while the module/library graph is refined.
