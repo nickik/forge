@@ -1,0 +1,717 @@
+name: fir-step5-once
+
+on:
+  push:
+    branches:
+      - agent/fir-steps5-8-work
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fir-steps5-8-work
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Implement FIR step 5 scalar patterns
+        run: |
+          python3 -B - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"missing replacement in {path}: {old[:120]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          tc = Path('crates/forge-frontend/src/typecheck_v1.rs')
+          text = tc.read_text()
+          old = '''#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "test", rename_all = "snake_case")]
+pub enum MatchTest {
+    Bool { value: bool },
+    OptionNone,
+    OptionSome,
+    Variant { name: String },
+    Always,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "projection", rename_all = "snake_case")]
+pub enum MatchProjection {
+    OptionPayload { ty: Ty },
+    Field { name: String, ty: Ty },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypedMatchBinding {
+    pub local: LocalId,
+    pub ty: Ty,
+    pub projections: Vec<MatchProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypedMatchArmPlan {
+    pub test: MatchTest,
+    pub bindings: Vec<TypedMatchBinding>,
+}
+'''
+          new = '''#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "scalar", rename_all = "snake_case")]
+pub enum MatchScalar {
+    Integer { text: String },
+    Character { value: char },
+    String { value: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "test", rename_all = "snake_case")]
+pub enum MatchTest {
+    Bool { value: bool },
+    ScalarLiteral { value: MatchScalar },
+    ScalarRange {
+        start: MatchScalar,
+        end: MatchScalar,
+        inclusive: bool,
+    },
+    OptionNone,
+    OptionSome,
+    Variant { name: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "projection", rename_all = "snake_case")]
+pub enum MatchProjection {
+    OptionPayload { ty: Ty },
+    Field { name: String, ty: Ty },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "condition", rename_all = "snake_case")]
+pub enum MatchCondition {
+    Always,
+    Test {
+        projections: Vec<MatchProjection>,
+        test: MatchTest,
+    },
+    All { conditions: Vec<MatchCondition> },
+    Any { conditions: Vec<MatchCondition> },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypedMatchBinding {
+    pub local: LocalId,
+    pub ty: Ty,
+    pub projections: Vec<MatchProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypedMatchArmPlan {
+    pub condition: MatchCondition,
+    pub bindings: Vec<TypedMatchBinding>,
+}
+'''
+          if old not in text:
+              raise SystemExit('match semantic structs not found')
+          text = text.replace(old, new, 1)
+
+          start = text.index('    fn build_match_plan(')
+          end = text.index('    fn collect_irrefutable_match_bindings(', start)
+          replacement = r'''    fn build_match_plan(
+        &self,
+        ty: &Ty,
+        arms: &[crate::body_hir::HirMatchArm],
+    ) -> Option<TypedMatchPlan> {
+        let supported = match ty {
+            Ty::Bool | Ty::Char | Ty::Str | Ty::Int { .. } | Ty::Optional { .. } => true,
+            Ty::Nominal(id) => matches!(
+                self.env.types.get(id).map(|info| &info.kind),
+                Some(TypeInfoKind::Enum(_)) | Some(TypeInfoKind::Tagged(_))
+            ),
+            _ => false,
+        };
+        if !supported {
+            return None;
+        }
+
+        let mut planned = Vec::with_capacity(arms.len());
+        for arm in arms {
+            let (condition, bindings) = self.plan_match_pattern(&arm.pattern, ty)?;
+            planned.push(TypedMatchArmPlan {
+                condition,
+                bindings,
+            });
+        }
+        Some(TypedMatchPlan {
+            scrutinee_type: ty.clone(),
+            arms: planned,
+        })
+    }
+
+    fn plan_match_pattern(
+        &self,
+        pattern: &HirPattern,
+        ty: &Ty,
+    ) -> Option<(MatchCondition, Vec<TypedMatchBinding>)> {
+        let root_test = |test| MatchCondition::Test {
+            projections: Vec::new(),
+            test,
+        };
+        match &pattern.kind {
+            HirPatternKind::Wildcard => Some((MatchCondition::Always, Vec::new())),
+            HirPatternKind::Binding { local, .. } => Some((
+                MatchCondition::Always,
+                vec![TypedMatchBinding {
+                    local: *local,
+                    ty: ty.clone(),
+                    projections: Vec::new(),
+                }],
+            )),
+            HirPatternKind::As { local, pattern } => {
+                let (condition, mut bindings) = self.plan_match_pattern(pattern, ty)?;
+                bindings.insert(
+                    0,
+                    TypedMatchBinding {
+                        local: *local,
+                        ty: ty.clone(),
+                        projections: Vec::new(),
+                    },
+                );
+                Some((condition, bindings))
+            }
+            HirPatternKind::Literal {
+                value: ast::PatternLiteral::Bool { value },
+            } if *ty == Ty::Bool => Some((root_test(MatchTest::Bool { value: *value }), Vec::new())),
+            HirPatternKind::Literal { value } => self
+                .match_scalar(value, ty)
+                .map(|value| (root_test(MatchTest::ScalarLiteral { value }), Vec::new())),
+            HirPatternKind::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                let start = self.match_scalar(start, ty)?;
+                let end = self.match_scalar(end, ty)?;
+                Some((
+                    root_test(MatchTest::ScalarRange {
+                        start,
+                        end,
+                        inclusive: *inclusive,
+                    }),
+                    Vec::new(),
+                ))
+            }
+            HirPatternKind::None { .. } if matches!(ty, Ty::Optional { .. }) => {
+                Some((root_test(MatchTest::OptionNone), Vec::new()))
+            }
+            HirPatternKind::Some { value } => {
+                let Ty::Optional { inner } = ty else {
+                    return None;
+                };
+                let mut bindings = Vec::new();
+                let projections = vec![MatchProjection::OptionPayload {
+                    ty: inner.as_ref().clone(),
+                }];
+                if !self.collect_irrefutable_match_bindings(
+                    value,
+                    inner,
+                    &projections,
+                    &mut bindings,
+                ) {
+                    return None;
+                }
+                Some((root_test(MatchTest::OptionSome), bindings))
+            }
+            HirPatternKind::Variant {
+                namespace,
+                name,
+                fields,
+                ..
+            } => {
+                let expected = self.env.ty_from_ref(namespace);
+                if expected != *ty {
+                    return None;
+                }
+                let Ty::Nominal(id) = ty else {
+                    return None;
+                };
+                match self.env.types.get(id).map(|info| &info.kind) {
+                    Some(TypeInfoKind::Enum(variants)) => {
+                        if !variants.contains(name) || !fields.is_empty() {
+                            return None;
+                        }
+                        Some((root_test(MatchTest::Variant { name: name.clone() }), Vec::new()))
+                    }
+                    Some(TypeInfoKind::Tagged(variants)) => {
+                        let defs = variants.get(name)?;
+                        let mut bindings = Vec::new();
+                        for field in fields {
+                            let info = defs.get(&field.name)?;
+                            let projections = vec![MatchProjection::Field {
+                                name: field.name.clone(),
+                                ty: info.ty.clone(),
+                            }];
+                            if let Some(local) = field.shorthand_local {
+                                bindings.push(TypedMatchBinding {
+                                    local,
+                                    ty: info.ty.clone(),
+                                    projections: projections.clone(),
+                                });
+                            }
+                            if let Some(nested) = &field.pattern {
+                                if !self.collect_irrefutable_match_bindings(
+                                    nested,
+                                    &info.ty,
+                                    &projections,
+                                    &mut bindings,
+                                ) {
+                                    return None;
+                                }
+                            }
+                        }
+                        Some((root_test(MatchTest::Variant { name: name.clone() }), bindings))
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn match_scalar(&self, value: &ast::PatternLiteral, ty: &Ty) -> Option<MatchScalar> {
+        match (value, ty) {
+            (ast::PatternLiteral::Integer { text }, Ty::Int { .. }) => {
+                Some(MatchScalar::Integer { text: text.clone() })
+            }
+            (ast::PatternLiteral::Character { value }, Ty::Char) => {
+                Some(MatchScalar::Character { value: *value })
+            }
+            (ast::PatternLiteral::String { value }, Ty::Str) => {
+                Some(MatchScalar::String { value: value.clone() })
+            }
+            _ => None,
+        }
+    }
+
+'''
+          text = text[:start] + replacement + text[end:]
+          tc.write_text(text)
+
+          fir = Path('crates/forge-frontend/src/fir_v1.rs')
+          text = fir.read_text()
+          text = text.replace(
+              'ConstValue, IntWidth, MatchProjection, MatchTest, ResolvedReceiver, Ty, TypeCheckOutput,',
+              'ConstValue, IntWidth, MatchCondition, MatchProjection, MatchScalar, MatchTest, ResolvedReceiver, Ty, TypeCheckOutput,',
+              1,
+          )
+          old = '''            let condition = match &planned.test {
+                MatchTest::Bool { value: true } => Some(scrutinee),
+                MatchTest::Bool { value: false } => Some(self.emit_value(
+                    arm.pattern.span,
+                    Ty::Bool,
+                    FirInstructionKind::Unary {
+                        op: FirUnaryOp::Not,
+                        value: scrutinee,
+                    },
+                )),
+                MatchTest::OptionSome => Some(self.emit_value(
+                    arm.pattern.span,
+                    Ty::Bool,
+                    FirInstructionKind::OptionIsSome { value: scrutinee },
+                )),
+                MatchTest::OptionNone => {
+                    let is_some = self.emit_value(
+                        arm.pattern.span,
+                        Ty::Bool,
+                        FirInstructionKind::OptionIsSome { value: scrutinee },
+                    );
+                    Some(self.emit_value(
+                        arm.pattern.span,
+                        Ty::Bool,
+                        FirInstructionKind::Unary {
+                            op: FirUnaryOp::Not,
+                            value: is_some,
+                        },
+                    ))
+                }
+                MatchTest::Variant { name } => Some(self.emit_value(
+                    arm.pattern.span,
+                    Ty::Bool,
+                    FirInstructionKind::VariantIs {
+                        value: scrutinee,
+                        name: name.clone(),
+                    },
+                )),
+                MatchTest::Always => None,
+            };
+'''
+          new = '''            let condition = self.lower_match_condition(
+                arm.pattern.span,
+                scrutinee,
+                &plan.scrutinee_type,
+                &planned.condition,
+            );
+'''
+          if old not in text:
+              raise SystemExit('old lower_match test dispatch not found')
+          text = text.replace(old, new, 1)
+
+          marker = '    fn lower_match_bindings(\n'
+          pos = text.index(marker)
+          helpers = r'''    fn lower_match_condition(
+        &mut self,
+        span: Span,
+        scrutinee: FirValueId,
+        scrutinee_ty: &Ty,
+        condition: &MatchCondition,
+    ) -> Option<FirValueId> {
+        match condition {
+            MatchCondition::Always => None,
+            MatchCondition::Test { projections, test } => {
+                let value = self.lower_match_projection(span, scrutinee, projections);
+                let value_ty = projections
+                    .last()
+                    .map(|projection| match projection {
+                        MatchProjection::OptionPayload { ty }
+                        | MatchProjection::Field { ty, .. } => ty.clone(),
+                    })
+                    .unwrap_or_else(|| scrutinee_ty.clone());
+                Some(self.lower_match_test(span, value, &value_ty, test))
+            }
+            MatchCondition::All { conditions } => {
+                let mut combined = None;
+                for condition in conditions {
+                    let Some(value) = self.lower_match_condition(
+                        span,
+                        scrutinee,
+                        scrutinee_ty,
+                        condition,
+                    ) else {
+                        continue;
+                    };
+                    combined = Some(match combined {
+                        None => value,
+                        Some(left) => self.emit_value(
+                            span,
+                            Ty::Bool,
+                            FirInstructionKind::Binary {
+                                op: BinaryOp::LogicalAnd,
+                                overflow: None,
+                                left,
+                                right: value,
+                            },
+                        ),
+                    });
+                }
+                combined
+            }
+            MatchCondition::Any { conditions } => {
+                let mut combined = None;
+                for condition in conditions {
+                    let Some(value) = self.lower_match_condition(
+                        span,
+                        scrutinee,
+                        scrutinee_ty,
+                        condition,
+                    ) else {
+                        return None;
+                    };
+                    combined = Some(match combined {
+                        None => value,
+                        Some(left) => self.emit_value(
+                            span,
+                            Ty::Bool,
+                            FirInstructionKind::Binary {
+                                op: BinaryOp::LogicalOr,
+                                overflow: None,
+                                left,
+                                right: value,
+                            },
+                        ),
+                    });
+                }
+                combined
+            }
+        }
+    }
+
+    fn lower_match_test(
+        &mut self,
+        span: Span,
+        value: FirValueId,
+        value_ty: &Ty,
+        test: &MatchTest,
+    ) -> FirValueId {
+        match test {
+            MatchTest::Bool { value: true } => value,
+            MatchTest::Bool { value: false } => self.emit_value(
+                span,
+                Ty::Bool,
+                FirInstructionKind::Unary {
+                    op: FirUnaryOp::Not,
+                    value,
+                },
+            ),
+            MatchTest::ScalarLiteral { value: literal } => {
+                let literal = self.emit_match_scalar(span, value_ty.clone(), literal);
+                self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::Binary {
+                        op: BinaryOp::Eq,
+                        overflow: None,
+                        left: value,
+                        right: literal,
+                    },
+                )
+            }
+            MatchTest::ScalarRange {
+                start,
+                end,
+                inclusive,
+            } => {
+                let start = self.emit_match_scalar(span, value_ty.clone(), start);
+                let end = self.emit_match_scalar(span, value_ty.clone(), end);
+                let lower = self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::Binary {
+                        op: BinaryOp::GreaterEq,
+                        overflow: None,
+                        left: value,
+                        right: start,
+                    },
+                );
+                let upper = self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::Binary {
+                        op: if *inclusive {
+                            BinaryOp::LessEq
+                        } else {
+                            BinaryOp::Less
+                        },
+                        overflow: None,
+                        left: value,
+                        right: end,
+                    },
+                );
+                self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::Binary {
+                        op: BinaryOp::LogicalAnd,
+                        overflow: None,
+                        left: lower,
+                        right: upper,
+                    },
+                )
+            }
+            MatchTest::OptionSome => self.emit_value(
+                span,
+                Ty::Bool,
+                FirInstructionKind::OptionIsSome { value },
+            ),
+            MatchTest::OptionNone => {
+                let is_some = self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::OptionIsSome { value },
+                );
+                self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::Unary {
+                        op: FirUnaryOp::Not,
+                        value: is_some,
+                    },
+                )
+            }
+            MatchTest::Variant { name } => self.emit_value(
+                span,
+                Ty::Bool,
+                FirInstructionKind::VariantIs {
+                    value,
+                    name: name.clone(),
+                },
+            ),
+        }
+    }
+
+    fn emit_match_scalar(&mut self, span: Span, ty: Ty, value: &MatchScalar) -> FirValueId {
+        let value = match value {
+            MatchScalar::Integer { text } => FirConst::Integer { text: text.clone() },
+            MatchScalar::Character { value } => FirConst::Char { value: *value },
+            MatchScalar::String { value } => FirConst::String {
+                value: value.clone(),
+            },
+        };
+        self.emit_value(span, ty, FirInstructionKind::Const { value })
+    }
+
+    fn lower_match_projection(
+        &mut self,
+        span: Span,
+        scrutinee: FirValueId,
+        projections: &[MatchProjection],
+    ) -> FirValueId {
+        let mut value = scrutinee;
+        for projection in projections {
+            value = match projection {
+                MatchProjection::OptionPayload { ty } => self.emit_value(
+                    span,
+                    ty.clone(),
+                    FirInstructionKind::OptionUnwrap { value },
+                ),
+                MatchProjection::Field { name, ty } => self.emit_value(
+                    span,
+                    ty.clone(),
+                    FirInstructionKind::ExtractField {
+                        base: value,
+                        field: name.clone(),
+                    },
+                ),
+            };
+        }
+        value
+    }
+
+'''
+          text = text[:pos] + helpers + text[pos:]
+          old = '''        for binding in bindings {
+            let mut value = scrutinee;
+            for projection in &binding.projections {
+                value = match projection {
+                    MatchProjection::OptionPayload { ty } => self.emit_value(
+                        span,
+                        ty.clone(),
+                        FirInstructionKind::OptionUnwrap { value },
+                    ),
+                    MatchProjection::Field { name, ty } => self.emit_value(
+                        span,
+                        ty.clone(),
+                        FirInstructionKind::ExtractField {
+                            base: value,
+                            field: name.clone(),
+                        },
+                    ),
+                };
+            }
+'''
+          new = '''        for binding in bindings {
+            let value = self.lower_match_projection(span, scrutinee, &binding.projections);
+'''
+          if old not in text:
+              raise SystemExit('binding projection loop not found')
+          text = text.replace(old, new, 1)
+          fir.write_text(text)
+
+          lib = Path('crates/forge-frontend/src/lib.rs')
+          text = lib.read_text()
+          text = text.replace(
+              'type_check_module, ConstValue, IntWidth, MatchProjection, MatchTest, ResolvedReceiver, Ty,',
+              'type_check_module, ConstValue, IntWidth, MatchCondition, MatchProjection, MatchScalar, MatchTest, ResolvedReceiver, Ty,',
+              1,
+          )
+          lib.write_text(text)
+
+          tests = Path('crates/forge-frontend/tests/fir.rs')
+          text = tests.read_text()
+          text += r'''
+
+#[test]
+fn scalar_integer_literal_match_lowers_to_equality() {
+    let output = lower(
+        r#"
+        module test.fir_scalar_integer;
+        fn choose(value: i32) -> i32 {
+            return match (value) { 7 => 1i32, _ => 0i32, };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Binary {
+            op: forge_frontend::ast::BinaryOp::Eq,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn scalar_char_range_match_lowers_both_bounds() {
+    let output = lower(
+        r#"
+        module test.fir_scalar_range;
+        fn choose(value: char) -> i32 {
+            return match (value) { 'a'..='z' => 1i32, _ => 0i32, };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Binary {
+            op: forge_frontend::ast::BinaryOp::GreaterEq,
+            ..
+        }
+    )));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Binary {
+            op: forge_frontend::ast::BinaryOp::LessEq,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn scalar_string_literal_match_is_resolved_before_fir() {
+    let output = lower(
+        r#"
+        module test.fir_scalar_string;
+        fn choose(value: str) -> i32 {
+            return match (value) { "yes" => 1i32, _ => 0i32, };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(!output
+        .diagnostics
+        .iter()
+        .any(|d| d.code == "fir/pattern-decision-tree-missing"));
+}
+'''
+          tests.write_text(text)
+
+          plan = Path('docs/fir-completion-plan.md')
+          text = plan.read_text().replace(
+              '- Steps 5-16 intentionally untouched.',
+              '- Step 5 complete: integer/char/string literal tests and integer/char ranges lower from semantic match conditions.\n- Steps 6-16 intentionally untouched.',
+              1,
+          )
+          plan.write_text(text)
+
+          Path('.github/workflows/fir-step5-once.yml').unlink()
+          PY
+      - run: cargo fmt --all
+      - run: cargo fmt --all -- --check
+      - run: cargo check --workspace --locked
+      - run: cargo test --workspace --locked
+      - run: cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings -A unused_mut -A clippy::collapsible_match -A clippy::large-enum-variant -A clippy::only-used-in-recursion
+      - name: Commit validated Step 5
+        run: |
+          git config user.name forge-ci
+          git config user.email forge-ci@users.noreply.github.com
+          git add -A
+          git commit -m "Implement FIR scalar match tests"
+          git push origin HEAD:agent/fir-steps5-8-work
