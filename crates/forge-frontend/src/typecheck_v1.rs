@@ -87,13 +87,32 @@ pub enum ConstValue {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "scalar", rename_all = "snake_case")]
+pub enum MatchScalar {
+    Integer { text: String },
+    Character { value: char },
+    String { value: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "test", rename_all = "snake_case")]
 pub enum MatchTest {
-    Bool { value: bool },
+    Bool {
+        value: bool,
+    },
+    ScalarLiteral {
+        value: MatchScalar,
+    },
+    ScalarRange {
+        start: MatchScalar,
+        end: MatchScalar,
+        inclusive: bool,
+    },
     OptionNone,
     OptionSome,
-    Variant { name: String },
-    Always,
+    Variant {
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -101,6 +120,22 @@ pub enum MatchTest {
 pub enum MatchProjection {
     OptionPayload { ty: Ty },
     Field { name: String, ty: Ty },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "condition", rename_all = "snake_case")]
+pub enum MatchCondition {
+    Always,
+    Test {
+        projections: Vec<MatchProjection>,
+        test: MatchTest,
+    },
+    All {
+        conditions: Vec<MatchCondition>,
+    },
+    Any {
+        conditions: Vec<MatchCondition>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -112,7 +147,7 @@ pub struct TypedMatchBinding {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TypedMatchArmPlan {
-    pub test: MatchTest,
+    pub condition: MatchCondition,
     pub bindings: Vec<TypedMatchBinding>,
 }
 
@@ -2050,7 +2085,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         arms: &[crate::body_hir::HirMatchArm],
     ) -> Option<TypedMatchPlan> {
         let supported = match ty {
-            Ty::Bool | Ty::Optional { .. } => true,
+            Ty::Bool | Ty::Char | Ty::Str | Ty::Int { .. } | Ty::Optional { .. } => true,
             Ty::Nominal(id) => matches!(
                 self.env.types.get(id).map(|info| &info.kind),
                 Some(TypeInfoKind::Enum(_)) | Some(TypeInfoKind::Tagged(_))
@@ -2063,8 +2098,11 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
 
         let mut planned = Vec::with_capacity(arms.len());
         for arm in arms {
-            let (test, bindings) = self.plan_match_pattern(&arm.pattern, ty)?;
-            planned.push(TypedMatchArmPlan { test, bindings });
+            let (condition, bindings) = self.plan_match_pattern(&arm.pattern, ty)?;
+            planned.push(TypedMatchArmPlan {
+                condition,
+                bindings,
+            });
         }
         Some(TypedMatchPlan {
             scrutinee_type: ty.clone(),
@@ -2076,11 +2114,15 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         &self,
         pattern: &HirPattern,
         ty: &Ty,
-    ) -> Option<(MatchTest, Vec<TypedMatchBinding>)> {
+    ) -> Option<(MatchCondition, Vec<TypedMatchBinding>)> {
+        let root_test = |test| MatchCondition::Test {
+            projections: Vec::new(),
+            test,
+        };
         match &pattern.kind {
-            HirPatternKind::Wildcard => Some((MatchTest::Always, Vec::new())),
+            HirPatternKind::Wildcard => Some((MatchCondition::Always, Vec::new())),
             HirPatternKind::Binding { local, .. } => Some((
-                MatchTest::Always,
+                MatchCondition::Always,
                 vec![TypedMatchBinding {
                     local: *local,
                     ty: ty.clone(),
@@ -2088,7 +2130,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 }],
             )),
             HirPatternKind::As { local, pattern } => {
-                let (test, mut bindings) = self.plan_match_pattern(pattern, ty)?;
+                let (condition, mut bindings) = self.plan_match_pattern(pattern, ty)?;
                 bindings.insert(
                     0,
                     TypedMatchBinding {
@@ -2097,13 +2139,34 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         projections: Vec::new(),
                     },
                 );
-                Some((test, bindings))
+                Some((condition, bindings))
             }
             HirPatternKind::Literal {
                 value: ast::PatternLiteral::Bool { value },
-            } if *ty == Ty::Bool => Some((MatchTest::Bool { value: *value }, Vec::new())),
+            } if *ty == Ty::Bool => {
+                Some((root_test(MatchTest::Bool { value: *value }), Vec::new()))
+            }
+            HirPatternKind::Literal { value } => self
+                .match_scalar(value, ty)
+                .map(|value| (root_test(MatchTest::ScalarLiteral { value }), Vec::new())),
+            HirPatternKind::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                let start = self.match_scalar(start, ty)?;
+                let end = self.match_scalar(end, ty)?;
+                Some((
+                    root_test(MatchTest::ScalarRange {
+                        start,
+                        end,
+                        inclusive: *inclusive,
+                    }),
+                    Vec::new(),
+                ))
+            }
             HirPatternKind::None { .. } if matches!(ty, Ty::Optional { .. }) => {
-                Some((MatchTest::OptionNone, Vec::new()))
+                Some((root_test(MatchTest::OptionNone), Vec::new()))
             }
             HirPatternKind::Some { value } => {
                 let Ty::Optional { inner } = ty else {
@@ -2121,7 +2184,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 ) {
                     return None;
                 }
-                Some((MatchTest::OptionSome, bindings))
+                Some((root_test(MatchTest::OptionSome), bindings))
             }
             HirPatternKind::Variant {
                 namespace,
@@ -2141,7 +2204,10 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         if !variants.contains(name) || !fields.is_empty() {
                             return None;
                         }
-                        Some((MatchTest::Variant { name: name.clone() }, Vec::new()))
+                        Some((
+                            root_test(MatchTest::Variant { name: name.clone() }),
+                            Vec::new(),
+                        ))
                     }
                     Some(TypeInfoKind::Tagged(variants)) => {
                         let defs = variants.get(name)?;
@@ -2170,11 +2236,29 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                                 }
                             }
                         }
-                        Some((MatchTest::Variant { name: name.clone() }, bindings))
+                        Some((
+                            root_test(MatchTest::Variant { name: name.clone() }),
+                            bindings,
+                        ))
                     }
                     _ => None,
                 }
             }
+            _ => None,
+        }
+    }
+
+    fn match_scalar(&self, value: &ast::PatternLiteral, ty: &Ty) -> Option<MatchScalar> {
+        match (value, ty) {
+            (ast::PatternLiteral::Integer { text }, Ty::Int { .. }) => {
+                Some(MatchScalar::Integer { text: text.clone() })
+            }
+            (ast::PatternLiteral::Character { value }, Ty::Char) => {
+                Some(MatchScalar::Character { value: *value })
+            }
+            (ast::PatternLiteral::String { value }, Ty::Str) => Some(MatchScalar::String {
+                value: value.clone(),
+            }),
             _ => None,
         }
     }

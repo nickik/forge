@@ -11,8 +11,9 @@ use crate::{
     hir::{DefId, MetadataTableExt, MetadataTarget},
     resolution::{LocalId, ResolvedName},
     typecheck::{
-        ConstValue, IntWidth, MatchProjection, MatchTest, ResolvedReceiver, Ty, TypeCheckOutput,
-        TypedBody, TypedExpr, TypedExprKind, TypedMatchBinding, TypedMatchPlan,
+        ConstValue, IntWidth, MatchCondition, MatchProjection, MatchScalar, MatchTest,
+        ResolvedReceiver, Ty, TypeCheckOutput, TypedBody, TypedExpr, TypedExprKind,
+        TypedMatchBinding, TypedMatchPlan,
     },
 };
 
@@ -1213,46 +1214,12 @@ impl<'a> FunctionLowerer<'a> {
         for (arm, planned) in arms.iter().zip(&plan.arms) {
             let arm_entry = self.new_block();
             let next_arm = self.new_block();
-            let condition = match &planned.test {
-                MatchTest::Bool { value: true } => Some(scrutinee),
-                MatchTest::Bool { value: false } => Some(self.emit_value(
-                    arm.pattern.span,
-                    Ty::Bool,
-                    FirInstructionKind::Unary {
-                        op: FirUnaryOp::Not,
-                        value: scrutinee,
-                    },
-                )),
-                MatchTest::OptionSome => Some(self.emit_value(
-                    arm.pattern.span,
-                    Ty::Bool,
-                    FirInstructionKind::OptionIsSome { value: scrutinee },
-                )),
-                MatchTest::OptionNone => {
-                    let is_some = self.emit_value(
-                        arm.pattern.span,
-                        Ty::Bool,
-                        FirInstructionKind::OptionIsSome { value: scrutinee },
-                    );
-                    Some(self.emit_value(
-                        arm.pattern.span,
-                        Ty::Bool,
-                        FirInstructionKind::Unary {
-                            op: FirUnaryOp::Not,
-                            value: is_some,
-                        },
-                    ))
-                }
-                MatchTest::Variant { name } => Some(self.emit_value(
-                    arm.pattern.span,
-                    Ty::Bool,
-                    FirInstructionKind::VariantIs {
-                        value: scrutinee,
-                        name: name.clone(),
-                    },
-                )),
-                MatchTest::Always => None,
-            };
+            let condition = self.lower_match_condition(
+                arm.pattern.span,
+                scrutinee,
+                &plan.scrutinee_type,
+                &planned.condition,
+            );
             if let Some(condition) = condition {
                 self.terminate(FirTerminator::Branch {
                     condition,
@@ -1317,6 +1284,208 @@ impl<'a> FunctionLowerer<'a> {
         }
     }
 
+    fn lower_match_condition(
+        &mut self,
+        span: Span,
+        scrutinee: FirValueId,
+        scrutinee_ty: &Ty,
+        condition: &MatchCondition,
+    ) -> Option<FirValueId> {
+        match condition {
+            MatchCondition::Always => None,
+            MatchCondition::Test { projections, test } => {
+                let value = self.lower_match_projection(span, scrutinee, projections);
+                let value_ty = projections
+                    .last()
+                    .map(|projection| match projection {
+                        MatchProjection::OptionPayload { ty }
+                        | MatchProjection::Field { ty, .. } => ty.clone(),
+                    })
+                    .unwrap_or_else(|| scrutinee_ty.clone());
+                Some(self.lower_match_test(span, value, &value_ty, test))
+            }
+            MatchCondition::All { conditions } => {
+                let mut combined = None;
+                for condition in conditions {
+                    let Some(value) =
+                        self.lower_match_condition(span, scrutinee, scrutinee_ty, condition)
+                    else {
+                        continue;
+                    };
+                    combined = Some(match combined {
+                        None => value,
+                        Some(left) => self.emit_value(
+                            span,
+                            Ty::Bool,
+                            FirInstructionKind::Binary {
+                                op: BinaryOp::LogicalAnd,
+                                overflow: None,
+                                left,
+                                right: value,
+                            },
+                        ),
+                    });
+                }
+                combined
+            }
+            MatchCondition::Any { conditions } => {
+                let mut combined = None;
+                for condition in conditions {
+                    let value =
+                        self.lower_match_condition(span, scrutinee, scrutinee_ty, condition)?;
+                    combined = Some(match combined {
+                        None => value,
+                        Some(left) => self.emit_value(
+                            span,
+                            Ty::Bool,
+                            FirInstructionKind::Binary {
+                                op: BinaryOp::LogicalOr,
+                                overflow: None,
+                                left,
+                                right: value,
+                            },
+                        ),
+                    });
+                }
+                combined
+            }
+        }
+    }
+
+    fn lower_match_test(
+        &mut self,
+        span: Span,
+        value: FirValueId,
+        value_ty: &Ty,
+        test: &MatchTest,
+    ) -> FirValueId {
+        match test {
+            MatchTest::Bool { value: true } => value,
+            MatchTest::Bool { value: false } => self.emit_value(
+                span,
+                Ty::Bool,
+                FirInstructionKind::Unary {
+                    op: FirUnaryOp::Not,
+                    value,
+                },
+            ),
+            MatchTest::ScalarLiteral { value: literal } => {
+                let literal = self.emit_match_scalar(span, value_ty.clone(), literal);
+                self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::Binary {
+                        op: BinaryOp::Eq,
+                        overflow: None,
+                        left: value,
+                        right: literal,
+                    },
+                )
+            }
+            MatchTest::ScalarRange {
+                start,
+                end,
+                inclusive,
+            } => {
+                let start = self.emit_match_scalar(span, value_ty.clone(), start);
+                let end = self.emit_match_scalar(span, value_ty.clone(), end);
+                let lower = self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::Binary {
+                        op: BinaryOp::GreaterEq,
+                        overflow: None,
+                        left: value,
+                        right: start,
+                    },
+                );
+                let upper = self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::Binary {
+                        op: if *inclusive {
+                            BinaryOp::LessEq
+                        } else {
+                            BinaryOp::Less
+                        },
+                        overflow: None,
+                        left: value,
+                        right: end,
+                    },
+                );
+                self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::Binary {
+                        op: BinaryOp::LogicalAnd,
+                        overflow: None,
+                        left: lower,
+                        right: upper,
+                    },
+                )
+            }
+            MatchTest::OptionSome => {
+                self.emit_value(span, Ty::Bool, FirInstructionKind::OptionIsSome { value })
+            }
+            MatchTest::OptionNone => {
+                let is_some =
+                    self.emit_value(span, Ty::Bool, FirInstructionKind::OptionIsSome { value });
+                self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::Unary {
+                        op: FirUnaryOp::Not,
+                        value: is_some,
+                    },
+                )
+            }
+            MatchTest::Variant { name } => self.emit_value(
+                span,
+                Ty::Bool,
+                FirInstructionKind::VariantIs {
+                    value,
+                    name: name.clone(),
+                },
+            ),
+        }
+    }
+
+    fn emit_match_scalar(&mut self, span: Span, ty: Ty, value: &MatchScalar) -> FirValueId {
+        let value = match value {
+            MatchScalar::Integer { text } => FirConst::Integer { text: text.clone() },
+            MatchScalar::Character { value } => FirConst::Char { value: *value },
+            MatchScalar::String { value } => FirConst::String {
+                value: value.clone(),
+            },
+        };
+        self.emit_value(span, ty, FirInstructionKind::Const { value })
+    }
+
+    fn lower_match_projection(
+        &mut self,
+        span: Span,
+        scrutinee: FirValueId,
+        projections: &[MatchProjection],
+    ) -> FirValueId {
+        let mut value = scrutinee;
+        for projection in projections {
+            value = match projection {
+                MatchProjection::OptionPayload { ty } => {
+                    self.emit_value(span, ty.clone(), FirInstructionKind::OptionUnwrap { value })
+                }
+                MatchProjection::Field { name, ty } => self.emit_value(
+                    span,
+                    ty.clone(),
+                    FirInstructionKind::ExtractField {
+                        base: value,
+                        field: name.clone(),
+                    },
+                ),
+            };
+        }
+        value
+    }
+
     fn lower_match_bindings(
         &mut self,
         span: Span,
@@ -1324,24 +1493,7 @@ impl<'a> FunctionLowerer<'a> {
         bindings: &[TypedMatchBinding],
     ) {
         for binding in bindings {
-            let mut value = scrutinee;
-            for projection in &binding.projections {
-                value = match projection {
-                    MatchProjection::OptionPayload { ty } => self.emit_value(
-                        span,
-                        ty.clone(),
-                        FirInstructionKind::OptionUnwrap { value },
-                    ),
-                    MatchProjection::Field { name, ty } => self.emit_value(
-                        span,
-                        ty.clone(),
-                        FirInstructionKind::ExtractField {
-                            base: value,
-                            field: name.clone(),
-                        },
-                    ),
-                };
-            }
+            let value = self.lower_match_projection(span, scrutinee, &binding.projections);
             let Some(local) = self.local_map.get(&binding.local).copied() else {
                 self.diagnostic(
                     span,

@@ -374,3 +374,67 @@ fn structural_match_still_waits_for_later_pattern_step() {
         .iter()
         .any(|d| d.code == "fir/pattern-decision-tree-missing"));
 }
+
+#[test]
+fn scalar_integer_literal_match_lowers_to_equality() {
+    let output = lower(
+        r#"
+        module test.fir_scalar_integer;
+        fn choose(value: i32) -> i32 {
+            return match (value) { 7 => 1i32, _ => 0i32, };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Binary {
+            op: forge_frontend::ast::BinaryOp::Eq,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn scalar_char_range_match_lowers_both_bounds() {
+    let output = lower(
+        r#"
+        module test.fir_scalar_range;
+        fn choose(value: char) -> i32 {
+            return match (value) { 'a'..='z' => 1i32, _ => 0i32, };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Binary {
+            op: forge_frontend::ast::BinaryOp::GreaterEq,
+            ..
+        }
+    )));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Binary {
+            op: forge_frontend::ast::BinaryOp::LessEq,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn scalar_string_literal_match_is_resolved_before_fir() {
+    let output = lower(
+        r#"
+        module test.fir_scalar_string;
+        fn choose(value: str) -> i32 {
+            return match (value) { "yes" => 1i32, _ => 0i32, };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(!output
+        .diagnostics
+        .iter()
+        .any(|d| d.code == "fir/pattern-decision-tree-missing"));
+}
