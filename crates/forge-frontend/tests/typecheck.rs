@@ -854,3 +854,58 @@ fn finite_matches_are_checked_for_exhaustiveness() {
     );
     assert!(ok.diagnostics.is_empty(), "{:?}", ok.diagnostics);
 }
+
+#[test]
+fn finite_matches_report_provably_unreachable_arms() {
+    let duplicate = check(
+        r#"
+        module test.unreachable_enum_arm;
+        enum Color { Red, Green }
+        fn code(color: Color) -> i32 {
+            return match (color) {
+                Color::Red => 1,
+                Color::Red => 2,
+                Color::Green => 3,
+            };
+        }
+        "#,
+    );
+    assert!(
+        has(&duplicate, "match/unreachable-arm"),
+        "{:?}",
+        duplicate.diagnostics
+    );
+
+    let after_wildcard = check(
+        r#"
+        module test.unreachable_after_wildcard;
+        enum Color { Red, Green }
+        fn code(color: Color) -> i32 {
+            return match (color) {
+                _ => 1,
+                Color::Green => 2,
+            };
+        }
+        "#,
+    );
+    assert!(
+        has(&after_wildcard, "match/unreachable-arm"),
+        "{:?}",
+        after_wildcard.diagnostics
+    );
+
+    let guarded = check(
+        r#"
+        module test.guarded_arm_does_not_cover;
+        enum Color { Red, Green }
+        fn choose(color: Color, flag: bool) -> i32 {
+            return match (color) {
+                Color::Red when flag => 1,
+                Color::Red => 2,
+                Color::Green => 3,
+            };
+        }
+        "#,
+    );
+    assert!(guarded.diagnostics.is_empty(), "{:?}", guarded.diagnostics);
+}

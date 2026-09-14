@@ -1783,10 +1783,18 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         };
         let mut covered = BTreeSet::new();
         for arm in arms {
-            if arm.guard.is_some() {
+            let arm_cases = self.pattern_match_cases(&arm.pattern, ty, &required);
+            if !arm_cases.is_empty() && arm_cases.is_subset(&covered) {
+                self.diagnostic(
+                    arm.pattern.span,
+                    "match/unreachable-arm",
+                    "match arm is unreachable because earlier unguarded arms cover all of its cases",
+                );
                 continue;
             }
-            covered.extend(self.pattern_match_cases(&arm.pattern, ty, &required));
+            if arm.guard.is_none() {
+                covered.extend(arm_cases);
+            }
         }
         let missing = required.difference(&covered).cloned().collect::<Vec<_>>();
         if !missing.is_empty() {

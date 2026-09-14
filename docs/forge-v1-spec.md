@@ -1206,7 +1206,7 @@ Structured metadata embeds FDN:
 pub fn connect(...) { ... }
 ```
 
-Metadata attaches to declarations and declaration-owned fields/methods. It is not an expression operator or a postfix type operator: forms such as `value @unchecked`, `u8 @range(...)`, and `@wrap(expr)` are not Forge v1 metadata syntax. A constrained alias instead carries `@range(...)` on the alias declaration itself.
+Metadata attaches to declarations and declaration-owned fields/methods. It is not an expression operator or a postfix type operator: forms such as `value @unchecked`, `u8 @range(...)`, and `@wrap(expr)` are not Forge v1 metadata syntax. Forge v1 does not standardize constrained/refined types; a metadata name such as `@range` may still be preserved as ordinary tool metadata without changing type semantics.
 
 The compiler carries metadata as one universal structured metadata concept. HIR and later semantic stages retain the original metadata values together with the semantic target they annotate. Individual compiler stages interpret only metadata names they own (`@repr`, `@align`, `@overflow`, and so on); they must not lower each metadata spelling into unrelated parser/HIR syntax. Unknown metadata remains available to linker, documentation, serialization and static-analysis tools and must not silently change core language semantics.
 

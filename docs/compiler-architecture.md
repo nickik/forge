@@ -140,7 +140,7 @@ Never let C backend undefined behavior leak into Forge semantics: emit defensive
 - Fixed-array length is part of semantic `Ty::Array` and must survive into typed HIR/FIR.
 - Impl methods receive real `DefId`s; typed calls resolve directly to the method/function `DefId`.
 - Declaration-owned default expressions are typechecked before FIR and accumulate diagnostics with ordinary body errors.
-- Exhaustiveness for finite built-in/nominal sums (`bool`, optionals, enums, tagged unions) belongs in semantic type checking because this is the first layer with both resolved type identity and typed patterns. More advanced pattern-matrix optimization can remain a later pass.
+- Exhaustiveness and provably unreachable arms for finite built-in/nominal sums (`bool`, optionals, enums, tagged unions) belong in semantic type checking because this is the first layer with both resolved type identity and typed patterns. The current check is deliberately conservative for guarded/refutable payload patterns; full pattern-matrix usefulness and decision-tree optimization remain a later pass.
 - Map/collection pattern typing is deliberately deferred until Forge has a collection-pattern protocol. Preserve the HIR pattern shape; do not invent `Unknown`-driven semantics in FIR.
 - Metadata remains one target-keyed table. Use the generic metadata query API instead of adding one field per attribute.
 
