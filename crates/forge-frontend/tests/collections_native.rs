@@ -52,17 +52,23 @@ fn list_u64_policy_is_forge_source() {
         "list_u64_truncate",
         "list_u64_destroy",
     ] {
-        assert!(source.contains(&format!("pub fn {function}")), "{function} is not Forge code");
-        assert!(!source.contains(&format!("nfn {function}")), "{function} leaked into backend ABI");
+        assert!(
+            source.contains(&format!("pub fn {function}")),
+            "{function} is not Forge code"
+        );
+        assert!(
+            !source.contains(&format!("nfn {function}")),
+            "{function} leaked into backend ABI"
+        );
     }
 
     assert!(source.contains("core.allocator_alloc(allocator, request)?"));
     assert!(source.contains("core.allocator_resize(allocator, old_block, replacement_bytes)?"));
-    assert!(source.contains("core.allocator_free(allocator, block);"));
+    assert!(source.contains("core.allocator_free(allocator, block)?;"));
 }
 
 #[test]
-fn list_u64_commits_growth_only_after_fallible_allocation() {
+fn list_u64_commits_resize_only_after_success() {
     let source = collections_source();
     let reserve_start = source.find("pub fn list_u64_try_reserve").expect("reserve start");
     let reserve_end = source[reserve_start..]
@@ -74,13 +80,33 @@ fn list_u64_commits_growth_only_after_fallible_allocation() {
     let resize = reserve
         .find("core.allocator_resize(allocator, old_block, replacement_bytes)?")
         .expect("fallible resize");
-    let commit_block = reserve
+    let resize_tail = &reserve[resize..];
+    let commit_block = resize_tail
         .find("list.block = memory_block_some(replacement);")
-        .expect("block commit");
-    let commit_capacity = reserve
+        .expect("block commit after resize");
+    let commit_capacity = resize_tail
         .find("list.capacity = replacement_capacity;")
-        .expect("capacity commit");
+        .expect("capacity commit after resize");
 
-    assert!(resize < commit_block);
     assert!(commit_block < commit_capacity);
+}
+
+#[test]
+fn list_u64_destroy_resets_only_after_successful_free() {
+    let source = collections_source();
+    let destroy_start = source.find("pub fn list_u64_destroy").expect("destroy start");
+    let destroy_end = source[destroy_start..]
+        .find("// HashSetU64")
+        .map(|offset| destroy_start + offset)
+        .expect("destroy end");
+    let destroy = &source[destroy_start..destroy_end];
+
+    let free = destroy
+        .find("core.allocator_free(allocator, block)?;")
+        .expect("fallible free");
+    let reset = destroy
+        .find("list.block = memory_block_none();")
+        .expect("block reset");
+
+    assert!(free < reset);
 }
