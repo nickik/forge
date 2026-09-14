@@ -182,7 +182,10 @@ x = 11;
 
 ```forge
 const PAGE_SIZE: usize = 4096;
+const DOUBLE_PAGE: usize = PAGE_SIZE * 2;
 ```
+
+Forge v1 constant evaluation is intentionally restricted. Constant expressions may use scalar literals, pure unary/binary operators, and references to other module `const` definitions. Constant dependencies may be forward references but cycles are rejected. Arbitrary function calls and general compile-time execution are not part of v1.
 
 Local type inference:
 
@@ -942,6 +945,8 @@ fn load(path: str) -> Result[Config, IOError] {
 Postfix `?` on `Result[T,E]` unwraps `Ok(T)` or returns the compatible `Err(E)` from the current function.
 
 `?` on optional values is not used for the same propagation syntax in v1; optional handling uses pattern matching or dedicated optional combinators, avoiding ambiguity between "not present" and "error".
+
+For `value?`, if `value` has type `Result[T, Ein]`, the enclosing function or closure must return `Result[R, Eout]` and `Ein` must be assignable to `Eout`. Forge v1 performs no Rust-style implicit `From` conversion for propagation. The expression itself has type `T`; an `Err` returns from the immediately enclosing function or closure.
 
 ## 40. Panic
 

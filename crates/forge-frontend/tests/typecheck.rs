@@ -909,3 +909,164 @@ fn finite_matches_report_provably_unreachable_arms() {
     );
     assert!(guarded.diagnostics.is_empty(), "{:?}", guarded.diagnostics);
 }
+
+#[test]
+fn result_try_is_resolved_and_requires_compatible_enclosing_result() {
+    let valid = check(
+        r#"
+        module test.try_valid;
+        fn source() -> Result[u32, u8] { return source(); }
+        fn propagate() -> Result[u32, u8] {
+            val value = source()?;
+            return source();
+        }
+        "#,
+    );
+    assert!(valid.diagnostics.is_empty(), "{:?}", valid.diagnostics);
+    let body = valid.functions.get(&DefId(1)).expect("propagate body");
+    assert!(body.expressions.iter().any(|expr| matches!(
+        &expr.kind,
+        forge_frontend::TypedExprKind::ResolvedTry {
+            source_error: Ty::Int {
+                signed: false,
+                width: IntWidth::W8
+            },
+            target_error: Ty::Int {
+                signed: false,
+                width: IntWidth::W8
+            },
+            ..
+        }
+    )));
+
+    let mismatch = check(
+        r#"
+        module test.try_mismatch;
+        fn source() -> Result[u32, u8] { return source(); }
+        fn target() -> Result[u32, u16] {
+            val value = source()?;
+            return target();
+        }
+        "#,
+    );
+    assert!(
+        has(&mismatch, "try/error-type"),
+        "{:?}",
+        mismatch.diagnostics
+    );
+
+    let plain = check(
+        r#"
+        module test.try_plain;
+        fn source() -> Result[u32, u8] { return source(); }
+        fn target() -> u32 {
+            val value = source()?;
+            return value;
+        }
+        "#,
+    );
+    assert!(has(&plain, "try/context"), "{:?}", plain.diagnostics);
+
+    let optional = check(
+        r#"
+        module test.try_optional;
+        fn target(value: u32?) -> u32 {
+            return value?;
+        }
+        "#,
+    );
+    assert!(has(&optional, "try/operand"), "{:?}", optional.diagnostics);
+}
+
+#[test]
+fn constants_feed_array_lengths_and_enum_values() {
+    let output = check(
+        r#"
+        module test.constants;
+        const WIDTH: usize = 2;
+        const COUNT: usize = WIDTH * 2;
+        enum Code {
+            Small = WIDTH,
+            Large = COUNT + 1,
+        }
+        fn total(values: [u32; COUNT]) -> u32 {
+            val [a, b, c, d] = values;
+            return a + b + c + d;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert_eq!(
+        output.constants.get(&DefId(0)),
+        Some(&forge_frontend::ConstValue::Integer { value: 2 })
+    );
+    assert_eq!(
+        output.constants.get(&DefId(1)),
+        Some(&forge_frontend::ConstValue::Integer { value: 4 })
+    );
+    assert_eq!(
+        output
+            .enum_values
+            .get(&DefId(2))
+            .and_then(|values| values.get("Small")),
+        Some(&2)
+    );
+    assert_eq!(
+        output
+            .enum_values
+            .get(&DefId(2))
+            .and_then(|values| values.get("Large")),
+        Some(&5)
+    );
+    let body = output.functions.get(&DefId(3)).expect("total body");
+    assert!(body.local_types.values().any(|ty| matches!(
+        ty,
+        Ty::Array {
+            length: Some(4),
+            ..
+        }
+    )));
+}
+
+#[test]
+fn constant_evaluation_rejects_cycles_and_runtime_calls() {
+    let cycle = check(
+        r#"
+        module test.const_cycle;
+        const A: usize = B + 1;
+        const B: usize = A + 1;
+        fn main() -> i32 { return 0; }
+        "#,
+    );
+    assert!(has(&cycle, "const/eval"), "{:?}", cycle.diagnostics);
+    assert!(cycle
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("A -> B -> A")));
+
+    let runtime = check(
+        r#"
+        module test.const_runtime;
+        fn runtime() -> usize { return 1usize; }
+        const BAD: usize = runtime();
+        fn main() -> i32 { return 0; }
+        "#,
+    );
+    assert!(has(&runtime, "const/eval"), "{:?}", runtime.diagnostics);
+}
+
+#[test]
+fn array_length_rejects_non_const_global() {
+    let output = check(
+        r#"
+        module test.array_non_const;
+        val COUNT: usize = 4usize;
+        fn total(values: [u32; COUNT]) -> u32 { return 0u32; }
+        "#,
+    );
+    assert!(
+        has(&output, "type/array-length"),
+        "{:?}",
+        output.diagnostics
+    );
+}

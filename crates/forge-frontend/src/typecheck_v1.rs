@@ -79,6 +79,14 @@ pub enum Ty {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "const", rename_all = "snake_case")]
+pub enum ConstValue {
+    Integer { value: i128 },
+    Bool { value: bool },
+    Char { value: char },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TypeDiagnostic {
     pub span: Span,
     pub code: String,
@@ -103,6 +111,11 @@ pub enum TypedExprKind {
         method: bool,
         hir: HirExpr,
     },
+    ResolvedTry {
+        source_error: Ty,
+        target_error: Ty,
+        hir: HirExpr,
+    },
     OptionalPromote {
         value: Box<TypedExpr>,
     },
@@ -119,6 +132,8 @@ pub struct TypedBody {
 pub struct TypeCheckOutput {
     pub functions: BTreeMap<DefId, TypedBody>,
     pub global_types: BTreeMap<DefId, Ty>,
+    pub constants: BTreeMap<DefId, ConstValue>,
+    pub enum_values: BTreeMap<DefId, BTreeMap<String, i128>>,
     pub metadata: MetadataTable,
     pub diagnostics: Vec<TypeDiagnostic>,
 }
@@ -175,8 +190,12 @@ pub fn type_check_module(
         metadata: module.metadata.clone(),
         ..TypeCheckOutput::default()
     };
-    validate_declaration_array_lengths(source, &mut output.diagnostics);
-    let env = ModuleTypeEnv::build(source, module);
+    let (constant_values, constant_diagnostics) =
+        ConstEvaluator::new(source, bodies).evaluate_all();
+    output.constants = constant_values.clone();
+    output.diagnostics.extend(constant_diagnostics);
+    validate_declaration_array_lengths(source, module, &constant_values, &mut output.diagnostics);
+    let env = ModuleTypeEnv::build(source, module, &constant_values);
 
     for default in &bodies.field_defaults {
         let mut checker = BodyChecker::new(&env, Ty::Void, &mut output.diagnostics);
@@ -193,19 +212,27 @@ pub fn type_check_module(
     for explicit in &bodies.enum_values {
         let mut checker = BodyChecker::new(&env, Ty::Void, &mut output.diagnostics);
         let actual = checker.check_expr(&explicit.value, None);
-        if !is_integer_like(&actual) {
-            checker.diagnostic(
+        match eval_const_hir_resolved(&explicit.value, &constant_values) {
+            Ok(ConstValue::Integer { value }) if is_integer_like(&actual) => {
+                output
+                    .enum_values
+                    .entry(explicit.owner)
+                    .or_default()
+                    .insert(explicit.variant.clone(), value);
+            }
+            Ok(value) => checker.diagnostic(
                 explicit.value.span,
                 "type/enum-value",
-                format!("enum value must be an integer constant, found {actual:?}"),
-            );
-        }
-        if eval_const_int_hir(&explicit.value).is_none() {
-            checker.diagnostic(
+                format!("enum value must be an integer constant, found {value:?}"),
+            ),
+            Err(error) => checker.diagnostic(
                 explicit.value.span,
                 "type/enum-value",
-                "enum value must be a compile-time integer expression",
-            );
+                format!(
+                    "enum value must be a compile-time integer expression: {}",
+                    error.message
+                ),
+            ),
         }
     }
 
@@ -249,9 +276,12 @@ pub fn type_check_module(
 
     for (owner, global) in &bodies.globals {
         let mut checker = BodyChecker::new(&env, Ty::Void, &mut output.diagnostics);
-        let value_ty = checker.check_expr(&global.value, None);
-        let ty = if let Some(annotation) = &global.ty {
-            let expected = env.lower_hir_type(annotation);
+        let expected = global
+            .ty
+            .as_ref()
+            .map(|annotation| env.lower_hir_type(annotation));
+        let value_ty = checker.check_expr(&global.value, expected.as_ref());
+        let ty = if let Some(expected) = expected {
             checker.require_assignable(global.value.span, &expected, &value_ty, "type/mismatch");
             expected
         } else {
@@ -267,14 +297,22 @@ struct ModuleTypeEnv {
     types: BTreeMap<DefId, TypeInfo>,
     functions: BTreeMap<DefId, FunctionSig>,
     methods: BTreeMap<(DefId, String), DefId>,
+    globals: BTreeMap<DefId, Ty>,
+    constants: BTreeMap<DefId, ConstValue>,
 }
 
 impl ModuleTypeEnv {
-    fn build(source: &ast::SourceFile, module: &HirModule) -> Self {
+    fn build(
+        source: &ast::SourceFile,
+        module: &HirModule,
+        constants: &BTreeMap<DefId, ConstValue>,
+    ) -> Self {
         let mut env = Self {
             types: BTreeMap::new(),
             functions: BTreeMap::new(),
             methods: BTreeMap::new(),
+            globals: BTreeMap::new(),
+            constants: constants.clone(),
         };
 
         // Establish all nominal identities first so aliases/signatures can refer forward.
@@ -402,6 +440,16 @@ impl ModuleTypeEnv {
 
         for (index, declaration) in source.declarations.iter().enumerate() {
             let id = DefId(index as u32);
+            if let DeclKind::Global(value) = &declaration.kind.kind {
+                if let Some(annotation) = &value.ty {
+                    let ty = env.lower_ast_type(annotation, module);
+                    env.globals.insert(id, ty);
+                }
+            }
+        }
+
+        for (index, declaration) in source.declarations.iter().enumerate() {
+            let id = DefId(index as u32);
             if let DeclKind::Function(function) = &declaration.kind.kind {
                 let params = function
                     .params
@@ -517,7 +565,9 @@ impl ModuleTypeEnv {
             },
             ast::TypeKind::Array { element, length } => Ty::Array {
                 element: Box::new(self.lower_ast_type(element, module)),
-                length: eval_const_usize_ast(length),
+                length: eval_const_ast_resolved(length, module, &self.constants)
+                    .ok()
+                    .and_then(const_value_to_u64),
             },
             ast::TypeKind::Result { ok, error } => Ty::Result {
                 ok: Box::new(self.lower_ast_type(ok, module)),
@@ -561,7 +611,9 @@ impl ModuleTypeEnv {
             },
             HirTypeKind::Array { element, length } => Ty::Array {
                 element: Box::new(self.lower_hir_type(element)),
-                length: eval_const_usize_hir(length),
+                length: eval_const_hir_resolved(length, &self.constants)
+                    .ok()
+                    .and_then(const_value_to_u64),
             },
             HirTypeKind::Result { ok, error } => Ty::Result {
                 ok: Box::new(self.lower_hir_type(ok)),
@@ -830,6 +882,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
 
     fn check_expr(&mut self, expr: &HirExpr, expected: Option<&Ty>) -> Ty {
         let mut resolved_call: Option<(DefId, bool)> = None;
+        let mut resolved_try: Option<(Ty, Ty)> = None;
         let mut ty = match &expr.kind {
             HirExprKind::Integer { text } => integer_literal_ty(text),
             HirExprKind::Float { text } => float_literal_ty(text),
@@ -913,12 +966,39 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 self.check_member(expr.span, &base_ty, name)
             }
             HirExprKind::Try { value } => match self.check_expr(value, None) {
-                Ty::Result { ok, .. } => *ok,
+                Ty::Result { ok, error } => {
+                    let ok = *ok;
+                    let source_error = *error;
+                    match self.expected_return.clone() {
+                        Ty::Result { error, .. } => {
+                            let target_error = *error;
+                            if self.is_assignable(&target_error, &source_error) {
+                                resolved_try = Some((source_error, target_error));
+                            } else {
+                                self.diagnostic(
+                                    expr.span,
+                                    "try/error-type",
+                                    format!(
+                                        "cannot propagate error type {source_error:?}; enclosing function returns Result with error type {target_error:?}"
+                                    ),
+                                );
+                            }
+                        }
+                        other => self.diagnostic(
+                            expr.span,
+                            "try/context",
+                            format!(
+                                "`?` requires the enclosing function or closure to return Result, found {other:?}"
+                            ),
+                        ),
+                    }
+                    ok
+                }
                 other => {
                     self.diagnostic(
                         expr.span,
-                        "type/mismatch",
-                        format!("`?` requires Result, found {other:?}"),
+                        "try/operand",
+                        format!("`?` requires a Result operand, found {other:?}"),
                     );
                     Ty::Error
                 }
@@ -993,13 +1073,21 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 ty = expected.clone();
             }
         }
-        let kind = resolved_call
-            .map(|(target, method)| TypedExprKind::ResolvedCall {
+        let kind = if let Some((source_error, target_error)) = resolved_try {
+            TypedExprKind::ResolvedTry {
+                source_error,
+                target_error,
+                hir: expr.clone(),
+            }
+        } else if let Some((target, method)) = resolved_call {
+            TypedExprKind::ResolvedCall {
                 target,
                 method,
                 hir: expr.clone(),
-            })
-            .unwrap_or_else(|| TypedExprKind::Source { hir: expr.clone() });
+            }
+        } else {
+            TypedExprKind::Source { hir: expr.clone() }
+        };
         self.expressions.push(TypedExpr {
             span: expr.span,
             ty: ty.clone(),
@@ -1287,16 +1375,21 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
     fn type_of_name(&self, name: ResolvedName) -> Ty {
         match name {
             ResolvedName::Local(id) => self.local_types.get(&id).cloned().unwrap_or(Ty::Unknown),
-            ResolvedName::Def(id) => self
-                .env
-                .functions
-                .get(&id)
-                .map(|sig| Ty::Function {
-                    params: sig.params.iter().map(|p| p.ty.clone()).collect(),
-                    result: Box::new(sig.result.clone()),
-                    named_arguments: sig.named_arguments,
-                })
-                .unwrap_or(Ty::Unknown),
+            ResolvedName::Def(id) => {
+                if let Some(sig) = self.env.functions.get(&id) {
+                    Ty::Function {
+                        params: sig.params.iter().map(|p| p.ty.clone()).collect(),
+                        result: Box::new(sig.result.clone()),
+                        named_arguments: sig.named_arguments,
+                    }
+                } else if let Some(ty) = self.env.globals.get(&id) {
+                    ty.clone()
+                } else if let Some(value) = self.env.constants.get(&id) {
+                    const_value_ty(value)
+                } else {
+                    Ty::Unknown
+                }
+            }
             ResolvedName::Error => Ty::Error,
             ResolvedName::Import(_) | ResolvedName::BuiltinType | ResolvedName::BuiltinValue => {
                 Ty::Unknown
@@ -2311,36 +2404,498 @@ fn array_type_has_unknown_length(ty: &Ty) -> bool {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConstEvalError {
+    span: Span,
+    message: String,
+}
+
+#[derive(Debug, Clone)]
+enum ConstState {
+    Evaluating,
+    Evaluated(ConstValue),
+    Failed(ConstEvalError),
+}
+
+struct ConstEvaluator<'a> {
+    source: &'a ast::SourceFile,
+    bodies: &'a BodyHirOutput,
+    states: BTreeMap<DefId, ConstState>,
+    stack: Vec<DefId>,
+}
+
+impl<'a> ConstEvaluator<'a> {
+    fn new(source: &'a ast::SourceFile, bodies: &'a BodyHirOutput) -> Self {
+        Self {
+            source,
+            bodies,
+            states: BTreeMap::new(),
+            stack: Vec::new(),
+        }
+    }
+
+    fn evaluate_all(mut self) -> (BTreeMap<DefId, ConstValue>, Vec<TypeDiagnostic>) {
+        let ids = self
+            .source
+            .declarations
+            .iter()
+            .enumerate()
+            .filter_map(|(index, declaration)| match &declaration.kind.kind {
+                DeclKind::Global(value) if matches!(value.binding, ast::BindingKind::Const) => {
+                    Some(DefId(index as u32))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let mut diagnostics = Vec::new();
+        for id in ids {
+            if let Err(error) = self.eval_def(id) {
+                diagnostics.push(TypeDiagnostic {
+                    span: error.span,
+                    code: "const/eval".into(),
+                    message: error.message,
+                });
+            }
+        }
+        let values = self
+            .states
+            .into_iter()
+            .filter_map(|(id, state)| match state {
+                ConstState::Evaluated(value) => Some((id, value)),
+                ConstState::Evaluating | ConstState::Failed(_) => None,
+            })
+            .collect();
+        (values, diagnostics)
+    }
+
+    fn eval_def(&mut self, id: DefId) -> Result<ConstValue, ConstEvalError> {
+        match self.states.get(&id).cloned() {
+            Some(ConstState::Evaluated(value)) => return Ok(value),
+            Some(ConstState::Failed(error)) => return Err(error),
+            Some(ConstState::Evaluating) => {
+                let begin = self
+                    .stack
+                    .iter()
+                    .position(|candidate| *candidate == id)
+                    .unwrap_or(0);
+                let mut names = self.stack[begin..]
+                    .iter()
+                    .map(|id| self.const_name(*id))
+                    .collect::<Vec<_>>();
+                names.push(self.const_name(id));
+                return Err(ConstEvalError {
+                    span: self.declaration_span(id),
+                    message: format!("constant evaluation cycle: {}", names.join(" -> ")),
+                });
+            }
+            None => {}
+        }
+
+        let Some(declaration) = self.source.declarations.get(id.0 as usize) else {
+            return Err(ConstEvalError {
+                span: Span::new(0, 0),
+                message: format!("unknown constant definition {id:?}"),
+            });
+        };
+        let DeclKind::Global(global) = &declaration.kind.kind else {
+            return Err(ConstEvalError {
+                span: declaration.span,
+                message: "referenced definition is not a constant".into(),
+            });
+        };
+        if !matches!(global.binding, ast::BindingKind::Const) {
+            return Err(ConstEvalError {
+                span: declaration.span,
+                message: "referenced global is not declared `const`".into(),
+            });
+        }
+        if !matches!(global.pattern.kind, ast::PatternKind::Binding { .. }) {
+            return Err(ConstEvalError {
+                span: global.pattern.span,
+                message:
+                    "Forge v1 constant evaluation requires a single-name global `const` binding"
+                        .into(),
+            });
+        }
+        let Some(expr) = self.bodies.globals.get(&id).map(|body| body.value.clone()) else {
+            return Err(ConstEvalError {
+                span: declaration.span,
+                message: "constant body was not lowered into HIR".into(),
+            });
+        };
+
+        self.states.insert(id, ConstState::Evaluating);
+        self.stack.push(id);
+        let result = self.eval_expr(&expr);
+        self.stack.pop();
+        match &result {
+            Ok(value) => {
+                self.states.insert(id, ConstState::Evaluated(value.clone()));
+            }
+            Err(error) => {
+                self.states.insert(id, ConstState::Failed(error.clone()));
+            }
+        }
+        result
+    }
+
+    fn eval_expr(&mut self, expr: &HirExpr) -> Result<ConstValue, ConstEvalError> {
+        match &expr.kind {
+            HirExprKind::Integer { text } => parse_integer_value(text)
+                .map(|value| ConstValue::Integer { value })
+                .ok_or_else(|| ConstEvalError {
+                    span: expr.span,
+                    message: format!("invalid integer constant `{text}`"),
+                }),
+            HirExprKind::Bool { value } => Ok(ConstValue::Bool { value: *value }),
+            HirExprKind::Character { value } => Ok(ConstValue::Char { value: *value }),
+            HirExprKind::Name { reference } if reference.tail.is_empty() => match reference.root {
+                ResolvedName::Def(id) => self.eval_def(id),
+                _ => Err(ConstEvalError {
+                    span: expr.span,
+                    message: "constant expression may reference only module `const` definitions"
+                        .into(),
+                }),
+            },
+            HirExprKind::Unary { op, value } => {
+                let value = self.eval_expr(value)?;
+                apply_const_unary(expr.span, *op, value)
+            }
+            HirExprKind::Binary { op, left, right } => {
+                let left = self.eval_expr(left)?;
+                if matches!(op, BinaryOp::LogicalAnd)
+                    && matches!(left, ConstValue::Bool { value: false })
+                {
+                    return Ok(ConstValue::Bool { value: false });
+                }
+                if matches!(op, BinaryOp::LogicalOr)
+                    && matches!(left, ConstValue::Bool { value: true })
+                {
+                    return Ok(ConstValue::Bool { value: true });
+                }
+                let right = self.eval_expr(right)?;
+                apply_const_binary(expr.span, *op, left, right)
+            }
+            _ => Err(ConstEvalError {
+                span: expr.span,
+                message: "expression is not allowed in a Forge v1 compile-time constant".into(),
+            }),
+        }
+    }
+
+    fn declaration_span(&self, id: DefId) -> Span {
+        self.source
+            .declarations
+            .get(id.0 as usize)
+            .map(|declaration| declaration.span)
+            .unwrap_or_else(|| Span::new(0, 0))
+    }
+
+    fn const_name(&self, id: DefId) -> String {
+        self.source
+            .declarations
+            .get(id.0 as usize)
+            .and_then(|declaration| match &declaration.kind.kind {
+                DeclKind::Global(global) => match &global.pattern.kind {
+                    ast::PatternKind::Binding { name, .. } => Some(name.clone()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap_or_else(|| format!("const#{:?}", id.0))
+    }
+}
+
+fn eval_const_ast_resolved(
+    expr: &ast::Expr,
+    module: &HirModule,
+    constants: &BTreeMap<DefId, ConstValue>,
+) -> Result<ConstValue, ConstEvalError> {
+    match &expr.kind {
+        ast::ExprKind::Integer { text } => parse_integer_value(text)
+            .map(|value| ConstValue::Integer { value })
+            .ok_or_else(|| ConstEvalError {
+                span: expr.span,
+                message: format!("invalid integer constant `{text}`"),
+            }),
+        ast::ExprKind::Bool { value } => Ok(ConstValue::Bool { value: *value }),
+        ast::ExprKind::Character { value } => Ok(ConstValue::Char { value: *value }),
+        ast::ExprKind::Path { path } if path.segments.len() == 1 => {
+            let name = &path.segments[0];
+            let id = module
+                .symbols
+                .get(name)
+                .and_then(|symbols| symbols.value_def)
+                .ok_or_else(|| ConstEvalError {
+                    span: expr.span,
+                    message: format!("`{name}` does not resolve to a module constant"),
+                })?;
+            constants.get(&id).cloned().ok_or_else(|| ConstEvalError {
+                span: expr.span,
+                message: format!("`{name}` is not an evaluable module `const`"),
+            })
+        }
+        ast::ExprKind::Unary { op, value } => apply_const_unary(
+            expr.span,
+            *op,
+            eval_const_ast_resolved(value, module, constants)?,
+        ),
+        ast::ExprKind::Binary { op, left, right } => {
+            let left = eval_const_ast_resolved(left, module, constants)?;
+            if matches!(op, BinaryOp::LogicalAnd)
+                && matches!(left, ConstValue::Bool { value: false })
+            {
+                return Ok(ConstValue::Bool { value: false });
+            }
+            if matches!(op, BinaryOp::LogicalOr) && matches!(left, ConstValue::Bool { value: true })
+            {
+                return Ok(ConstValue::Bool { value: true });
+            }
+            let right = eval_const_ast_resolved(right, module, constants)?;
+            apply_const_binary(expr.span, *op, left, right)
+        }
+        _ => Err(ConstEvalError {
+            span: expr.span,
+            message: "expression is not allowed in a Forge v1 compile-time constant".into(),
+        }),
+    }
+}
+
+fn eval_const_hir_resolved(
+    expr: &HirExpr,
+    constants: &BTreeMap<DefId, ConstValue>,
+) -> Result<ConstValue, ConstEvalError> {
+    match &expr.kind {
+        HirExprKind::Integer { text } => parse_integer_value(text)
+            .map(|value| ConstValue::Integer { value })
+            .ok_or_else(|| ConstEvalError {
+                span: expr.span,
+                message: format!("invalid integer constant `{text}`"),
+            }),
+        HirExprKind::Bool { value } => Ok(ConstValue::Bool { value: *value }),
+        HirExprKind::Character { value } => Ok(ConstValue::Char { value: *value }),
+        HirExprKind::Name { reference } if reference.tail.is_empty() => match reference.root {
+            ResolvedName::Def(id) => constants.get(&id).cloned().ok_or_else(|| ConstEvalError {
+                span: expr.span,
+                message: format!("definition {id:?} is not an evaluable module `const`"),
+            }),
+            _ => Err(ConstEvalError {
+                span: expr.span,
+                message: "constant expression may reference only module `const` definitions".into(),
+            }),
+        },
+        HirExprKind::Unary { op, value } => {
+            apply_const_unary(expr.span, *op, eval_const_hir_resolved(value, constants)?)
+        }
+        HirExprKind::Binary { op, left, right } => {
+            let left = eval_const_hir_resolved(left, constants)?;
+            if matches!(op, BinaryOp::LogicalAnd)
+                && matches!(left, ConstValue::Bool { value: false })
+            {
+                return Ok(ConstValue::Bool { value: false });
+            }
+            if matches!(op, BinaryOp::LogicalOr) && matches!(left, ConstValue::Bool { value: true })
+            {
+                return Ok(ConstValue::Bool { value: true });
+            }
+            let right = eval_const_hir_resolved(right, constants)?;
+            apply_const_binary(expr.span, *op, left, right)
+        }
+        _ => Err(ConstEvalError {
+            span: expr.span,
+            message: "expression is not allowed in a Forge v1 compile-time constant".into(),
+        }),
+    }
+}
+
+fn apply_const_unary(
+    span: Span,
+    op: UnaryOp,
+    value: ConstValue,
+) -> Result<ConstValue, ConstEvalError> {
+    match (op, value) {
+        (UnaryOp::Neg, ConstValue::Integer { value }) => value
+            .checked_neg()
+            .map(|value| ConstValue::Integer { value })
+            .ok_or_else(|| ConstEvalError {
+                span,
+                message: "integer constant overflow".into(),
+            }),
+        (UnaryOp::BitNot, ConstValue::Integer { value }) => {
+            Ok(ConstValue::Integer { value: !value })
+        }
+        (UnaryOp::Not, ConstValue::Bool { value }) => Ok(ConstValue::Bool { value: !value }),
+        (_, value) => Err(ConstEvalError {
+            span,
+            message: format!("invalid constant unary operation on {value:?}"),
+        }),
+    }
+}
+
+fn apply_const_binary(
+    span: Span,
+    op: BinaryOp,
+    left: ConstValue,
+    right: ConstValue,
+) -> Result<ConstValue, ConstEvalError> {
+    match (left, right) {
+        (ConstValue::Integer { value: left }, ConstValue::Integer { value: right }) => {
+            let integer = |value| Ok(ConstValue::Integer { value });
+            let boolean = |value| Ok(ConstValue::Bool { value });
+            match op {
+                BinaryOp::Add => left
+                    .checked_add(right)
+                    .map_or_else(|| Err(const_arithmetic_error(span)), integer),
+                BinaryOp::Sub => left
+                    .checked_sub(right)
+                    .map_or_else(|| Err(const_arithmetic_error(span)), integer),
+                BinaryOp::Mul => left
+                    .checked_mul(right)
+                    .map_or_else(|| Err(const_arithmetic_error(span)), integer),
+                BinaryOp::Div => left
+                    .checked_div(right)
+                    .map_or_else(|| Err(const_arithmetic_error(span)), integer),
+                BinaryOp::Rem => left
+                    .checked_rem(right)
+                    .map_or_else(|| Err(const_arithmetic_error(span)), integer),
+                BinaryOp::BitAnd => integer(left & right),
+                BinaryOp::BitXor => integer(left ^ right),
+                BinaryOp::BitOr => integer(left | right),
+                BinaryOp::ShiftLeft => {
+                    let shift = u32::try_from(right).map_err(|_| ConstEvalError {
+                        span,
+                        message: "constant shift count is outside the supported range".into(),
+                    })?;
+                    left.checked_shl(shift)
+                        .map_or_else(|| Err(const_arithmetic_error(span)), integer)
+                }
+                BinaryOp::ShiftRight => {
+                    let shift = u32::try_from(right).map_err(|_| ConstEvalError {
+                        span,
+                        message: "constant shift count is outside the supported range".into(),
+                    })?;
+                    left.checked_shr(shift)
+                        .map_or_else(|| Err(const_arithmetic_error(span)), integer)
+                }
+                BinaryOp::Eq => boolean(left == right),
+                BinaryOp::NotEq => boolean(left != right),
+                BinaryOp::Less => boolean(left < right),
+                BinaryOp::LessEq => boolean(left <= right),
+                BinaryOp::Greater => boolean(left > right),
+                BinaryOp::GreaterEq => boolean(left >= right),
+                _ => Err(ConstEvalError {
+                    span,
+                    message: format!("operator {op:?} is not valid for integer constants"),
+                }),
+            }
+        }
+        (ConstValue::Bool { value: left }, ConstValue::Bool { value: right }) => {
+            let value = match op {
+                BinaryOp::LogicalAnd => left && right,
+                BinaryOp::LogicalOr => left || right,
+                BinaryOp::LogicalXor => left ^ right,
+                BinaryOp::Eq => left == right,
+                BinaryOp::NotEq => left != right,
+                _ => {
+                    return Err(ConstEvalError {
+                        span,
+                        message: format!("operator {op:?} is not valid for bool constants"),
+                    })
+                }
+            };
+            Ok(ConstValue::Bool { value })
+        }
+        (ConstValue::Char { value: left }, ConstValue::Char { value: right }) => {
+            let value = match op {
+                BinaryOp::Eq => left == right,
+                BinaryOp::NotEq => left != right,
+                BinaryOp::Less => left < right,
+                BinaryOp::LessEq => left <= right,
+                BinaryOp::Greater => left > right,
+                BinaryOp::GreaterEq => left >= right,
+                _ => {
+                    return Err(ConstEvalError {
+                        span,
+                        message: format!("operator {op:?} is not valid for char constants"),
+                    })
+                }
+            };
+            Ok(ConstValue::Bool { value })
+        }
+        (left, right) => Err(ConstEvalError {
+            span,
+            message: format!("constant operands have incompatible kinds: {left:?} and {right:?}"),
+        }),
+    }
+}
+
+fn const_arithmetic_error(span: Span) -> ConstEvalError {
+    ConstEvalError {
+        span,
+        message: "constant arithmetic overflow or invalid division/shift".into(),
+    }
+}
+
+fn const_value_to_u64(value: ConstValue) -> Option<u64> {
+    match value {
+        ConstValue::Integer { value } => u64::try_from(value).ok(),
+        ConstValue::Bool { .. } | ConstValue::Char { .. } => None,
+    }
+}
+
+fn const_value_ty(value: &ConstValue) -> Ty {
+    match value {
+        ConstValue::Integer { .. } => Ty::IntLiteral,
+        ConstValue::Bool { .. } => Ty::Bool,
+        ConstValue::Char { .. } => Ty::Char,
+    }
+}
+
 fn validate_declaration_array_lengths(
     source: &ast::SourceFile,
+    module: &HirModule,
+    constants: &BTreeMap<DefId, ConstValue>,
     diagnostics: &mut Vec<TypeDiagnostic>,
 ) {
-    fn validate_type(ty: &ast::TypeNode, diagnostics: &mut Vec<TypeDiagnostic>) {
+    fn validate_type(
+        ty: &ast::TypeNode,
+        module: &HirModule,
+        constants: &BTreeMap<DefId, ConstValue>,
+        diagnostics: &mut Vec<TypeDiagnostic>,
+    ) {
         match &ty.kind {
             ast::TypeKind::Array { element, length } => {
-                if eval_const_usize_ast(length).is_none() {
+                let valid = eval_const_ast_resolved(length, module, constants)
+                    .ok()
+                    .and_then(const_value_to_u64)
+                    .is_some();
+                if !valid {
                     diagnostics.push(TypeDiagnostic {
                         span: length.span,
                         code: "type/array-length".into(),
                         message: "array length must be a non-negative compile-time integer".into(),
                     });
                 }
-                validate_type(element, diagnostics);
+                validate_type(element, module, constants, diagnostics);
             }
             ast::TypeKind::Pointer { inner, .. }
             | ast::TypeKind::Reference { inner, .. }
-            | ast::TypeKind::Optional { inner } => validate_type(inner, diagnostics),
-            ast::TypeKind::Slice { element, .. } => validate_type(element, diagnostics),
+            | ast::TypeKind::Optional { inner } => {
+                validate_type(inner, module, constants, diagnostics)
+            }
+            ast::TypeKind::Slice { element, .. } => {
+                validate_type(element, module, constants, diagnostics)
+            }
             ast::TypeKind::Result { ok, error } => {
-                validate_type(ok, diagnostics);
-                validate_type(error, diagnostics);
+                validate_type(ok, module, constants, diagnostics);
+                validate_type(error, module, constants, diagnostics);
             }
             ast::TypeKind::Function { params, result }
             | ast::TypeKind::Closure { params, result } => {
                 for param in params {
-                    validate_type(param, diagnostics);
+                    validate_type(param, module, constants, diagnostics);
                 }
-                validate_type(result, diagnostics);
+                validate_type(result, module, constants, diagnostics);
             }
             ast::TypeKind::Named { .. } => {}
         }
@@ -2350,40 +2905,46 @@ fn validate_declaration_array_lengths(
         match &declaration.kind.kind {
             DeclKind::Function(function) => {
                 for param in &function.params {
-                    validate_type(&param.ty, diagnostics);
+                    validate_type(&param.ty, module, constants, diagnostics);
                 }
                 if let Some(result) = &function.return_type {
-                    validate_type(result, diagnostics);
+                    validate_type(result, module, constants, diagnostics);
                 }
             }
             DeclKind::Struct(value) => {
                 for field in &value.fields {
-                    validate_type(&field.ty, diagnostics);
+                    validate_type(&field.ty, module, constants, diagnostics);
                 }
             }
             DeclKind::Tagged(value) => {
                 for variant in &value.variants {
                     for field in &variant.fields {
-                        validate_type(&field.ty, diagnostics);
+                        validate_type(&field.ty, module, constants, diagnostics);
                     }
                 }
             }
-            DeclKind::BitStruct(value) => validate_type(&value.storage, diagnostics),
-            DeclKind::Distinct(value) => validate_type(&value.underlying, diagnostics),
-            DeclKind::TypeAlias(value) => validate_type(&value.target, diagnostics),
+            DeclKind::BitStruct(value) => {
+                validate_type(&value.storage, module, constants, diagnostics)
+            }
+            DeclKind::Distinct(value) => {
+                validate_type(&value.underlying, module, constants, diagnostics)
+            }
+            DeclKind::TypeAlias(value) => {
+                validate_type(&value.target, module, constants, diagnostics)
+            }
             DeclKind::Impl(value) => {
                 for method in &value.methods {
                     for param in &method.function.params {
-                        validate_type(&param.ty, diagnostics);
+                        validate_type(&param.ty, module, constants, diagnostics);
                     }
                     if let Some(result) = &method.function.return_type {
-                        validate_type(result, diagnostics);
+                        validate_type(result, module, constants, diagnostics);
                     }
                 }
             }
             DeclKind::Global(value) => {
                 if let Some(ty) = &value.ty {
-                    validate_type(ty, diagnostics);
+                    validate_type(ty, module, constants, diagnostics);
                 }
             }
             DeclKind::Enum(_) => {}
@@ -2411,64 +2972,6 @@ fn parse_integer_value(text: &str) -> Option<i128> {
         (10, raw.as_str())
     };
     i128::from_str_radix(digits, radix).ok()
-}
-
-fn eval_const_binary(op: BinaryOp, left: i128, right: i128) -> Option<i128> {
-    match op {
-        BinaryOp::Add => left.checked_add(right),
-        BinaryOp::Sub => left.checked_sub(right),
-        BinaryOp::Mul => left.checked_mul(right),
-        BinaryOp::Div => left.checked_div(right),
-        BinaryOp::Rem => left.checked_rem(right),
-        BinaryOp::BitAnd => Some(left & right),
-        BinaryOp::BitXor => Some(left ^ right),
-        BinaryOp::BitOr => Some(left | right),
-        BinaryOp::ShiftLeft => u32::try_from(right)
-            .ok()
-            .and_then(|shift| left.checked_shl(shift)),
-        BinaryOp::ShiftRight => u32::try_from(right)
-            .ok()
-            .and_then(|shift| left.checked_shr(shift)),
-        _ => None,
-    }
-}
-
-fn eval_const_int_ast(expr: &ast::Expr) -> Option<i128> {
-    match &expr.kind {
-        ast::ExprKind::Integer { text } => parse_integer_value(text),
-        ast::ExprKind::Unary { op, value } => match op {
-            UnaryOp::Neg => eval_const_int_ast(value)?.checked_neg(),
-            UnaryOp::BitNot => Some(!eval_const_int_ast(value)?),
-            _ => None,
-        },
-        ast::ExprKind::Binary { op, left, right } => {
-            eval_const_binary(*op, eval_const_int_ast(left)?, eval_const_int_ast(right)?)
-        }
-        _ => None,
-    }
-}
-
-fn eval_const_int_hir(expr: &HirExpr) -> Option<i128> {
-    match &expr.kind {
-        HirExprKind::Integer { text } => parse_integer_value(text),
-        HirExprKind::Unary { op, value } => match op {
-            UnaryOp::Neg => eval_const_int_hir(value)?.checked_neg(),
-            UnaryOp::BitNot => Some(!eval_const_int_hir(value)?),
-            _ => None,
-        },
-        HirExprKind::Binary { op, left, right } => {
-            eval_const_binary(*op, eval_const_int_hir(left)?, eval_const_int_hir(right)?)
-        }
-        _ => None,
-    }
-}
-
-fn eval_const_usize_ast(expr: &ast::Expr) -> Option<u64> {
-    u64::try_from(eval_const_int_ast(expr)?).ok()
-}
-
-fn eval_const_usize_hir(expr: &HirExpr) -> Option<u64> {
-    u64::try_from(eval_const_int_hir(expr)?).ok()
 }
 
 fn arg_value(arg: &HirCallArg) -> &HirExpr {

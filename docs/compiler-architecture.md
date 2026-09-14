@@ -57,6 +57,10 @@ No C-style numeric promotions. Contextual typing of untyped literals is permitte
 
 `Option` and `Result` are compiler-recognized type constructors despite v1 not exposing user-defined generics.
 
+Postfix `?` is resolved during type checking: its operand must be `Result[T, Ein]`, the enclosing function or closure must return `Result[R, Eout]`, and `Ein` must be assignable to `Eout`. Typed HIR records the resolved propagation edge explicitly so FIR never has to reconstruct `?` semantics from syntax.
+
+Compile-time constants use a deliberately restricted semantic evaluator over pure literal/unary/binary expressions and references to module `const` definitions. Evaluation is memoized by `DefId`, detects dependency cycles, and produces retained `ConstValue`s used by array lengths and explicit enum discriminants. Forge v1 does not execute arbitrary functions at compile time and has no general comptime interpreter.
+
 ## Patterns
 
 Compile match matrices into decision trees. Prefer discriminants/length tests before payload comparisons. Exhaustiveness and unreachable-arm analysis happen before IR lowering.
@@ -144,6 +148,6 @@ Never let C backend undefined behavior leak into Forge semantics: emit defensive
 - Map/collection pattern typing is deliberately deferred until Forge has a collection-pattern protocol. Preserve the HIR pattern shape; do not invent `Unknown`-driven semantics in FIR.
 - Metadata remains one target-keyed table. Use the generic metadata query API instead of adding one field per attribute.
 
-### Bitstruct v1 proposal (not yet normative)
+### Bitstruct v1 semantic decision
 
-Keep bitstructs simple: restrict storage to unsigned fixed-width integers; map each field to the smallest ordinary unsigned integer type that can hold its declared width; never create source-level 3-bit/5-bit integer types; compile-time-known out-of-range writes are errors and dynamic writes are checked rather than truncated. Field ordering and bit numbering still need an explicit language decision before implementation.
+Keep bitstructs simple: storage is restricted to `u8`, `u16`, `u32`, or `u64`, and declared field widths must exactly fill the storage width (unused bits are written explicitly as reserved fields). Fields are assigned in declaration order starting at least-significant bit 0. A 1-bit field has source type `bool`; wider fields use the smallest ordinary unsigned Forge integer type that can represent their width. Forge does not create arbitrary-width integer types such as `u3` or `u5`. Reads zero-extend into the ordinary field type. Compile-time-known out-of-range writes are errors and dynamic writes are checked rather than silently truncated. Bit numbering is defined on the numeric storage value; target memory endianness remains the ordinary representation of that storage integer.

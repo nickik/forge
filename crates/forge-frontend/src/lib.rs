@@ -26,6 +26,6 @@ pub use resolution::{
     ResolvedName,
 };
 pub use typecheck::{
-    type_check_module, IntWidth, Ty, TypeCheckOutput, TypeDiagnostic, TypedBody, TypedExpr,
-    TypedExprKind,
+    type_check_module, ConstValue, IntWidth, Ty, TypeCheckOutput, TypeDiagnostic, TypedBody,
+    TypedExpr, TypedExprKind,
 };
