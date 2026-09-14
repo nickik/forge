@@ -82,5 +82,5 @@ fdn_value       = fdn_scalar | fdn_vector | fdn_list | fdn_map | fdn_set | fdn_t
 fdn_vector      = "[", { fdn_value, [","] }, "]" ;
 fdn_list        = "(", { fdn_value, [","] }, ")" ;
 fdn_map         = "{", { fdn_value, fdn_value, [","] }, "}" ;
-fdn_set         = "#{", { fdn_value, [","] }, "]" ;
+fdn_set         = "#{", { fdn_value, [","] }, "}" ;
 fdn_tagged      = "#", qualified_name, fdn_value ;
