@@ -1837,3 +1837,88 @@ fn bitstruct_constructor_requires_exact_storage_type() {
         output.diagnostics
     );
 }
+
+#[test]
+fn map_pattern_protocol_types_required_and_optional_bindings() {
+    let output = check(
+        r#"
+        module test.map_protocol;
+        struct Dict {}
+        impl Dict {
+            fn pattern_get(self: &Dict, key: str) -> u32? { return None; }
+            fn pattern_has_only(self: &Dict, keys: str[]) -> bool { return true; }
+        }
+        fn use_map(map: Dict) -> u32 {
+            return match (map) {
+                {:name name, :age age?, ..} => name,
+                _ => 0u32,
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let body = output
+        .functions
+        .values()
+        .find(|body| {
+            body.return_type
+                == Ty::Int {
+                    signed: false,
+                    width: IntWidth::W32,
+                }
+        })
+        .unwrap();
+    assert!(body.local_types.values().any(|ty| *ty
+        == Ty::Optional {
+            inner: Box::new(Ty::Int {
+                signed: false,
+                width: IntWidth::W32
+            })
+        }));
+}
+
+#[test]
+fn map_pattern_requires_complete_collection_protocol() {
+    let output = check(
+        r#"
+        module test.map_protocol_missing;
+        struct Dict {}
+        fn use_map(map: Dict) -> u32 {
+            return match (map) {
+                {:name name, ..} => name,
+                _ => 0u32,
+            };
+        }
+        "#,
+    );
+    assert!(
+        has(&output, "pattern/collection-protocol"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
+fn map_pattern_rejects_duplicate_keys() {
+    let output = check(
+        r#"
+        module test.map_duplicate;
+        struct Dict {}
+        impl Dict {
+            fn pattern_get(self: &Dict, key: str) -> u32? { return None; }
+            fn pattern_has_only(self: &Dict, keys: str[]) -> bool { return true; }
+        }
+        fn use_map(map: Dict) -> u32 {
+            return match (map) {
+                {:name first, :name second, ..} => first,
+                _ => 0u32,
+            };
+        }
+        "#,
+    );
+    assert!(
+        has(&output, "pattern/duplicate-key"),
+        "{:?}",
+        output.diagnostics
+    );
+}

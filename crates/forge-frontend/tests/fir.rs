@@ -359,22 +359,6 @@ fn tagged_match_extracts_typed_payload_bindings() {
 }
 
 #[test]
-fn map_match_still_waits_for_collection_pattern_protocol() {
-    let output = lower(
-        r#"
-        module test.fir_map_match_later;
-        fn choose(values: u32[]) -> i32 {
-            return match (values) { {:name ignored, ..} => 1i32, _ => 0i32, };
-        }
-        "#,
-    );
-    assert!(output
-        .diagnostics
-        .iter()
-        .any(|d| d.code == "fir/pattern-decision-tree-missing"));
-}
-
-#[test]
 fn scalar_integer_literal_match_lowers_to_equality() {
     let output = lower(
         r#"
@@ -1063,4 +1047,62 @@ fn one_bit_bitstruct_field_is_bool_and_needs_no_range_check() {
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
     assert!(!instructions(&output)
         .any(|op| matches!(op, FirInstructionKind::BitFieldCheck { width: 1, .. })));
+}
+
+#[test]
+fn map_pattern_lowers_resolved_collection_protocol_operations() {
+    let output = lower(
+        r#"
+        module test.fir_map_protocol;
+        struct Dict {}
+        impl Dict {
+            fn pattern_get(self: &Dict, key: str) -> u32? { return None; }
+            fn pattern_has_only(self: &Dict, keys: str[]) -> bool { return true; }
+        }
+        fn use_map(map: Dict) -> u32 {
+            return match (map) {
+                {:name name} => name,
+                _ => 0u32,
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::CollectionPatternLookup { key, .. } if key == "name"
+    )));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::CollectionPatternHasOnly { keys, .. } if keys == &vec!["name".to_owned()]
+    )));
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::OptionIsSome { .. })));
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::OptionUnwrap { .. })));
+}
+
+#[test]
+fn map_pattern_rest_skips_closed_key_check_and_optional_binds_option() {
+    let output = lower(
+        r#"
+        module test.fir_map_rest;
+        struct Dict {}
+        impl Dict {
+            fn pattern_get(self: &Dict, key: str) -> u32? { return None; }
+            fn pattern_has_only(self: &Dict, keys: str[]) -> bool { return true; }
+        }
+        fn use_map(map: Dict) -> void {
+            match (map) {
+                {:name name, :age age?, ..} => {},
+                _ => {},
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::CollectionPatternLookup { key, .. } if key == "age"
+    )));
+    assert!(!instructions(&output)
+        .any(|op| matches!(op, FirInstructionKind::CollectionPatternHasOnly { .. })));
 }

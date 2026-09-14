@@ -89,7 +89,9 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Step 10 complete: core execution-context slot accesses and overrides are resolved in typed HIR; override values are checked as non-owning references/pointers, lexical slot types are scoped, and FIR uses cleanup-integrated save/set/load/restore operations.
 - Step 11 complete: select arms carry typed channel payload/timeout semantics and stable runtime-operation IDs; FIR lowers blocking select into an explicit multi-target terminator with receive payload destinations.
 - Step 12 complete: unsafe scopes are semantic authorization scopes; raw dereference, pointer arithmetic, and pointer/integer or reinterpret conversions carry explicit source-scope provenance into dedicated FIR raw operations.
-- Steps 13-16 intentionally untouched.
+- Step 13 complete: bitstruct storage/layout is materialized above FIR; field reads/writes lower through explicit checked mask/shift operations.
+- Step 14 complete: map patterns require a resolved nominal collection protocol (`pattern_get` + `pattern_has_only`); required/optional keyword bindings and closed/rest semantics lower through explicit FIR collection-pattern operations.
+- Steps 15-16 intentionally untouched.
 
 
 ## Step 8 acceptance tests
@@ -143,3 +145,13 @@ The semantic plan intentionally starts narrower than a full Rust-style pattern m
 - Reads expose storage, shift right by the resolved offset, mask to the resolved width, then convert to the ordinary field type.
 - Writes perform an explicit range check when the ordinary field type admits values wider than the field, then use mask/shift read-modify-write and rebuild the nominal bitstruct.
 - Explicit bitstruct construction requires exactly its declared storage type.
+
+
+## Step 14 acceptance tests
+
+- A map-pattern scrutinee must be a nominal type implementing `pattern_get(self: &T, key: str) -> V?` and `pattern_has_only(self: &T, keys: str[]) -> bool`; protocol lookup is resolved above FIR.
+- Required keyword entries test lookup presence and bind the unwrapped `V`; optional entries always match and bind `V?`.
+- Duplicate keyword entries are rejected semantically.
+- A closed map pattern (no `..`) emits an allowed-keys-only protocol test; `..` deliberately skips that test.
+- Match plans retain resolved method `DefId`s and concrete value/optional types; no `Ty::Unknown` collection binding reaches successful FIR lowering.
+- FIR emits explicit `CollectionPatternLookup` and `CollectionPatternHasOnly` operations and never re-runs method/protocol resolution.

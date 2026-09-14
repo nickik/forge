@@ -226,6 +226,16 @@ pub enum FirInstructionKind {
         base: FirValueId,
         start: u64,
     },
+    CollectionPatternLookup {
+        collection: FirValueId,
+        operation: DefId,
+        key: String,
+    },
+    CollectionPatternHasOnly {
+        collection: FirValueId,
+        operation: DefId,
+        keys: Vec<String>,
+    },
     AddressOf {
         place: FirPlace,
         mutable: bool,
@@ -2186,7 +2196,8 @@ impl<'a> FunctionLowerer<'a> {
                         MatchProjection::OptionPayload { ty }
                         | MatchProjection::Field { ty, .. }
                         | MatchProjection::Index { ty, .. }
-                        | MatchProjection::Rest { ty, .. } => ty.clone(),
+                        | MatchProjection::Rest { ty, .. }
+                        | MatchProjection::CollectionLookup { ty, .. } => ty.clone(),
                     })
                     .unwrap_or_else(|| scrutinee_ty.clone());
                 Some(self.lower_match_test(span, value, &value_ty, test))
@@ -2398,6 +2409,15 @@ impl<'a> FunctionLowerer<'a> {
                     name: name.clone(),
                 },
             ),
+            MatchTest::CollectionHasOnly { operation, keys } => self.emit_value(
+                span,
+                Ty::Bool,
+                FirInstructionKind::CollectionPatternHasOnly {
+                    collection: value,
+                    operation: *operation,
+                    keys: keys.clone(),
+                },
+            ),
             MatchTest::Length { count, at_least } => {
                 let len = self.emit_value(span, usize_ty(), FirInstructionKind::Len { value });
                 let expected = self.emit_value(
@@ -2480,6 +2500,15 @@ impl<'a> FunctionLowerer<'a> {
                     FirInstructionKind::Subsequence {
                         base: value,
                         start: *start,
+                    },
+                ),
+                MatchProjection::CollectionLookup { operation, key, ty } => self.emit_value(
+                    span,
+                    ty.clone(),
+                    FirInstructionKind::CollectionPatternLookup {
+                        collection: value,
+                        operation: *operation,
+                        key: key.clone(),
                     },
                 ),
             };

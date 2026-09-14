@@ -144,15 +144,35 @@ pub enum MatchTest {
         count: u64,
         at_least: bool,
     },
+    CollectionHasOnly {
+        operation: DefId,
+        keys: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "projection", rename_all = "snake_case")]
 pub enum MatchProjection {
-    OptionPayload { ty: Ty },
-    Field { name: String, ty: Ty },
-    Index { index: u64, ty: Ty },
-    Rest { start: u64, ty: Ty },
+    OptionPayload {
+        ty: Ty,
+    },
+    Field {
+        name: String,
+        ty: Ty,
+    },
+    Index {
+        index: u64,
+        ty: Ty,
+    },
+    Rest {
+        start: u64,
+        ty: Ty,
+    },
+    CollectionLookup {
+        operation: DefId,
+        key: String,
+        ty: Ty,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -195,6 +215,14 @@ pub struct TypedMatchPlan {
     pub scrutinee_type: Ty,
     pub finite_cases: Option<Vec<String>>,
     pub arms: Vec<TypedMatchArmPlan>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypedCollectionPatternProtocol {
+    pub collection: Ty,
+    pub lookup: DefId,
+    pub has_only: DefId,
+    pub value: Ty,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1143,6 +1171,55 @@ impl ModuleTypeEnv {
         };
         let method = *self.methods.get(&(id, name.to_owned()))?;
         self.functions.get(&method).map(|sig| (method, sig))
+    }
+
+    fn collection_pattern_protocol(&self, ty: &Ty) -> Option<TypedCollectionPatternProtocol> {
+        let collection = match ty {
+            Ty::Reference { inner, .. } => inner.as_ref().clone(),
+            other => other.clone(),
+        };
+        let Ty::Nominal(id) = collection else {
+            return None;
+        };
+        let lookup = *self.methods.get(&(id, "pattern_get".to_owned()))?;
+        let has_only = *self.methods.get(&(id, "pattern_has_only".to_owned()))?;
+        let lookup_sig = self.functions.get(&lookup)?;
+        let has_only_sig = self.functions.get(&has_only)?;
+        let expected_self = Ty::Reference {
+            mutable: false,
+            inner: Box::new(Ty::Nominal(id)),
+        };
+        if lookup_sig.params.len() != 2
+            || lookup_sig.params[0].name != "self"
+            || lookup_sig.params[0].ty != expected_self
+            || lookup_sig.params[1].ty != Ty::Str
+        {
+            return None;
+        }
+        let Ty::Optional { inner: value } = &lookup_sig.result else {
+            return None;
+        };
+        if matches!(value.as_ref(), Ty::Unknown | Ty::Error | Ty::Void) {
+            return None;
+        }
+        let keys_ty = Ty::Slice {
+            mutable: false,
+            element: Box::new(Ty::Str),
+        };
+        if has_only_sig.params.len() != 2
+            || has_only_sig.params[0].name != "self"
+            || has_only_sig.params[0].ty != expected_self
+            || has_only_sig.params[1].ty != keys_ty
+            || has_only_sig.result != Ty::Bool
+        {
+            return None;
+        }
+        Some(TypedCollectionPatternProtocol {
+            collection: Ty::Nominal(id),
+            lookup,
+            has_only,
+            value: value.as_ref().clone(),
+        })
     }
 
     fn channel_payload(&self, ty: &Ty) -> Option<Ty> {
@@ -2855,12 +2932,14 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             | Ty::Optional { .. }
             | Ty::Array { .. }
             | Ty::Slice { .. } => true,
-            Ty::Nominal(id) => matches!(
-                self.env.types.get(id).map(|info| &info.kind),
-                Some(TypeInfoKind::Struct(_))
-                    | Some(TypeInfoKind::Enum(_))
-                    | Some(TypeInfoKind::Tagged(_))
-            ),
+            Ty::Nominal(id) => {
+                matches!(
+                    self.env.types.get(id).map(|info| &info.kind),
+                    Some(TypeInfoKind::Struct(_))
+                        | Some(TypeInfoKind::Enum(_))
+                        | Some(TypeInfoKind::Tagged(_))
+                ) || self.env.collection_pattern_protocol(ty).is_some()
+            }
             _ => false,
         };
         if !supported {
@@ -3116,7 +3195,72 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 Some(alternatives)
             }
             HirPatternKind::None { .. } => None,
-            HirPatternKind::Map { .. } => None,
+            HirPatternKind::Map {
+                entries,
+                ignore_rest,
+            } => {
+                let protocol = self.env.collection_pattern_protocol(ty)?;
+                let optional_ty = Ty::Optional {
+                    inner: Box::new(protocol.value.clone()),
+                };
+                let mut alternatives = one(MatchCondition::Always, Vec::new());
+                if !*ignore_rest {
+                    let keys = entries
+                        .iter()
+                        .map(|entry| entry.keyword.clone())
+                        .collect::<Vec<_>>();
+                    alternatives = self.combine_match_alternatives(
+                        alternatives,
+                        one(
+                            test(MatchTest::CollectionHasOnly {
+                                operation: protocol.has_only,
+                                keys,
+                            }),
+                            Vec::new(),
+                        ),
+                    );
+                }
+                for entry in entries {
+                    let mut lookup = projections.to_vec();
+                    lookup.push(MatchProjection::CollectionLookup {
+                        operation: protocol.lookup,
+                        key: entry.keyword.clone(),
+                        ty: optional_ty.clone(),
+                    });
+                    if entry.optional {
+                        for alternative in &mut alternatives {
+                            alternative.bindings.push(TypedMatchBinding {
+                                local: entry.local,
+                                ty: optional_ty.clone(),
+                                projections: lookup.clone(),
+                            });
+                        }
+                    } else {
+                        alternatives = self.combine_match_alternatives(
+                            alternatives,
+                            one(
+                                MatchCondition::Test {
+                                    projections: lookup.clone(),
+                                    test: MatchTest::OptionSome,
+                                },
+                                Vec::new(),
+                            ),
+                        );
+                        let mut payload = lookup;
+                        payload.push(MatchProjection::OptionPayload {
+                            ty: protocol.value.clone(),
+                        });
+                        for alternative in &mut alternatives {
+                            alternative.bindings.push(TypedMatchBinding {
+                                local: entry.local,
+                                ty: protocol.value.clone(),
+                                projections: payload.clone(),
+                            });
+                        }
+                    }
+                }
+                Some(alternatives)
+            }
         }
     }
 
@@ -3438,7 +3582,8 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     MatchTest::Variant { name } => Some(name.clone()),
                     MatchTest::ScalarLiteral { .. }
                     | MatchTest::ScalarRange { .. }
-                    | MatchTest::Length { .. } => None,
+                    | MatchTest::Length { .. }
+                    | MatchTest::CollectionHasOnly { .. } => None,
                 };
                 case.into_iter()
                     .filter(|case| required.contains(case))
@@ -3736,10 +3881,39 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 }
             }
             HirPatternKind::Map { entries, .. } => {
-                // Map-pattern typing depends on the collection pattern protocol, which is
-                // intentionally not modeled in this primitive type environment yet.
+                let Some(protocol) = self.env.collection_pattern_protocol(ty) else {
+                    self.diagnostic(
+                        pattern.span,
+                        "pattern/collection-protocol",
+                        format!(
+                            "map pattern requires `pattern_get(self: &T, key: str) -> V?` and `pattern_has_only(self: &T, keys: str[]) -> bool` on {ty:?}"
+                        ),
+                    );
+                    for entry in entries {
+                        out.insert(entry.local, Ty::Error);
+                    }
+                    return;
+                };
+                let mut seen = BTreeSet::new();
                 for entry in entries {
-                    out.insert(entry.local, Ty::Unknown);
+                    if !seen.insert(entry.keyword.clone()) {
+                        self.diagnostic(
+                            pattern.span,
+                            "pattern/duplicate-key",
+                            format!(
+                                "map pattern key `:{}` appears more than once",
+                                entry.keyword
+                            ),
+                        );
+                    }
+                    let binding_ty = if entry.optional {
+                        Ty::Optional {
+                            inner: Box::new(protocol.value.clone()),
+                        }
+                    } else {
+                        protocol.value.clone()
+                    };
+                    out.insert(entry.local, binding_ty);
                 }
             }
             HirPatternKind::Or { patterns } => {
