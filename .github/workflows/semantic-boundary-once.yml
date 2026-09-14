@@ -21,6 +21,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: python3 -B scripts/semantic_boundary_once.py
       - run: cargo fmt --all
+      - run: python3 -B scripts/semantic_boundary_phase2_prepatch.py
       - run: python3 -B scripts/semantic_boundary_phase2.py
       - run: cargo fmt --all
       - run: cargo fmt --all -- --check
