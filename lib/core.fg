@@ -63,15 +63,69 @@ pub struct MemoryBlock {
     align: usize;
 }
 
-// Environment-neutral backing resource. Cosmic may back this with kernel VM;
-// hosted std may back it with mmap/platform VM; firmware may use static RAM.
-pub struct Arena {
-    provider: *void;
+// Arena is an explicit capability object, not a language trait/interface.
+// `context` is provider-specific state and `ops` is a static operations table.
+// The same core algorithms can therefore use a Cosmic kernel provider, hosted
+// VM provider, firmware/static-RAM provider, or deterministic test provider.
+pub struct ArenaOps {
+    alloc: fn(*void, AllocRequest) -> Result[MemoryBlock, AllocError];
+    free: fn(*void, MemoryBlock) -> void;
+    reclaim: fn(*void, usize) -> usize;
 }
 
-// General allocator for variable-size allocations.
+pub struct Arena {
+    context: *void;
+    ops: &ArenaOps;
+}
+
+pub fn arena_alloc(
+    arena: &mut Arena,
+    request: AllocRequest
+) -> Result[MemoryBlock, AllocError] {
+    return arena.ops.alloc(arena.context, request);
+}
+
+pub fn arena_free(arena: &mut Arena, block: MemoryBlock) -> void {
+    arena.ops.free(arena.context, block);
+}
+
+// Ask the provider to release up to `target_bytes` of unused backing resource.
+// The return value is the number of bytes actually released.
+pub fn arena_reclaim(arena: &mut Arena, target_bytes: usize) -> usize {
+    return arena.ops.reclaim(arena.context, target_bytes);
+}
+
+// General allocator capability for arbitrary-size allocations. This is kept
+// separate from Arena because an allocator may implement size classes,
+// metadata, quarantine, debugging, or other policy above one or more arenas.
+pub struct AllocatorOps {
+    alloc: fn(*void, AllocRequest) -> Result[MemoryBlock, AllocError];
+    free: fn(*void, MemoryBlock) -> void;
+    resize: fn(*void, MemoryBlock, usize) -> Result[MemoryBlock, AllocError];
+}
+
 pub struct Allocator {
-    arena: &mut Arena;
+    context: *void;
+    ops: &AllocatorOps;
+}
+
+pub fn allocator_alloc(
+    allocator: &mut Allocator,
+    request: AllocRequest
+) -> Result[MemoryBlock, AllocError] {
+    return allocator.ops.alloc(allocator.context, request);
+}
+
+pub fn allocator_free(allocator: &mut Allocator, block: MemoryBlock) -> void {
+    allocator.ops.free(allocator.context, block);
+}
+
+pub fn allocator_resize(
+    allocator: &mut Allocator,
+    block: MemoryBlock,
+    new_size: usize
+) -> Result[MemoryBlock, AllocError] {
+    return allocator.ops.resize(allocator.context, block, new_size);
 }
 
 // Fixed-size object-cache configuration. Object caches are optimized for
@@ -95,6 +149,9 @@ pub struct ObjectCacheStats {
     reclaims: u64;
 }
 
+// The bootstrap public shape records the backing capability and geometry.
+// Internal slab/free-list state becomes module-private as implementation
+// support for private/opaque representation matures.
 pub struct ObjectCache {
     arena: &mut Arena;
     spec: ObjectCacheSpec;
@@ -158,20 +215,16 @@ pub fn objects_per_slab(spec: &ObjectCacheSpec) -> usize {
     return spec.slab_size / object_stride(spec);
 }
 
-// Provider-backed operations. Their semantics are normative even while the
-// bootstrap compiler does not yet execute the complete implementation.
-//
-// Arbitrary-size / malloc-like path:
-//   allocator_alloc(allocator, request) -> Result[MemoryBlock, AllocError]
-//   allocator_free(allocator, block) -> void
-//   allocator_resize(allocator, block, new_size) -> Result[MemoryBlock, AllocError]
-//
-// Fixed-size cache path:
+// Object-cache implementation surface:
 //   object_cache_create(arena, spec) -> Result[ObjectCache, AllocError]
 //   object_cache_alloc(cache, wait) -> Result[*byte, AllocError]
 //   object_cache_free(cache, object) -> void
 //   object_cache_reclaim(cache) -> usize
 //   object_cache_stats(cache) -> ObjectCacheStats
+//
+// The provider dispatch above is real Forge code. The slab/free-list bodies are
+// deliberately not faked before raw-pointer mutation and private-state support
+// are executable in both Forge implementations.
 //
 // Primitive allocation never implicitly panics on OutOfMemory. A caller may
 // deliberately convert AllocError into PanicKind::AllocationFailure.
