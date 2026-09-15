@@ -424,15 +424,16 @@ fn c11b_links_and_executes_riscv64_static_data_under_qemu() {
     fs::write(&object, emit(CraneliftTarget::Riscv64)).expect("write RV64 object");
     fs::write(
         &source,
-        r#".section .text
+        r#".option nopic
+.section .text
 .globl _start
 _start:
-    la t0, __forge_global_0000000a
+    lla t0, __forge_global_0000000a
     ld t1, 0(t0)
     li t2, 0x1122334455667788
     bne t1, t2, fail
 
-    la t0, __forge_global_0000000b
+    lla t0, __forge_global_0000000b
     lhu t1, 0(t0)
     li t2, 1
     bne t1, t2, fail
@@ -443,22 +444,22 @@ _start:
     li t2, 0x4455
     bne t1, t2, fail
 
-    la t0, __forge_global_0000000c
+    lla t0, __forge_global_0000000c
     ld t1, 0(t0)
     bnez t1, fail
 
-    la t0, __forge_global_0000000d
+    lla t0, __forge_global_0000000d
     ld t1, 0(t0)
-    la t2, __forge_fn_00000001
+    lla t2, __forge_fn_00000001
     bne t1, t2, fail
 
-    la t0, __forge_global_00000010
+    lla t0, __forge_global_00000010
     ld t1, 0(t0)
     bne t1, t2, fail
 
-    la t0, __forge_global_0000000e
+    lla t0, __forge_global_0000000e
     ld t1, 0(t0)
-    la t2, __forge_global_0000000c
+    lla t2, __forge_global_0000000c
     bne t1, t2, fail
 
     li a0, 0
