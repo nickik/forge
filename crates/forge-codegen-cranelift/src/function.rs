@@ -299,10 +299,11 @@ fn lower_integer_binary(
                 )));
             }
             let bits = cursor.func.dfg.value_type(left_value).bits();
-            let out_of_range =
-                cursor
-                    .ins()
-                    .icmp_imm(IntCC::UnsignedGreaterThanOrEqual, right_value, bits as i64);
+            let out_of_range = cursor.ins().icmp_imm_u(
+                IntCC::UnsignedGreaterThanOrEqual,
+                right_value,
+                bits as u64,
+            );
             cursor
                 .ins()
                 .trapnz(out_of_range, TrapCode::INTEGER_OVERFLOW);
