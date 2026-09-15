@@ -1,15 +1,13 @@
 name: integrate-main
 
 on:
-  push:
-    branches: [agent/cranelift-c0-c1-integration]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   integrate:
-    if: "!contains(github.event.head_commit.message, '[integrated-main]')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
