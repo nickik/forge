@@ -42,7 +42,7 @@ fn unsupported_global_is_rejected_explicitly() {
         FirGlobal {
             owner: DefId(1),
             ty: Ty::Bool,
-            initializer: Some(ConstValue::Bool(true)),
+            constant: Some(ConstValue::Bool { value: true }),
         },
     );
 
