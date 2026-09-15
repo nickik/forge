@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use forge_codegen_cranelift::{CraneliftBackend, CraneliftTarget, GlobalStorageClass};
 use forge_fir::{
-    ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal,
-    FirInstruction, FirInstructionKind, FirModule, FirTerminator, FirValueId, IntWidth, Span,
+    ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal, FirInstruction,
+    FirInstructionKind, FirModule, FirTerminator, FirValueId, IntWidth, Span,
     StaticGlobalInitializer, StaticGlobalInitializerTable, StaticSymbol, StaticValue, Ty,
     TypeDefinition, TypeDefinitionKind, TypeDefinitionTable, TypeFieldDefinition,
 };
@@ -77,11 +77,7 @@ fn return_nine() -> FirFunction {
     }
 }
 
-fn fixture() -> (
-    FirModule,
-    TypeDefinitionTable,
-    StaticGlobalInitializerTable,
-) {
+fn fixture() -> (FirModule, TypeDefinitionTable, StaticGlobalInitializerTable) {
     let array_ty = Ty::Array {
         element: Box::new(u16_ty()),
         length: Some(3),
@@ -256,10 +252,7 @@ fn c11b_serializes_scalars_aggregates_and_relocations_from_c9_layout() {
         let bytes = structure.static_data().expect("struct bytes").bytes();
         let layout = structure.layout();
         assert_eq!(bytes.len() as u64, layout.size);
-        assert_eq!(
-            bytes[layout.field("a").expect("a").offset as usize],
-            0x11
-        );
+        assert_eq!(bytes[layout.field("a").expect("a").offset as usize], 0x11);
         assert_eq!(
             read_le(bytes, layout.field("b").expect("b").offset, 8),
             0x2233_4455_6677_8899
@@ -308,7 +301,10 @@ fn c11b_emits_deterministic_elf_sections_symbols_alignment_and_data_relocations(
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let first = emit(target);
         let second = emit(target);
-        assert_eq!(first, second, "{target:?} C11b object must be deterministic");
+        assert_eq!(
+            first, second,
+            "{target:?} C11b object must be deterministic"
+        );
         assert_eq!(&first[..4], b"\x7fELF");
 
         if !tool_available("readelf") {
@@ -400,7 +396,10 @@ int main(void) {
         .arg("-o")
         .arg(&executable);
     successful_output(&mut linker, "link AArch64 C11b object");
-    successful_output(&mut Command::new(&executable), "execute AArch64 C11b program");
+    successful_output(
+        &mut Command::new(&executable),
+        "execute AArch64 C11b program",
+    );
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -546,8 +545,10 @@ fn successful_output(command: &mut Command, label: &str) -> Output {
 fn temporary_directory(label: &str) -> PathBuf {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let serial = NEXT.fetch_add(1, Ordering::Relaxed);
-    let path =
-        std::env::temp_dir().join(format!("forge-c11b-{label}-{}-{serial}", std::process::id()));
+    let path = std::env::temp_dir().join(format!(
+        "forge-c11b-{label}-{}-{serial}",
+        std::process::id()
+    ));
     if path.exists() {
         fs::remove_dir_all(&path).expect("remove stale C11b temp directory");
     }

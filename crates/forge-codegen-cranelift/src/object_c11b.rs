@@ -710,12 +710,8 @@ fn emit_elf64(
         ));
     }
 
-    let rela_text = encode_text_relocations(
-        target,
-        text_relocs,
-        &function_symbols,
-        &label_symbols,
-    )?;
+    let rela_text =
+        encode_text_relocations(target, text_relocs, &function_symbols, &label_symbols)?;
     let rela_rodata = encode_data_relocations(
         target,
         &data.rodata_relocs,
@@ -764,8 +760,14 @@ fn emit_elf64(
     let section_headers_offset = output.len() as u64;
 
     SectionHeader::null().write_to(&mut output);
-    SectionHeader::progbits(text_name, 0x6, text_offset, text.len() as u64, text_alignment.max(1))
-        .write_to(&mut output);
+    SectionHeader::progbits(
+        text_name,
+        0x6,
+        text_offset,
+        text.len() as u64,
+        text_alignment.max(1),
+    )
+    .write_to(&mut output);
     SectionHeader::rela(
         rela_text_name,
         rela_text_offset,
@@ -822,8 +824,7 @@ fn emit_elf64(
         first_global,
     )
     .write_to(&mut output);
-    SectionHeader::strtab(strtab_name, strtab_offset, strtab.len() as u64)
-        .write_to(&mut output);
+    SectionHeader::strtab(strtab_name, strtab_offset, strtab.len() as u64).write_to(&mut output);
     SectionHeader::strtab(shstrtab_name, shstrtab_offset, shstrtab.len() as u64)
         .write_to(&mut output);
     SectionHeader::progbits(stack_name, 0, stack_offset, 0, 1).write_to(&mut output);
@@ -978,14 +979,7 @@ impl ElfSymbol {
         Self::typed(name, global, 1, section, value, size)
     }
 
-    const fn typed(
-        name: u32,
-        global: bool,
-        kind: u8,
-        section: u16,
-        value: u64,
-        size: u64,
-    ) -> Self {
+    const fn typed(name: u32, global: bool, kind: u8, section: u16, value: u64, size: u64) -> Self {
         let binding = if global { 1 } else { 0 };
         Self {
             name,

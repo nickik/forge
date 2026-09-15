@@ -285,7 +285,8 @@ impl CraneliftBackend {
                 ))
             })?;
 
-            let (initialization, storage, static_data) = if let Some(initializer) = static_initializer
+            let (initialization, storage, static_data) = if let Some(initializer) =
+                static_initializer
             {
                 let data = serialize_static_initializer(
                     *owner,
@@ -546,7 +547,9 @@ fn serialize_value(
                 )));
             };
             let element_layout = layouts.layout_of(element).map_err(|error| {
-                shape(format!("global {owner:?} array element layout failed: {error}"))
+                shape(format!(
+                    "global {owner:?} array element layout failed: {error}"
+                ))
             })?;
             for (index, item) in items.iter().enumerate() {
                 serialize_value(
@@ -608,7 +611,16 @@ fn serialize_value(
                     let child = layouts.layout_of(&target).map_err(|error| {
                         shape(format!("global {owner:?} alias layout failed: {error}"))
                     })?;
-                    serialize_value(owner, definitions, layouts, &target, &child, value, base, output)
+                    serialize_value(
+                        owner,
+                        definitions,
+                        layouts,
+                        &target,
+                        &child,
+                        value,
+                        base,
+                        output,
+                    )
                 }
                 TypeDefinitionKind::Distinct { underlying } => {
                     let child = layouts.layout_of(&underlying).map_err(|error| {
@@ -629,7 +641,16 @@ fn serialize_value(
                     let child = layouts.layout_of(&storage).map_err(|error| {
                         shape(format!("global {owner:?} bitstruct layout failed: {error}"))
                     })?;
-                    serialize_value(owner, definitions, layouts, &storage, &child, value, base, output)
+                    serialize_value(
+                        owner,
+                        definitions,
+                        layouts,
+                        &storage,
+                        &child,
+                        value,
+                        base,
+                        output,
+                    )
                 }
                 TypeDefinitionKind::Struct { fields } => serialize_struct(
                     owner,
@@ -651,7 +672,9 @@ fn serialize_value(
                         )));
                     }
                     let name = variant.as_ref().ok_or_else(|| {
-                        shape(format!("global {owner:?} enum static value is missing variant"))
+                        shape(format!(
+                            "global {owner:?} enum static value is missing variant"
+                        ))
                     })?;
                     let index = variants
                         .iter()
@@ -898,7 +921,9 @@ fn serialize_optional(
             }
             encode_sum_discriminant(owner, output, base, encoding, 1)?;
             let child = layouts.layout_of(inner).map_err(|error| {
-                shape(format!("global {owner:?} optional payload layout failed: {error}"))
+                shape(format!(
+                    "global {owner:?} optional payload layout failed: {error}"
+                ))
             })?;
             let payload = fields.get("value").ok_or_else(|| {
                 shape(format!(
@@ -966,7 +991,9 @@ fn serialize_result(
     }
     encode_sum_discriminant(owner, output, base, encoding, index)?;
     let child = layouts.layout_of(child_ty).map_err(|error| {
-        shape(format!("global {owner:?} result payload layout failed: {error}"))
+        shape(format!(
+            "global {owner:?} result payload layout failed: {error}"
+        ))
     })?;
     let payload = fields.get(field_name).ok_or_else(|| {
         shape(format!(
