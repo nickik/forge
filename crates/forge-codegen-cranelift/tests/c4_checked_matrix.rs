@@ -149,14 +149,8 @@ fn checked_div_rem_cover_widths_signedness_and_targets() {
                 let ty = int_ty(signed, width);
                 let div = lower(checked_binary(BinaryOp::Div, ty.clone()), target);
                 let rem = lower(checked_binary(BinaryOp::Rem, ty), target);
-                assert!(
-                    div.contains(if signed { "sdiv" } else { "udiv" }),
-                    "{div}"
-                );
-                assert!(
-                    rem.contains(if signed { "srem" } else { "urem" }),
-                    "{rem}"
-                );
+                assert!(div.contains(if signed { "sdiv" } else { "udiv" }), "{div}");
+                assert!(rem.contains(if signed { "srem" } else { "urem" }), "{rem}");
             }
         }
     }
