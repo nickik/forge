@@ -159,7 +159,7 @@ pub struct AbiDecomposer<'a> {
 
 impl<'a> AbiDecomposer<'a> {
     pub fn new(target: AbiTarget, definitions: &'a TypeDefinitionTable) -> Result<Self, AbiError> {
-        if target.word_bits == 0 || target.word_bits % 8 != 0 {
+        if target.word_bits == 0 || !target.word_bits.is_multiple_of(8) {
             return Err(AbiError::UnsupportedTarget(
                 "ABI word must be a non-zero whole number of bytes",
             ));
