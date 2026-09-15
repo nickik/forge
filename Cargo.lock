@@ -208,9 +208,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-compiler"
+version = "0.1.0"
+dependencies = [
+ "forge-codegen-cranelift",
+ "forge-frontend",
+]
+
+[[package]]
 name = "forge-conformance"
 version = "0.1.0"
 dependencies = [
+ "forge-compiler",
  "forge-frontend",
 ]
 

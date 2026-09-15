@@ -187,11 +187,36 @@ fn execute_case(suite: &Suite, test: &TestCase, path: &Path) -> Outcome {
         TestKind::Parse => execute_parse(path),
         TestKind::SyntaxNegative => execute_syntax_negative(path),
         TestKind::Negative => execute_negative(test, path),
-        TestKind::Run => Outcome::Fail(format!(
-            ":run was activated for {} before a codegen/execute executor exists (expected exit {})",
-            test.path.display(),
-            test.exit.unwrap_or(0)
-        )),
+        TestKind::Run => execute_run(test, path),
+    }
+}
+
+fn execute_run(test: &TestCase, path: &Path) -> Outcome {
+    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
+    {
+        let output = match forge_compiler::run_file(path, &[]) {
+            Ok(output) => output,
+            Err(error) => return Outcome::Fail(format!("native execution failed: {error}")),
+        };
+        let expected = test.exit.unwrap_or(0);
+        match output.status.code() {
+            Some(actual) if actual == expected => Outcome::Pass,
+            Some(actual) => Outcome::Fail(format!(
+                "expected exit {expected}, got {actual}\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            )),
+            None => Outcome::Fail(format!(
+                "native program terminated without an exit code\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            )),
+        }
+    }
+    #[cfg(not(all(target_arch = "aarch64", target_os = "linux")))]
+    {
+        let _ = (test, path);
+        Outcome::Pending("native :run executor currently requires AArch64 Linux")
     }
 }
 

@@ -1025,7 +1025,8 @@ impl<'a> FunctionLowerer<'a> {
 
         self.switch_to(then_id);
         self.lower_block(then_block);
-        if !self.terminated() {
+        let then_reaches_join = !self.terminated();
+        if then_reaches_join {
             self.terminate(FirTerminator::Goto { target: join_id });
         }
 
@@ -1033,11 +1034,15 @@ impl<'a> FunctionLowerer<'a> {
         if let Some(stmt) = else_stmt {
             self.lower_stmt(stmt);
         }
-        if !self.terminated() {
+        let else_reaches_join = !self.terminated();
+        if else_reaches_join {
             self.terminate(FirTerminator::Goto { target: join_id });
         }
 
         self.switch_to(join_id);
+        if !then_reaches_join && !else_reaches_join {
+            self.terminate(FirTerminator::Unreachable);
+        }
     }
 
     fn lower_while(&mut self, condition: &HirExpr, body: &HirBlock) {

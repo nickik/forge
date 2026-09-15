@@ -1,6 +1,6 @@
 {:suite :forge/conformance
  :version 1
- :active-kinds [:parse :syntax-negative :negative]
+ :active-kinds [:run :parse :syntax-negative :negative]
  :tests [
     {:path #path "run/01-arithmetic-precedence.fg" :kind :run :exit 0}
     {:path #path "run/02-comparisons-logic.fg" :kind :run :exit 0}

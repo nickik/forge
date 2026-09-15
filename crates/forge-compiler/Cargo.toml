@@ -1,13 +1,13 @@
 [package]
-name = "forge-conformance"
+name = "forge-compiler"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-forge-compiler = { path = "../forge-compiler" }
+forge-codegen-cranelift = { path = "../forge-codegen-cranelift" }
 forge-frontend = { path = "../forge-frontend" }
 
 [[bin]]
-name = "forge-conformance"
+name = "forgec"
 path = "src/main.rs"

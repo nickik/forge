@@ -378,7 +378,16 @@ fn lower_instruction(
             left,
             right,
             overflow,
-        } => lower_integer_binary(fir, *op, *left, *right, *overflow, values, cursor)?,
+        } => {
+            if matches!(
+                op,
+                BinaryOp::LogicalAnd | BinaryOp::LogicalXor | BinaryOp::LogicalOr
+            ) {
+                lower_boolean_binary(fir, *op, *left, *right, *overflow, values, cursor)?
+            } else {
+                lower_integer_binary(fir, *op, *left, *right, *overflow, values, cursor)?
+            }
+        }
         FirInstructionKind::Convert { value, target } => {
             if target != result_ty {
                 return Err(shape(format!(
@@ -913,6 +922,43 @@ fn lower_integer_unary(
     })
 }
 
+fn lower_boolean_binary(
+    fir: &FirFunction,
+    op: BinaryOp,
+    left: FirValueId,
+    right: FirValueId,
+    overflow: Option<OverflowMode>,
+    values: &BTreeMap<FirValueId, Value>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    let left_ty = fir
+        .value_types
+        .get(&left)
+        .ok_or_else(|| shape(format!("missing type for FIR value {left:?}")))?;
+    let right_ty = fir
+        .value_types
+        .get(&right)
+        .ok_or_else(|| shape(format!("missing type for FIR value {right:?}")))?;
+    if *left_ty != Ty::Bool || *right_ty != Ty::Bool {
+        return Err(shape(format!(
+            "logical operation {op:?} requires bool operands, found {left_ty:?} and {right_ty:?}"
+        )));
+    }
+    if overflow.is_some() {
+        return Err(shape(format!(
+            "logical FIR operation {op:?} unexpectedly carries overflow semantics"
+        )));
+    }
+    let left = lookup_value(values, left)?;
+    let right = lookup_value(values, right)?;
+    Ok(match op {
+        BinaryOp::LogicalAnd => cursor.ins().band(left, right),
+        BinaryOp::LogicalXor => cursor.ins().bxor(left, right),
+        BinaryOp::LogicalOr => cursor.ins().bor(left, right),
+        _ => unreachable!(),
+    })
+}
+
 fn lower_integer_binary(
     fir: &FirFunction,
     op: BinaryOp,
@@ -1154,9 +1200,9 @@ fn lower_terminator(
             });
         }
         FirTerminator::Unreachable => {
-            return Err(BackendError::UnsupportedInstruction {
-                kind: "unreachable terminator",
-            });
+            // The frontend uses this only for CFG joins proven unreachable.
+            // If violated by malformed FIR, trapping is the conservative executable meaning.
+            cursor.ins().trap(TrapCode::INTEGER_OVERFLOW);
         }
     }
     Ok(())
@@ -1185,9 +1231,37 @@ fn lower_const(
 
 fn integer_immediate(text: &str, ty: &Ty, types: &TypeLowering<'_>) -> Result<i64, BackendError> {
     let cleaned = text.replace('_', "");
-    let value = cleaned
-        .parse::<i128>()
+    let literal = [
+        "usize", "isize", "u64", "i64", "u32", "i32", "u16", "i16", "u8", "i8",
+    ]
+    .iter()
+    .find_map(|suffix| cleaned.strip_suffix(suffix))
+    .unwrap_or(cleaned.as_str());
+    let (negative, unsigned) = match literal.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, literal),
+    };
+    let (radix, digits) = if let Some(rest) = unsigned
+        .strip_prefix("0x")
+        .or_else(|| unsigned.strip_prefix("0X"))
+    {
+        (16, rest)
+    } else if let Some(rest) = unsigned
+        .strip_prefix("0b")
+        .or_else(|| unsigned.strip_prefix("0B"))
+    {
+        (2, rest)
+    } else if let Some(rest) = unsigned
+        .strip_prefix("0o")
+        .or_else(|| unsigned.strip_prefix("0O"))
+    {
+        (8, rest)
+    } else {
+        (10, unsigned)
+    };
+    let magnitude = i128::from_str_radix(digits, radix)
         .map_err(|_| BackendError::InvalidConstant { text: text.into() })?;
+    let value = if negative { -magnitude } else { magnitude };
     let (signed, bits) = match ty {
         Ty::Byte => (false, 8_u16),
         Ty::Int { signed, width } => {

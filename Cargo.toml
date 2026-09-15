@@ -5,6 +5,7 @@ members = [
     "crates/forge-conformance",
     "crates/forge-codegen-cranelift",
     "crates/forge-build",
+    "crates/forge-compiler",
 ]
 resolver = "2"
 

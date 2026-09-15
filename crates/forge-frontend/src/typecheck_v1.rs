@@ -1784,7 +1784,10 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 ty
             }
             HirExprKind::Array { items } => {
-                let mut element = Ty::Unknown;
+                let mut element = match expected {
+                    Some(Ty::Array { element, .. }) => (**element).clone(),
+                    _ => Ty::Unknown,
+                };
                 for item in items {
                     let t = self.check_expr(
                         item,
@@ -1847,7 +1850,11 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         "a type cannot be used as an index; Forge v1 does not support generic application syntax",
                     );
                 } else {
-                    self.check_expr(index, None);
+                    let index_ty = Ty::Int {
+                        signed: false,
+                        width: IntWidth::Pointer,
+                    };
+                    self.check_expr(index, Some(&index_ty));
                 }
                 match base_ty {
                     Ty::Array { element, .. } | Ty::Slice { element, .. } => *element,
