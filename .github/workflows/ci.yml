@@ -5,6 +5,34 @@ on:
   pull_request:
 
 jobs:
+  build-system:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --package forge-build -- --check
+      - run: cargo clippy -p forge-build --all-targets -- -D warnings
+      - run: cargo test -p forge-build
+      - name: Verify generated native collections snapshot
+        run: |
+          cargo run --quiet -p forge-build --bin forge-collections-gen -- /tmp/forge-collections-native.fg
+          python3 - <<'PY'
+          from pathlib import Path
+          generated = Path('/tmp/forge-collections-native.fg').read_text().rstrip('\n')
+          committed = Path('packages/forge-collections-native/src/lib.fg').read_text().rstrip('\n')
+          if generated != committed:
+              raise SystemExit('generated collection source differs from committed snapshot')
+          PY
+
+  frontend-collections:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -p forge-frontend
+
   rust:
     runs-on: ubuntu-latest
     steps:
