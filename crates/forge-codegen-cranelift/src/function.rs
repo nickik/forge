@@ -302,7 +302,7 @@ fn lower_integer_binary(
             let out_of_range = cursor.ins().icmp_imm_u(
                 IntCC::UnsignedGreaterThanOrEqual,
                 right_value,
-                bits as u64,
+                bits as i64,
             );
             cursor
                 .ins()
