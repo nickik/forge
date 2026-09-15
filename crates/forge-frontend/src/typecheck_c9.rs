@@ -22,12 +22,24 @@ pub struct TypeVariantDefinition {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TypeDefinitionKind {
-    Alias { target: Ty },
-    Distinct { underlying: Ty },
-    Struct { fields: Vec<TypeFieldDefinition> },
-    Enum { variants: Vec<TypeVariantDefinition> },
-    Tagged { variants: Vec<TypeVariantDefinition> },
-    BitStruct { storage: Ty },
+    Alias {
+        target: Ty,
+    },
+    Distinct {
+        underlying: Ty,
+    },
+    Struct {
+        fields: Vec<TypeFieldDefinition>,
+    },
+    Enum {
+        variants: Vec<TypeVariantDefinition>,
+    },
+    Tagged {
+        variants: Vec<TypeVariantDefinition>,
+    },
+    BitStruct {
+        storage: Ty,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

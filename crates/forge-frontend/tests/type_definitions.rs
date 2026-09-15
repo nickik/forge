@@ -20,14 +20,30 @@ fn resolved_type_definitions_preserve_source_identity_and_order() {
         fn main() -> i32 { return 0; }
         "#,
     );
-    assert!(parsed.diagnostics.is_empty(), "parse: {:?}", parsed.diagnostics);
+    assert!(
+        parsed.diagnostics.is_empty(),
+        "parse: {:?}",
+        parsed.diagnostics
+    );
     let ast = parsed.ast.expect("AST");
     let hir = lower_module(&ast);
-    assert!(hir.diagnostics.is_empty(), "HIR items: {:?}", hir.diagnostics);
+    assert!(
+        hir.diagnostics.is_empty(),
+        "HIR items: {:?}",
+        hir.diagnostics
+    );
     let bodies = lower_resolved_bodies(&ast, &hir.module);
-    assert!(bodies.diagnostics.is_empty(), "HIR bodies: {:?}", bodies.diagnostics);
+    assert!(
+        bodies.diagnostics.is_empty(),
+        "HIR bodies: {:?}",
+        bodies.diagnostics
+    );
     let typed = type_check_module(&ast, &hir.module, &bodies);
-    assert!(typed.diagnostics.is_empty(), "typed: {:?}", typed.diagnostics);
+    assert!(
+        typed.diagnostics.is_empty(),
+        "typed: {:?}",
+        typed.diagnostics
+    );
 
     let definitions = collect_type_definitions(&ast, &hir.module, &bodies, &typed);
 

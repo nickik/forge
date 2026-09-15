@@ -5,11 +5,15 @@
 //! occur in FIR fields. HIR, typed-HIR, parser, resolution, and type-checker
 //! implementation structures are not part of the backend API.
 
-#[path = "layout_c9a.rs"]
-mod layout;
 #[path = "abi_c9b_impl.rs"]
 mod abi;
+#[path = "layout_c9a.rs"]
+mod layout;
 
+pub use abi::{
+    AbiDecomposer, AbiDecomposition, AbiError, AbiFragment, AbiPassing, AbiPiece, AbiPieceKind,
+    AbiTarget,
+};
 pub use forge_frontend::ast::{BinaryOp, Span};
 pub use forge_frontend::{
     collect_type_definitions, dump_fir_module, verify_fir_function, verify_fir_module, CaptureMode,
@@ -23,8 +27,4 @@ pub use forge_frontend::{
 pub use layout::{
     FieldLayout, Layout, LayoutEngine, LayoutError, LayoutKind, LayoutTarget, Niche, SumEncoding,
     TagLayout, VariantLayout,
-};
-pub use abi::{
-    AbiDecomposer, AbiDecomposition, AbiError, AbiFragment, AbiPassing, AbiPiece, AbiPieceKind,
-    AbiTarget,
 };

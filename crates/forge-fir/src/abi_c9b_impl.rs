@@ -459,11 +459,7 @@ impl<'a> AbiDecomposer<'a> {
         Ok(())
     }
 
-    fn collect_alternative(
-        &mut self,
-        ty: &Ty,
-        base: u64,
-    ) -> Result<RawCollector, AbiError> {
+    fn collect_alternative(&mut self, ty: &Ty, base: u64) -> Result<RawCollector, AbiError> {
         let layout = self.layouts.layout_of(ty)?;
         let mut collector = RawCollector::new(self.target);
         self.collect_type(ty, base, &layout, &mut collector)?;
@@ -556,7 +552,9 @@ fn coalesce(target: AbiTarget, raw: &[RawFragment]) -> Result<Vec<AbiPiece>, Abi
             RawKind::Pointer => {
                 flush(&mut pieces, &mut integer_piece);
                 if fragment.bits != target.pointer_bits {
-                    return Err(AbiError::UnsupportedTarget("pointer fragment width mismatch"));
+                    return Err(AbiError::UnsupportedTarget(
+                        "pointer fragment width mismatch",
+                    ));
                 }
                 pieces.push(AbiPiece {
                     kind: AbiPieceKind::Pointer,

@@ -38,7 +38,10 @@ pub struct Niche {
 impl Niche {
     fn shifted(&self, by: u64) -> Result<Self, LayoutError> {
         Ok(Self {
-            offset: self.offset.checked_add(by).ok_or(LayoutError::SizeOverflow)?,
+            offset: self
+                .offset
+                .checked_add(by)
+                .ok_or(LayoutError::SizeOverflow)?,
             bits: self.bits,
             first: self.first,
             count: self.count,
@@ -96,10 +99,7 @@ pub enum SumEncoding {
         fieldless_values: Vec<(u32, u128)>,
     },
     /// Ordinary explicit tag plus shared payload storage.
-    Tagged {
-        tag: TagLayout,
-        payload_offset: u64,
-    },
+    Tagged { tag: TagLayout, payload_offset: u64 },
     /// A single variant needs no discriminator.
     Single,
 }
@@ -109,11 +109,23 @@ pub enum LayoutKind {
     Scalar,
     ZeroSized,
     Struct,
-    Array { length: u64, stride: u64 },
-    Slice { data_offset: u64, len_offset: u64 },
-    Enum { tag: Option<TagLayout> },
-    Optional { encoding: SumEncoding },
-    Result { encoding: SumEncoding },
+    Array {
+        length: u64,
+        stride: u64,
+    },
+    Slice {
+        data_offset: u64,
+        len_offset: u64,
+    },
+    Enum {
+        tag: Option<TagLayout>,
+    },
+    Optional {
+        encoding: SumEncoding,
+    },
+    Result {
+        encoding: SumEncoding,
+    },
     Tagged {
         encoding: SumEncoding,
         variants: Vec<VariantLayout>,
@@ -315,7 +327,9 @@ impl<'a> LayoutEngine<'a> {
     fn layout_array(&mut self, element: &Ty, length: u64) -> Result<Layout, LayoutError> {
         let element = self.layout_of(element)?;
         let stride = round_up(element.size, element.align)?;
-        let size = stride.checked_mul(length).ok_or(LayoutError::SizeOverflow)?;
+        let size = stride
+            .checked_mul(length)
+            .ok_or(LayoutError::SizeOverflow)?;
         Ok(Layout {
             size,
             align: element.align,
@@ -374,7 +388,11 @@ impl<'a> LayoutEngine<'a> {
         if let Some(layout) = self.nominal_cache.get(&owner) {
             return Ok(layout.clone());
         }
-        if let Some(start) = self.active_nominals.iter().position(|active| *active == owner) {
+        if let Some(start) = self
+            .active_nominals
+            .iter()
+            .position(|active| *active == owner)
+        {
             let mut cycle = self.active_nominals[start..].to_vec();
             cycle.push(owner);
             return Err(LayoutError::RecursiveType(cycle));
@@ -459,10 +477,7 @@ impl<'a> LayoutEngine<'a> {
         })
     }
 
-    fn layout_tagged(
-        &mut self,
-        variants: &[TypeVariantDefinition],
-    ) -> Result<Layout, LayoutError> {
+    fn layout_tagged(&mut self, variants: &[TypeVariantDefinition]) -> Result<Layout, LayoutError> {
         let mut candidates = Vec::with_capacity(variants.len());
         for variant in variants {
             let mut fields = Vec::with_capacity(variant.fields.len());
@@ -787,7 +802,9 @@ fn tag_bytes(variant_count: usize) -> Result<u64, LayoutError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use forge_frontend::{TypeDefinition, TypeDefinitionKind, TypeFieldDefinition, TypeVariantDefinition};
+    use forge_frontend::{
+        TypeDefinition, TypeDefinitionKind, TypeFieldDefinition, TypeVariantDefinition,
+    };
 
     fn u(width: IntWidth) -> Ty {
         Ty::Int {
@@ -988,13 +1005,22 @@ mod tests {
         };
         let result = layout.layout_of(&array).unwrap();
         assert_eq!((result.size, result.align), (6, 2));
-        assert_eq!(result.kind, LayoutKind::Array { length: 3, stride: 2 });
+        assert_eq!(
+            result.kind,
+            LayoutKind::Array {
+                length: 3,
+                stride: 2
+            }
+        );
 
         let unknown = Ty::Array {
             element: Box::new(Ty::Byte),
             length: None,
         };
-        assert_eq!(layout.layout_of(&unknown), Err(LayoutError::UnknownArrayLength));
+        assert_eq!(
+            layout.layout_of(&unknown),
+            Err(LayoutError::UnknownArrayLength)
+        );
     }
 
     #[test]
@@ -1024,7 +1050,11 @@ mod tests {
         let value = layout.layout_of(&Ty::Nominal(DefId(2))).unwrap();
         assert_eq!((value.size, value.align), (1, 1));
         assert_eq!(
-            value.fields.iter().map(|field| field.name.as_str()).collect::<Vec<_>>(),
+            value
+                .fields
+                .iter()
+                .map(|field| field.name.as_str())
+                .collect::<Vec<_>>(),
             vec!["byte", "marker_a", "zero_array", "marker_b"]
         );
         assert_eq!(value.field("marker_a").unwrap().offset, 1);
@@ -1034,10 +1064,7 @@ mod tests {
 
     #[test]
     fn arrays_of_zsts_remain_zero_sized() {
-        let defs = BTreeMap::from([definition(
-            1,
-            TypeDefinitionKind::Struct { fields: vec![] },
-        )]);
+        let defs = BTreeMap::from([definition(1, TypeDefinitionKind::Struct { fields: vec![] })]);
         let mut layout = engine(&defs);
         let array = Ty::Array {
             element: Box::new(Ty::Nominal(DefId(1))),
@@ -1045,7 +1072,13 @@ mod tests {
         };
         let value = layout.layout_of(&array).unwrap();
         assert_eq!(value.size, 0);
-        assert_eq!(value.kind, LayoutKind::Array { length: 100, stride: 0 });
+        assert_eq!(
+            value.kind,
+            LayoutKind::Array {
+                length: 100,
+                stride: 0
+            }
+        );
     }
 
     #[test]
@@ -1105,7 +1138,11 @@ mod tests {
             value.kind,
             LayoutKind::Result {
                 encoding: SumEncoding::Tagged {
-                    tag: TagLayout { size: 1, offset: 4, variant_count: 2 },
+                    tag: TagLayout {
+                        size: 1,
+                        offset: 4,
+                        variant_count: 2
+                    },
                     payload_offset: 0,
                 }
             }
@@ -1185,7 +1222,11 @@ mod tests {
         assert!(matches!(
             encoding,
             SumEncoding::Tagged {
-                tag: TagLayout { offset: 8, size: 1, variant_count: 2 },
+                tag: TagLayout {
+                    offset: 8,
+                    size: 1,
+                    variant_count: 2
+                },
                 payload_offset: 0,
             }
         ));
@@ -1202,8 +1243,18 @@ mod tests {
             .map(|index| variant(&format!("V{index}"), index, vec![]))
             .collect();
         let defs = BTreeMap::from([
-            definition(1, TypeDefinitionKind::Enum { variants: variants_256 }),
-            definition(2, TypeDefinitionKind::Enum { variants: variants_257 }),
+            definition(
+                1,
+                TypeDefinitionKind::Enum {
+                    variants: variants_256,
+                },
+            ),
+            definition(
+                2,
+                TypeDefinitionKind::Enum {
+                    variants: variants_257,
+                },
+            ),
         ]);
         let mut layout = engine(&defs);
         assert_eq!(layout.layout_of(&Ty::Nominal(DefId(1))).unwrap().size, 1);
@@ -1250,7 +1301,10 @@ mod tests {
         let mut layout = engine(&defs);
         let alias = layout.layout_of(&Ty::Nominal(DefId(1))).unwrap();
         let distinct = layout.layout_of(&Ty::Nominal(DefId(2))).unwrap();
-        assert_eq!((alias.size, alias.align, alias.niche.clone()), (4, 4, distinct.niche.clone()));
+        assert_eq!(
+            (alias.size, alias.align, alias.niche.clone()),
+            (4, 4, distinct.niche.clone())
+        );
         assert_eq!(distinct.kind, LayoutKind::Distinct);
     }
 
@@ -1288,7 +1342,11 @@ mod tests {
         let mut layout = engine(&defs);
         assert_eq!(
             layout.layout_of(&Ty::Nominal(DefId(1))),
-            Err(LayoutError::RecursiveType(vec![DefId(1), DefId(2), DefId(1)]))
+            Err(LayoutError::RecursiveType(vec![
+                DefId(1),
+                DefId(2),
+                DefId(1)
+            ]))
         );
     }
 

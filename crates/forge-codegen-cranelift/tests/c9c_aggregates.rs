@@ -220,7 +220,9 @@ fn aggregate_local_copy_and_field_address_use_layout_offsets() {
                     },
                 },
             ],
-            terminator: Some(FirTerminator::Return { value: Some(result) }),
+            terminator: Some(FirTerminator::Return {
+                value: Some(result),
+            }),
         }],
         value_types: BTreeMap::from([
             (a, u(IntWidth::W8)),

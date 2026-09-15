@@ -347,8 +347,9 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
                 base: left,
                 index: right,
             } => available.contains(left) && available.contains(right),
-            FirInstructionKind::Load { place }
-            | FirInstructionKind::AddressOf { place, .. } => place_ready(place, &available),
+            FirInstructionKind::Load { place } | FirInstructionKind::AddressOf { place, .. } => {
+                place_ready(place, &available)
+            }
             FirInstructionKind::Store { place, value } => {
                 available.contains(value) && place_ready(place, &available)
             }
@@ -358,17 +359,14 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
             FirInstructionKind::MakeArray { items } => {
                 items.iter().all(|value| available.contains(value))
             }
-            FirInstructionKind::MakeAggregate { fields, .. } => fields
-                .iter()
-                .all(|(_, value)| available.contains(value)),
+            FirInstructionKind::MakeAggregate { fields, .. } => {
+                fields.iter().all(|(_, value)| available.contains(value))
+            }
             FirInstructionKind::MakeClosure { captures, .. } => {
                 captures.iter().all(|value| available.contains(value))
             }
-            FirInstructionKind::CallClosure {
-                closure, args, ..
-            } => {
-                available.contains(closure)
-                    && args.iter().all(|value| available.contains(value))
+            FirInstructionKind::CallClosure { closure, args, .. } => {
+                available.contains(closure) && args.iter().all(|value| available.contains(value))
             }
             FirInstructionKind::Call { args, .. } => {
                 args.iter().all(|value| available.contains(value))

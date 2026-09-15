@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use forge_codegen_cranelift::CraneliftBackend;
 use forge_fir::{
     DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction, FirInstructionKind,
-    FirLocal, FirLocalId, FirModule, FirTerminator, FirValueId, IntWidth, Span, Ty,
-    TypeDefinition, TypeDefinitionKind, TypeDefinitionTable, TypeFieldDefinition,
+    FirLocal, FirLocalId, FirModule, FirTerminator, FirValueId, IntWidth, Span, Ty, TypeDefinition,
+    TypeDefinitionKind, TypeDefinitionTable, TypeFieldDefinition,
 };
 
 fn u(width: IntWidth) -> Ty {
