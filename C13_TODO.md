@@ -13,13 +13,15 @@ Goal: make the production native Forge compiler run as much of the existing CFor
 
 ## C13a — compile existing pure-Forge code
 
-- [ ] establish a cross-repository native compatibility harness that checks out CForge and Cosmic and invokes the production `forgec`
-- [ ] compile and run the CForge arithmetic/package smoke cases natively
+- [ ] establish cross-repository native compatibility coverage: Forge CI owns public CForge probes; full Cosmic native coverage belongs in Cosmic CI because Forge's workflow token cannot read the private Cosmic repository
+- [x] compile and run the existing CForge arithmetic smoke case natively unchanged
 - [ ] compile the CForge Game of Life through its existing `bootstrap-support` package dependency
 - [ ] compile and run the simplest Cosmic semantic tests which need no hosted/provider operations, starting with `address_space_minimal_test.fg`
 - [ ] expand through capability, HandleSpace, mapping-table, AddressSpace-object, and other pure semantic tests
 - [ ] for every failure, classify it as parser/type/FIR/codegen/module/runtime/provider rather than adding test-specific exceptions
 - [ ] keep a native-vs-CForge result matrix so behavior remains differential where both runners apply
+
+Initial compatibility probing found and fixed two source-compatibility assumptions in the production compiler: Cosmic-style `--library` inputs may use the full declared module name rather than only its short import alias, and provider identifiers such as `__forge_console_write` are valid identifiers while lone `_` remains the wildcard token.
 
 ## C13b — hosted providers required by existing programs
 
