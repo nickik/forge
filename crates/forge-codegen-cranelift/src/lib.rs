@@ -45,20 +45,38 @@ impl CraneliftTarget {
 /// to defer or re-run Forge semantic analysis below FIR.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BackendError {
-    InvalidFir { diagnostic_count: usize },
-    UnsupportedFir { component: &'static str },
-    UnsupportedType { kind: &'static str },
-    SemanticTypeLeak { kind: &'static str },
-    UnsupportedTargetLayout { pointer_bits: u16 },
-    InvalidTarget { triple: &'static str, message: String },
-    Cranelift { message: String },
+    InvalidFir {
+        diagnostic_count: usize,
+    },
+    UnsupportedFir {
+        component: &'static str,
+    },
+    UnsupportedType {
+        kind: &'static str,
+    },
+    SemanticTypeLeak {
+        kind: &'static str,
+    },
+    UnsupportedTargetLayout {
+        pointer_bits: u16,
+    },
+    InvalidTarget {
+        triple: &'static str,
+        message: String,
+    },
+    Cranelift {
+        message: String,
+    },
 }
 
 impl fmt::Display for BackendError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidFir { diagnostic_count } => {
-                write!(f, "FIR verification failed with {diagnostic_count} diagnostic(s)")
+                write!(
+                    f,
+                    "FIR verification failed with {diagnostic_count} diagnostic(s)"
+                )
             }
             Self::UnsupportedFir { component } => {
                 write!(f, "FIR component is not lowered to CLIF yet: {component}")
@@ -67,10 +85,16 @@ impl fmt::Display for BackendError {
                 write!(f, "FIR type is not lowered to a CLIF value yet: {kind}")
             }
             Self::SemanticTypeLeak { kind } => {
-                write!(f, "frontend-only semantic type leaked into FIR codegen: {kind}")
+                write!(
+                    f,
+                    "frontend-only semantic type leaked into FIR codegen: {kind}"
+                )
             }
             Self::UnsupportedTargetLayout { pointer_bits } => {
-                write!(f, "unsupported Forge target pointer width: {pointer_bits} bits")
+                write!(
+                    f,
+                    "unsupported Forge target pointer width: {pointer_bits} bits"
+                )
             }
             Self::InvalidTarget { triple, message } => {
                 write!(f, "invalid Cranelift target {triple}: {message}")
@@ -92,10 +116,11 @@ pub struct CraneliftBackend {
 
 impl CraneliftBackend {
     pub fn new(target: CraneliftTarget) -> Result<Self, BackendError> {
-        let triple = Triple::from_str(target.triple()).map_err(|error| BackendError::InvalidTarget {
-            triple: target.triple(),
-            message: error.to_string(),
-        })?;
+        let triple =
+            Triple::from_str(target.triple()).map_err(|error| BackendError::InvalidTarget {
+                triple: target.triple(),
+                message: error.to_string(),
+            })?;
         let flags = settings::Flags::new(settings::builder());
         let builder = isa::lookup(triple).map_err(|error| BackendError::InvalidTarget {
             triple: target.triple(),
