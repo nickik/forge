@@ -7,7 +7,8 @@ use forge_fir::{verify_fir_module, DefId, FirModule};
 use target_lexicon::Triple;
 
 use crate::function::lower_function;
-use crate::{BackendError, CraneliftTarget, TargetLayout, TypeLowering};
+use crate::machine::compile_prepared_function;
+use crate::{BackendError, CraneliftTarget, MachineCode, TargetLayout, TypeLowering};
 
 /// Target-specific Cranelift state. It deliberately owns no Forge semantic
 /// state other than verified FIR passed to lowering operations.
@@ -96,6 +97,18 @@ impl CraneliftBackend {
             target: self.target,
             functions,
         })
+    }
+
+    /// Compile one already-prepared FIR function all the way to target machine code.
+    ///
+    /// C5/C6 deliberately support relocation-free scalar functions only; later
+    /// call/global lowering will introduce the relocation/linking contract.
+    pub fn emit_machine_code(
+        &self,
+        prepared: &PreparedModule,
+        owner: DefId,
+    ) -> Result<MachineCode, BackendError> {
+        compile_prepared_function(self.target, &*self.isa, prepared, owner)
     }
 }
 
