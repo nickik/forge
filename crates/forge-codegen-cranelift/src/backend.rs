@@ -277,28 +277,29 @@ fn schedule_scalar_blocks(fir: &FirFunction) -> Result<FirFunction, BackendError
 fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
     let mut available = outer.clone();
     for instruction in &block.instructions {
-        let ready = match &instruction.kind {
-            FirInstructionKind::Unary { value, .. }
-            | FirInstructionKind::Convert { value, .. } => available.contains(value),
-            FirInstructionKind::Binary { left, right, .. } => {
-                available.contains(left) && available.contains(right)
-            }
-            FirInstructionKind::Load { place }
-            | FirInstructionKind::AddressOf { place, .. } => place_ready(place, &available),
-            FirInstructionKind::Store { place, value } => {
-                available.contains(value) && place_ready(place, &available)
-            }
-            FirInstructionKind::PointerOffset {
-                pointer, offset, ..
-            } => available.contains(pointer) && available.contains(offset),
-            FirInstructionKind::Call { args, .. } => {
-                args.iter().all(|value| available.contains(value))
-            }
-            FirInstructionKind::CallIndirect { callee, args, .. } => {
-                available.contains(callee) && args.iter().all(|value| available.contains(value))
-            }
-            _ => true,
-        };
+        let ready =
+            match &instruction.kind {
+                FirInstructionKind::Unary { value, .. }
+                | FirInstructionKind::Convert { value, .. } => available.contains(value),
+                FirInstructionKind::Binary { left, right, .. } => {
+                    available.contains(left) && available.contains(right)
+                }
+                FirInstructionKind::Load { place }
+                | FirInstructionKind::AddressOf { place, .. } => place_ready(place, &available),
+                FirInstructionKind::Store { place, value } => {
+                    available.contains(value) && place_ready(place, &available)
+                }
+                FirInstructionKind::PointerOffset {
+                    pointer, offset, ..
+                } => available.contains(pointer) && available.contains(offset),
+                FirInstructionKind::Call { args, .. } => {
+                    args.iter().all(|value| available.contains(value))
+                }
+                FirInstructionKind::CallIndirect { callee, args, .. } => {
+                    available.contains(callee) && args.iter().all(|value| available.contains(value))
+                }
+                _ => true,
+            };
         if !ready {
             return false;
         }
