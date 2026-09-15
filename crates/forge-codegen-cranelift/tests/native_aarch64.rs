@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::ffi::c_void;
 use std::ptr;
 
-use forge_codegen_cranelift::CraneliftBackend;
+use forge_codegen_cranelift::{BackendError, CraneliftBackend, CraneliftTarget};
 use forge_fir::{
     BinaryOp, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction,
     FirInstructionKind, FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator, FirValueId,
@@ -92,6 +92,7 @@ fn executes_scalar_fir_as_native_aarch64_machine_code() {
         .emit_machine_code(&prepared, owner)
         .expect("AArch64 machine code");
 
+    assert_eq!(machine.target(), CraneliftTarget::Aarch64);
     assert_eq!(machine.owner(), owner);
     assert!(!machine.bytes().is_empty());
 
@@ -100,6 +101,31 @@ fn executes_scalar_fir_as_native_aarch64_machine_code() {
     assert_eq!(add7(0), 7);
     assert_eq!(add7(5), 12);
     assert_eq!(add7(u64::MAX), 6);
+}
+
+#[test]
+fn machine_code_emission_rejects_target_mismatch() {
+    let aarch64 = CraneliftBackend::aarch64().expect("AArch64 backend");
+    let riscv64 = CraneliftBackend::riscv64().expect("RV64 backend");
+    let (module, owner) = add_module();
+    let prepared = aarch64.prepare_module(&module).expect("verified CLIF");
+
+    let error = riscv64
+        .emit_machine_code(&prepared, owner)
+        .expect_err("target mismatch must be rejected");
+    assert!(matches!(error, BackendError::InvalidFirShape { .. }));
+}
+
+#[test]
+fn machine_code_emission_rejects_missing_function() {
+    let backend = CraneliftBackend::aarch64().expect("AArch64 backend");
+    let (module, _) = add_module();
+    let prepared = backend.prepare_module(&module).expect("verified CLIF");
+
+    let error = backend
+        .emit_machine_code(&prepared, DefId(999))
+        .expect_err("missing owner must be rejected");
+    assert!(matches!(error, BackendError::InvalidFirShape { .. }));
 }
 
 struct ExecutableMemory {
