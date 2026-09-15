@@ -6,9 +6,7 @@ use cranelift_codegen::ir::{ExternalName, Function, Signature};
 use cranelift_codegen::{Context, RelocTarget};
 use forge_fir::DefId;
 
-use crate::{
-    BackendError, CraneliftBackend, CraneliftTarget, GlobalObjectSymbol, PreparedModule,
-};
+use crate::{BackendError, CraneliftBackend, CraneliftTarget, GlobalObjectSymbol, PreparedModule};
 
 /// Linkage policy at the Forge object boundary.
 ///
@@ -149,7 +147,8 @@ impl CraneliftBackend {
 
         let exports: BTreeSet<DefId> = exports.into_iter().collect();
         for owner in &exports {
-            if !prepared.functions().contains_key(owner) && !prepared.globals().contains_key(owner) {
+            if !prepared.functions().contains_key(owner) && !prepared.globals().contains_key(owner)
+            {
                 return Err(shape(format!(
                     "cannot export missing FIR definition {owner:?}"
                 )));
