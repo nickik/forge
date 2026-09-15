@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use cranelift_codegen::cursor::{Cursor, FuncCursor};
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{
-    Block, ExtFuncData, ExternalName, FuncRef, Function, Inst, InstBuilder, MemFlagsData, StackSlot,
-    StackSlotData, StackSlotKind, TrapCode, UserExternalName, UserFuncName, Value,
+    Block, ExtFuncData, ExternalName, FuncRef, Function, Inst, InstBuilder, MemFlagsData,
+    StackSlot, StackSlotData, StackSlotKind, TrapCode, UserExternalName, UserFuncName, Value,
 };
 use cranelift_codegen::isa::{CallConv, TargetIsa};
 use cranelift_codegen::verifier::verify_function;
