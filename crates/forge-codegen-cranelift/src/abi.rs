@@ -59,9 +59,7 @@ fn lower_signature(
         if *ty == Ty::Void {
             return Err(shape("void FIR parameter reached ABI lowering"));
         }
-        signature
-            .params
-            .push(AbiParam::new(types.value_type(ty)?));
+        signature.params.push(AbiParam::new(types.value_type(ty)?));
     }
     if *result != Ty::Void {
         signature
@@ -73,7 +71,9 @@ fn lower_signature(
 
 #[derive(Clone, Debug)]
 pub(crate) enum C9ParamPlan {
-    Scalar { ty: Ty },
+    Scalar {
+        ty: Ty,
+    },
     AggregateDirect {
         ty: Ty,
         decomposition: AbiDecomposition,
@@ -104,7 +104,9 @@ impl C9ParamPlan {
 #[derive(Clone, Debug)]
 pub(crate) enum C9ReturnPlan {
     Void,
-    Scalar { ty: Ty },
+    Scalar {
+        ty: Ty,
+    },
     AggregateDirect {
         ty: Ty,
         decomposition: AbiDecomposition,
@@ -197,9 +199,7 @@ fn lower_c9_signature(
     // Indirect aggregate return storage is the first hidden Forge ABI argument.
     // This is an ordinary pointer parameter, not Cranelift's C StructReturn ABI.
     if result_plan.is_indirect() {
-        signature
-            .params
-            .push(AbiParam::new(types.pointer_type()?));
+        signature.params.push(AbiParam::new(types.pointer_type()?));
     }
 
     let mut param_plans = Vec::with_capacity(params.len());
@@ -222,9 +222,7 @@ fn lower_c9_signature(
                     }
                 }
                 AbiPassing::Indirect => {
-                    signature
-                        .params
-                        .push(AbiParam::new(types.pointer_type()?));
+                    signature.params.push(AbiParam::new(types.pointer_type()?));
                     C9ParamPlan::AggregateIndirect {
                         ty: ty.clone(),
                         decomposition,
@@ -232,9 +230,7 @@ fn lower_c9_signature(
                 }
             }
         } else {
-            signature
-                .params
-                .push(AbiParam::new(types.value_type(ty)?));
+            signature.params.push(AbiParam::new(types.value_type(ty)?));
             C9ParamPlan::Scalar { ty: ty.clone() }
         };
         param_plans.push(plan);
@@ -243,9 +239,7 @@ fn lower_c9_signature(
     match &result_plan {
         C9ReturnPlan::Void | C9ReturnPlan::AggregateIndirect { .. } => {}
         C9ReturnPlan::Scalar { ty } => {
-            signature
-                .returns
-                .push(AbiParam::new(types.value_type(ty)?));
+            signature.returns.push(AbiParam::new(types.value_type(ty)?));
         }
         C9ReturnPlan::AggregateDirect { decomposition, .. } => {
             for piece in &decomposition.pieces {
@@ -306,7 +300,9 @@ pub(crate) fn c9_piece_type(
             16 => Ok(clif_types::I16),
             32 => Ok(clif_types::I32),
             64 => Ok(clif_types::I64),
-            bits => Err(shape(format!("unsupported Forge ABI integer piece width {bits}"))),
+            bits => Err(shape(format!(
+                "unsupported Forge ABI integer piece width {bits}"
+            ))),
         },
     }
 }
