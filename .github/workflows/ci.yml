@@ -18,6 +18,13 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Install RV64 execution tools
+        timeout-minutes: 3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user binutils-riscv64-linux-gnu
+          qemu-riscv64 --version
+          riscv64-linux-gnu-as --version | head -1
       - name: Formatting
         timeout-minutes: 2
         run: cargo fmt --all -- --check
@@ -37,6 +44,8 @@ jobs:
         run: cargo test -p forge-frontend --locked -- --nocapture
       - name: Workspace tests
         timeout-minutes: 10
+        env:
+          FORGE_RISCV64_EXECUTION: "1"
         run: cargo test --workspace --locked -- --nocapture
       - name: Conformance suite
         timeout-minutes: 5
