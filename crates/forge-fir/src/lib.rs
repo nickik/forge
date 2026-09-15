@@ -7,6 +7,8 @@
 
 #[path = "layout_c9a.rs"]
 mod layout;
+#[path = "abi_c9b_impl.rs"]
+mod abi;
 
 pub use forge_frontend::ast::{BinaryOp, Span};
 pub use forge_frontend::{
@@ -21,4 +23,8 @@ pub use forge_frontend::{
 pub use layout::{
     FieldLayout, Layout, LayoutEngine, LayoutError, LayoutKind, LayoutTarget, Niche, SumEncoding,
     TagLayout, VariantLayout,
+};
+pub use abi::{
+    AbiDecomposer, AbiDecomposition, AbiError, AbiFragment, AbiPassing, AbiPiece, AbiPieceKind,
+    AbiTarget,
 };
