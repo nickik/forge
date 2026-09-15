@@ -2,12 +2,14 @@ use std::collections::BTreeMap;
 
 use cranelift_codegen::cursor::{Cursor, FuncCursor};
 use cranelift_codegen::ir::condcodes::IntCC;
-use cranelift_codegen::ir::{AbiParam, Block, Function, InstBuilder, Signature, UserFuncName, Value};
+use cranelift_codegen::ir::{
+    AbiParam, Block, Function, InstBuilder, Signature, TrapCode, UserFuncName, Value,
+};
 use cranelift_codegen::isa::{CallConv, TargetIsa};
 use cranelift_codegen::verifier::verify_function;
 use forge_fir::{
     BinaryOp, FirBlockId, FirConst, FirFunction, FirInstruction, FirInstructionKind, FirLocalId,
-    FirPlace, FirTerminator, FirValueId, IntWidth, OverflowMode, Ty,
+    FirPlace, FirTerminator, FirUnaryOp, FirValueId, IntWidth, OverflowMode, Ty,
 };
 
 use crate::{BackendError, TypeLowering};
@@ -185,33 +187,25 @@ fn lower_instruction(
             .ok_or(BackendError::UnsupportedInstruction {
                 kind: "load of non-parameter local",
             })?,
-        FirInstructionKind::Binary {
-            op,
-            left,
-            right,
-            overflow: _,
-        } if is_comparison(*op) => lower_comparison(fir, *op, *left, *right, values, cursor)?,
+        FirInstructionKind::Unary { op, value } => {
+            lower_integer_unary(fir, *op, *value, values, cursor)?
+        }
         FirInstructionKind::Binary {
             op,
             left,
             right,
             overflow,
-        } if is_c4a_arithmetic(*op) => lower_integer_arithmetic(
-            fir,
-            *op,
-            *left,
-            *right,
-            *overflow,
-            values,
-            cursor,
-        )?,
+        } => lower_integer_binary(fir, *op, *left, *right, *overflow, values, cursor)?,
+        FirInstructionKind::Convert { value, target } => {
+            if target != result_ty {
+                return Err(shape(format!(
+                    "FIR convert target {target:?} does not match result type {result_ty:?}"
+                )));
+            }
+            lower_integer_convert(fir, *value, target, values, types, cursor)?
+        }
         FirInstructionKind::Load { .. } => {
             return Err(BackendError::UnsupportedInstruction { kind: "place load" });
-        }
-        FirInstructionKind::Binary { .. } => {
-            return Err(BackendError::UnsupportedInstruction {
-                kind: "binary operation outside C4a",
-            });
         }
         _ => {
             return Err(BackendError::UnsupportedInstruction {
@@ -231,6 +225,146 @@ fn lower_instruction(
     Ok(())
 }
 
+fn lower_integer_unary(
+    fir: &FirFunction,
+    op: FirUnaryOp,
+    input: FirValueId,
+    values: &BTreeMap<FirValueId, Value>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    let ty = fir
+        .value_types
+        .get(&input)
+        .ok_or_else(|| shape(format!("missing type for unary operand {input:?}")))?;
+    if !is_integer_type(ty) {
+        return Err(BackendError::UnsupportedInstruction {
+            kind: "integer unary operation on non-integer FIR value",
+        });
+    }
+    let value = lookup_value(values, input)?;
+    Ok(match op {
+        FirUnaryOp::Neg => cursor.ins().ineg(value),
+        FirUnaryOp::BitNot => cursor.ins().bnot(value),
+        FirUnaryOp::Not => {
+            return Err(BackendError::UnsupportedInstruction {
+                kind: "logical not is not an integer unary operation",
+            });
+        }
+    })
+}
+
+fn lower_integer_binary(
+    fir: &FirFunction,
+    op: BinaryOp,
+    left: FirValueId,
+    right: FirValueId,
+    overflow: Option<OverflowMode>,
+    values: &BTreeMap<FirValueId, Value>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    if is_comparison(op) {
+        return lower_comparison(fir, op, left, right, values, cursor);
+    }
+
+    let operand_ty = matching_integer_operands(fir, left, right, "binary operation")?;
+    let left_value = lookup_value(values, left)?;
+    let right_value = lookup_value(values, right)?;
+
+    match op {
+        BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
+            lower_add_sub_mul(op, operand_ty, overflow, left_value, right_value, cursor)
+        }
+        BinaryOp::Div | BinaryOp::Rem => {
+            if overflow != Some(OverflowMode::Checked) {
+                return Err(shape(format!(
+                    "FIR {op:?} must carry checked arithmetic semantics"
+                )));
+            }
+            let signed = integer_signed(operand_ty)?;
+            Ok(match (op, signed) {
+                (BinaryOp::Div, true) => cursor.ins().sdiv(left_value, right_value),
+                (BinaryOp::Div, false) => cursor.ins().udiv(left_value, right_value),
+                (BinaryOp::Rem, true) => cursor.ins().srem(left_value, right_value),
+                (BinaryOp::Rem, false) => cursor.ins().urem(left_value, right_value),
+                _ => unreachable!(),
+            })
+        }
+        BinaryOp::ShiftLeft | BinaryOp::ShiftRight => {
+            if overflow != Some(OverflowMode::Checked) {
+                return Err(shape(format!(
+                    "FIR {op:?} must carry checked shift semantics"
+                )));
+            }
+            let bits = cursor.func.dfg.value_type(left_value).bits();
+            let out_of_range = cursor.ins().icmp_imm(IntCC::UnsignedGreaterThanOrEqual, right_value, bits as i64);
+            cursor
+                .ins()
+                .trapnz(out_of_range, TrapCode::INTEGER_OVERFLOW);
+            Ok(match op {
+                BinaryOp::ShiftLeft => cursor.ins().ishl(left_value, right_value),
+                BinaryOp::ShiftRight if integer_signed(operand_ty)? => {
+                    cursor.ins().sshr(left_value, right_value)
+                }
+                BinaryOp::ShiftRight => cursor.ins().ushr(left_value, right_value),
+                _ => unreachable!(),
+            })
+        }
+        BinaryOp::BitAnd | BinaryOp::BitXor | BinaryOp::BitOr => {
+            if overflow.is_some() {
+                return Err(shape(format!(
+                    "bitwise FIR operation {op:?} unexpectedly carries overflow semantics"
+                )));
+            }
+            Ok(match op {
+                BinaryOp::BitAnd => cursor.ins().band(left_value, right_value),
+                BinaryOp::BitXor => cursor.ins().bxor(left_value, right_value),
+                BinaryOp::BitOr => cursor.ins().bor(left_value, right_value),
+                _ => unreachable!(),
+            })
+        }
+        _ => Err(BackendError::UnsupportedInstruction {
+            kind: "binary operation outside scalar integer C4b",
+        }),
+    }
+}
+
+fn lower_add_sub_mul(
+    op: BinaryOp,
+    ty: &Ty,
+    overflow: Option<OverflowMode>,
+    left: Value,
+    right: Value,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    match overflow {
+        Some(OverflowMode::Wrapping) => Ok(match op {
+            BinaryOp::Add => cursor.ins().iadd(left, right),
+            BinaryOp::Sub => cursor.ins().isub(left, right),
+            BinaryOp::Mul => cursor.ins().imul(left, right),
+            _ => unreachable!(),
+        }),
+        Some(OverflowMode::Checked) => {
+            let signed = integer_signed(ty)?;
+            let (result, did_overflow) = match (op, signed) {
+                (BinaryOp::Add, true) => cursor.ins().sadd_overflow(left, right),
+                (BinaryOp::Add, false) => cursor.ins().uadd_overflow(left, right),
+                (BinaryOp::Sub, true) => cursor.ins().ssub_overflow(left, right),
+                (BinaryOp::Sub, false) => cursor.ins().usub_overflow(left, right),
+                (BinaryOp::Mul, true) => cursor.ins().smul_overflow(left, right),
+                (BinaryOp::Mul, false) => cursor.ins().umul_overflow(left, right),
+                _ => unreachable!(),
+            };
+            cursor
+                .ins()
+                .trapnz(did_overflow, TrapCode::INTEGER_OVERFLOW);
+            Ok(result)
+        }
+        None => Err(shape(format!(
+            "integer arithmetic operation {op:?} has no FIR overflow mode"
+        ))),
+    }
+}
+
 fn lower_comparison(
     fir: &FirFunction,
     op: BinaryOp,
@@ -246,42 +380,34 @@ fn lower_comparison(
     Ok(cursor.ins().icmp(cc, left_value, right_value))
 }
 
-fn lower_integer_arithmetic(
+fn lower_integer_convert(
     fir: &FirFunction,
-    op: BinaryOp,
-    left: FirValueId,
-    right: FirValueId,
-    overflow: Option<OverflowMode>,
+    input: FirValueId,
+    target: &Ty,
     values: &BTreeMap<FirValueId, Value>,
+    types: &TypeLowering<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<Value, BackendError> {
-    matching_integer_operands(fir, left, right, "arithmetic")?;
-
-    match overflow {
-        Some(OverflowMode::Wrapping) => {}
-        Some(OverflowMode::Checked) => {
-            return Err(BackendError::UnsupportedInstruction {
-                kind: "checked integer arithmetic overflow path",
-            });
-        }
-        None => {
-            return Err(shape(format!(
-                "C4a arithmetic operation {op:?} has no FIR overflow mode"
-            )));
-        }
+    let source = fir
+        .value_types
+        .get(&input)
+        .ok_or_else(|| shape(format!("missing type for conversion input {input:?}")))?;
+    if !is_integer_type(source) || !is_integer_type(target) {
+        return Err(BackendError::UnsupportedInstruction {
+            kind: "non-integer scalar conversion",
+        });
     }
 
-    let left_value = lookup_value(values, left)?;
-    let right_value = lookup_value(values, right)?;
-    Ok(match op {
-        BinaryOp::Add => cursor.ins().iadd(left_value, right_value),
-        BinaryOp::Sub => cursor.ins().isub(left_value, right_value),
-        BinaryOp::Mul => cursor.ins().imul(left_value, right_value),
-        _ => {
-            return Err(BackendError::UnsupportedInstruction {
-                kind: "integer arithmetic operation outside C4a",
-            });
+    let value = lookup_value(values, input)?;
+    let source_clif = types.value_type(source)?;
+    let target_clif = types.value_type(target)?;
+    Ok(match source_clif.bits().cmp(&target_clif.bits()) {
+        std::cmp::Ordering::Equal => value,
+        std::cmp::Ordering::Greater => cursor.ins().ireduce(target_clif, value),
+        std::cmp::Ordering::Less if integer_signed(source)? => {
+            cursor.ins().sextend(target_clif, value)
         }
+        std::cmp::Ordering::Less => cursor.ins().uextend(target_clif, value),
     })
 }
 
@@ -314,6 +440,16 @@ fn matching_integer_operands<'a>(
 
 fn is_integer_type(ty: &Ty) -> bool {
     matches!(ty, Ty::Byte | Ty::Int { .. })
+}
+
+fn integer_signed(ty: &Ty) -> Result<bool, BackendError> {
+    match ty {
+        Ty::Byte => Ok(false),
+        Ty::Int { signed, .. } => Ok(*signed),
+        _ => Err(BackendError::UnsupportedInstruction {
+            kind: "signedness requested for non-integer FIR value",
+        }),
+    }
 }
 
 fn lower_terminator(
@@ -432,15 +568,7 @@ fn comparison_condition(op: BinaryOp, ty: &Ty) -> Result<IntCC, BackendError> {
         BinaryOp::Eq => Ok(IntCC::Equal),
         BinaryOp::NotEq => Ok(IntCC::NotEqual),
         BinaryOp::Less | BinaryOp::LessEq | BinaryOp::Greater | BinaryOp::GreaterEq => {
-            let signed = match ty {
-                Ty::Byte => false,
-                Ty::Int { signed, .. } => *signed,
-                _ => {
-                    return Err(BackendError::UnsupportedInstruction {
-                        kind: "ordered comparison of non-integer FIR value",
-                    });
-                }
-            };
+            let signed = integer_signed(ty)?;
             Ok(match (op, signed) {
                 (BinaryOp::Less, true) => IntCC::SignedLessThan,
                 (BinaryOp::Less, false) => IntCC::UnsignedLessThan,
@@ -469,10 +597,6 @@ fn is_comparison(op: BinaryOp) -> bool {
             | BinaryOp::Eq
             | BinaryOp::NotEq
     )
-}
-
-fn is_c4a_arithmetic(op: BinaryOp) -> bool {
-    matches!(op, BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul)
 }
 
 fn lookup_value(

@@ -214,7 +214,7 @@ fn equality_comparisons_are_signedness_independent() {
 }
 
 #[test]
-fn checked_arithmetic_is_rejected_until_overflow_cfg_is_lowered() {
+fn checked_add_lowers_to_overflow_test_and_trap() {
     let ty = int_ty(false, IntWidth::W64);
     let function = binary_function(
         DefId(0),
@@ -223,18 +223,14 @@ fn checked_arithmetic_is_rejected_until_overflow_cfg_is_lowered() {
         Some(OverflowMode::Checked),
         ty,
     );
-    let error = lower_single(
+    let clif = lower_single(
         function,
         CraneliftBackend::aarch64().expect("AArch64 backend"),
     )
-    .expect_err("checked overflow must not silently become wrapping arithmetic");
+    .expect("checked overflow should lower mechanically");
 
-    assert_eq!(
-        error,
-        BackendError::UnsupportedInstruction {
-            kind: "checked integer arithmetic overflow path"
-        }
-    );
+    assert!(clif.contains("uadd_overflow"), "{clif}");
+    assert!(clif.contains("trapnz") && clif.contains("int_ovf"), "{clif}");
 }
 
 // Backends are cheap to reconstruct; this helper keeps the nested test loop readable.
