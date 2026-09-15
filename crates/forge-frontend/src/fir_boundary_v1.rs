@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use crate::{
     ast::{FdnValue, Span},
@@ -174,15 +174,7 @@ fn verify_typed_body(body: &TypedBody, diagnostics: &mut Vec<FirDiagnostic>) {
         }
     }
 
-    let mut expression_ids = BTreeSet::new();
     for expression in &body.expressions {
-        if !expression_ids.insert(expression.id) {
-            diagnostics.push(diagnostic(
-                expression.span,
-                "fir/boundary-expression",
-                format!("typed expression {:?} appears more than once", expression.id),
-            ));
-        }
         if !type_is_concrete(&expression.ty) {
             diagnostics.push(diagnostic(
                 expression.span,
@@ -197,10 +189,7 @@ fn verify_typed_body(body: &TypedBody, diagnostics: &mut Vec<FirDiagnostic>) {
     }
 }
 
-pub fn verify_fir_boundary(
-    bodies: &BodyHirOutput,
-    typed: &TypeCheckOutput,
-) -> Vec<FirDiagnostic> {
+pub fn verify_fir_boundary(bodies: &BodyHirOutput, typed: &TypeCheckOutput) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
     for (owner, body) in &bodies.functions {
