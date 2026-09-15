@@ -9,6 +9,7 @@
 mod abi;
 #[path = "layout_c9a.rs"]
 mod layout;
+mod static_data;
 
 pub use abi::{
     AbiDecomposer, AbiDecomposition, AbiError, AbiFragment, AbiPassing, AbiPiece, AbiPieceKind,
@@ -27,4 +28,7 @@ pub use forge_frontend::{
 pub use layout::{
     FieldLayout, Layout, LayoutEngine, LayoutError, LayoutKind, LayoutTarget, Niche, SumEncoding,
     TagLayout, VariantLayout,
+};
+pub use static_data::{
+    StaticGlobalInitializer, StaticGlobalInitializerTable, StaticSymbol, StaticValue,
 };

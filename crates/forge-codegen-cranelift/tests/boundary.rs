@@ -35,7 +35,7 @@ fn empty_module_prepares_empty_function_set() {
 }
 
 #[test]
-fn global_is_prepared_but_emission_stops_at_c11b_boundary() {
+fn scalar_global_prepares_plans_and_emits() {
     let backend = CraneliftBackend::aarch64().expect("backend");
     let mut module = FirModule::default();
     module.globals.insert(
@@ -49,23 +49,18 @@ fn global_is_prepared_but_emission_stops_at_c11b_boundary() {
 
     let prepared = backend
         .prepare_module(&module)
-        .expect("C11a prepares global metadata");
+        .expect("global metadata prepares");
     assert!(prepared.global(DefId(1)).is_some());
 
     let plan = backend
         .plan_object_module(&prepared)
-        .expect("C11a plans global symbols");
+        .expect("global symbol plans");
     assert!(plan.global_symbol(DefId(1)).is_some());
 
-    let error = backend
+    let object = backend
         .emit_object(&prepared, &plan)
-        .expect_err("C11b must own global section emission");
-    assert_eq!(
-        error,
-        BackendError::UnsupportedFir {
-            component: "global object emission"
-        }
-    );
+        .expect("C11b emits global storage");
+    assert_eq!(&object.bytes()[..4], b"\x7fELF");
 }
 
 #[test]

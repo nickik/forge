@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use forge_codegen_cranelift::{
-    BackendError, CraneliftBackend, CraneliftTarget, GlobalInitialization, ObjectLinkage,
+    CraneliftBackend, CraneliftTarget, GlobalInitialization, ObjectLinkage,
 };
 use forge_fir::{
     ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal,
@@ -154,21 +154,18 @@ fn c11a_object_plan_carries_function_and_global_symbols_together() {
 }
 
 #[test]
-fn c11a_object_emission_refuses_to_silently_drop_planned_globals() {
-    let backend = CraneliftBackend::aarch64().expect("backend");
-    let prepared = backend
-        .prepare_module(&integrated_module())
-        .expect("prepared");
-    let plan = backend.plan_object_module(&prepared).expect("plan");
-    let error = backend
-        .emit_object(&prepared, &plan)
-        .expect_err("C11b must own global section emission");
-    assert!(matches!(
-        error,
-        BackendError::UnsupportedFir {
-            component: "global object emission"
-        }
-    ));
+fn c11a_integrated_plan_is_consumed_by_c11b_emission() {
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let prepared = backend
+            .prepare_module(&integrated_module())
+            .expect("prepared");
+        let plan = backend.plan_object_module(&prepared).expect("plan");
+        let object = backend
+            .emit_object(&prepared, &plan)
+            .expect("C11b emits planned globals");
+        assert_eq!(&object.bytes()[..4], b"\x7fELF");
+    }
 }
 
 #[test]

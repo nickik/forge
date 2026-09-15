@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use cranelift_codegen::ir::{Function, Signature};
 use cranelift_codegen::Context;
-use forge_fir::{DefId, FirModule, TypeDefinitionTable};
+use forge_fir::{DefId, FirModule, StaticGlobalInitializerTable, TypeDefinitionTable};
 use target_lexicon::Triple;
 
 use crate::backend_legacy;
@@ -10,7 +10,7 @@ use crate::{
     BackendError, CraneliftTarget, PreparedGlobal, PreparedGlobals, TargetLayout, TypeLowering,
 };
 
-/// C11a module preparation wraps the proven C10 function preparation with the
+/// C11 module preparation wraps the proven C10 function preparation with the
 /// prepared-global state derived from the same verified FIR module.
 pub struct CraneliftBackend {
     legacy: backend_legacy::CraneliftBackend,
@@ -65,15 +65,30 @@ impl CraneliftBackend {
         module: &FirModule,
         definitions: &TypeDefinitionTable,
     ) -> Result<PreparedModule, BackendError> {
-        // Prepare and validate the complete global side of the module first.
-        // This retains C9 layout, initializer classification/dependencies, and
-        // the authoritative FIR initializer order in the prepared module.
-        let globals = self.prepare_globals(module, definitions)?;
+        self.prepare_module_with_static_initializers(
+            module,
+            definitions,
+            &StaticGlobalInitializerTable::new(),
+        )
+    }
 
-        // C11a deliberately does not lower LoadGlobal or emit initializer code.
-        // Reuse the already-verified C10 function pipeline on the function
-        // portion only; C11c/d will connect those remaining code-generation
-        // paths without changing the prepared module model established here.
+    /// C11b extension for aggregate/static-address initializers that have
+    /// already crossed the semantic FIR boundary. Scalar `FirGlobal::constant`
+    /// values continue to work without this side table.
+    pub fn prepare_module_with_static_initializers(
+        &self,
+        module: &FirModule,
+        definitions: &TypeDefinitionTable,
+        static_initializers: &StaticGlobalInitializerTable,
+    ) -> Result<PreparedModule, BackendError> {
+        let globals = self.prepare_globals_with_static_initializers(
+            module,
+            definitions,
+            static_initializers,
+        )?;
+
+        // C11c owns LoadGlobal and C11d owns runtime initializer execution.
+        // Keep the already-proven C10 function pipeline isolated from globals.
         let mut function_module = module.clone();
         function_module.globals.clear();
         function_module.global_initializers.clear();
