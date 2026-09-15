@@ -4,8 +4,10 @@
 //! translates it to Cranelift IR without consulting AST, HIR, Typed HIR, or
 //! reconstructing Forge-language decisions.
 
+mod abi;
 mod backend;
 mod diagnostic;
+#[allow(clippy::too_many_arguments)]
 mod function;
 mod machine;
 mod target;

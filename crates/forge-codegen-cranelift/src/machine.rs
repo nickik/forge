@@ -8,8 +8,10 @@ use crate::{BackendError, CraneliftTarget, PreparedModule};
 
 /// Relocation-free machine code emitted for one verified FIR function.
 ///
-/// Calls/globals are not part of C5/C6 yet, so relocations are rejected rather
-/// than exposed as a half-defined linker contract.
+/// C8 can lower direct calls and function addresses to CLIF/machine code, but
+/// resolving their target relocations belongs to the later object/linking
+/// milestone. This API therefore still returns only self-contained code and
+/// rejects compiled functions whose machine buffer contains relocations.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MachineCode {
     target: CraneliftTarget,

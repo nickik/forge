@@ -89,7 +89,7 @@ impl CraneliftBackend {
         let lowering = self.type_lowering();
         let mut functions = BTreeMap::new();
         for (owner, fir) in &module.functions {
-            let function = lower_function(fir, &lowering, &*self.isa)?;
+            let function = lower_function(fir, &module.functions, &lowering, &*self.isa)?;
             functions.insert(*owner, function);
         }
 
@@ -101,8 +101,9 @@ impl CraneliftBackend {
 
     /// Compile one already-prepared FIR function all the way to target machine code.
     ///
-    /// C5/C6 deliberately support relocation-free scalar functions only; later
-    /// call/global lowering will introduce the relocation/linking contract.
+    /// Relocation-free functions can be emitted directly. C8 may produce call
+    /// relocations; resolving/linking them remains part of the later AOT/object
+    /// milestone rather than an implicit backend policy.
     pub fn emit_machine_code(
         &self,
         prepared: &PreparedModule,
