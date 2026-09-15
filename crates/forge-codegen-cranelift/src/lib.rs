@@ -15,4 +15,4 @@ pub use backend::{CraneliftBackend, PreparedModule};
 pub use diagnostic::BackendError;
 pub use machine::MachineCode;
 pub use target::{CraneliftTarget, TargetLayout};
-pub use types::TypeLowering;
+pub use types::{ScalarLayout, TypeLowering};
