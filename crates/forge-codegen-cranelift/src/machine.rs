@@ -72,7 +72,7 @@ fn compile_function(
     let compiled = context
         .compile(isa, &mut control)
         .map_err(|error| BackendError::Cranelift {
-            message: format!("machine-code compilation failed for {owner:?}: {error}"),
+            message: format!("machine-code compilation failed for {owner:?}: {error:?}"),
         })?;
 
     if !compiled.buffer.relocs().is_empty() {
