@@ -26,3 +26,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p forge-codegen-cranelift --locked --test native_aarch64
+
+  riscv64-execution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y qemu-user
+      - run: FORGE_RISCV64_EXECUTION=1 cargo test -p forge-codegen-cranelift --locked --test riscv64_execution
