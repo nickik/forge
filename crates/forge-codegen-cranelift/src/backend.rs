@@ -92,8 +92,8 @@ impl CraneliftBackend {
         let mut functions = BTreeMap::new();
         for (owner, fir) in &module.functions {
             validate_c4_scalar_contract(fir, &self.layout)?;
-            let scheduled = schedule_c4_blocks(fir)?;
-            let function = lower_function(&scheduled, &lowering, &*self.isa)?;
+            let scheduled = schedule_scalar_blocks(fir)?;
+            let function = lower_function(&scheduled, &module.functions, &lowering, &*self.isa)?;
             functions.insert(*owner, function);
         }
 
@@ -233,7 +233,7 @@ fn integer_shape(ty: &Ty, layout: &TargetLayout) -> Option<(bool, u16)> {
     }
 }
 
-fn schedule_c4_blocks(fir: &FirFunction) -> Result<FirFunction, BackendError> {
+fn schedule_scalar_blocks(fir: &FirFunction) -> Result<FirFunction, BackendError> {
     let mut scheduled = fir.clone();
     let entry = fir
         .blocks
@@ -292,6 +292,12 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
                 FirInstructionKind::PointerOffset {
                     pointer, offset, ..
                 } => available.contains(pointer) && available.contains(offset),
+                FirInstructionKind::Call { args, .. } => {
+                    args.iter().all(|value| available.contains(value))
+                }
+                FirInstructionKind::CallIndirect { callee, args, .. } => {
+                    available.contains(callee) && args.iter().all(|value| available.contains(value))
+                }
                 _ => true,
             };
         if !ready {
