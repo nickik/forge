@@ -12,24 +12,28 @@ Goal: extend the C10 native object pipeline to represent, emit, access, initiali
 - [x] validate missing initializer plans, duplicate/stale symbols, illegal layouts, and initializer ordering
 - [x] add deterministic AArch64/RV64 planning tests
 
-C11a completion record: CI run `34993211028` passed formatting, workspace check, build-system tests, generated collections snapshot, frontend tests, workspace tests, conformance, and Clippy. `PreparedModule` now retains functions, prepared globals, and global initializer order; `ObjectModulePlan` retains function and global symbols plus initializer order. Object emission explicitly rejects non-empty global plans until C11b rather than silently dropping them.
+C11a completion record: CI run `34993211028` passed formatting, workspace check, build-system tests, generated collections snapshot, frontend tests, workspace tests, conformance, and Clippy. `PreparedModule` retains functions, prepared globals, and global initializer order; `ObjectModulePlan` retains function and global symbols plus initializer order.
 
 ## C11b — static data emission
 
-- [ ] emit immutable constants into `.rodata`
-- [ ] emit initialized writable storage into `.data`
-- [ ] emit zero/uninitialized storage into `.bss`
-- [ ] serialize scalar and aggregate constants according to C9 layout
-- [ ] support object relocations inside global data where pointers/function addresses require them
-- [ ] verify ELF sections, alignment, symbols, and deterministic bytes on AArch64/RV64
+- [x] emit immutable constants into `.rodata`
+- [x] emit initialized writable storage into `.data`
+- [x] emit zero/uninitialized storage into `.bss`
+- [x] serialize scalar and aggregate constants according to C9 layout
+- [x] support object relocations inside global data where pointers/function addresses require them
+- [x] verify ELF sections, alignment, symbols, and deterministic bytes on AArch64/RV64
+
+C11b completion record: final CI run `35008041414` on tested implementation head `ca3624ed2a0d173aff7ea8739889462e29fb44a6` passed the full formatting/check/test/conformance/Clippy gate. Static globals are emitted as real ELF `.rodata`, `.data`, and `SHT_NOBITS` `.bss` sections with C9-derived size/alignment, deterministic `STT_OBJECT` symbols, scalar/aggregate serialization, and `.rela.rodata` / `.rela.data` symbol-address relocations. Native AArch64 and RV64/QEMU linked execution tests both pass.
 
 ## C11c — global access lowering
 
-- [ ] implement FIR `LoadGlobal`
-- [ ] generate global-address relocations in CLIF/object code
-- [ ] support scalar globals first, then aggregate globals
-- [ ] ensure global aggregates use normal C9 memory representation
-- [ ] test functions reading globals through linked executables
+- [x] implement FIR `LoadGlobal`
+- [x] generate global-address relocations in CLIF/object code
+- [x] support scalar globals first, then aggregate globals
+- [x] ensure global aggregates use normal C9 memory representation
+- [x] test functions reading globals through linked executables
+
+C11c completion record: final CI run `35008041414` on tested implementation head `ca3624ed2a0d173aff7ea8739889462e29fb44a6` passed the full formatting/check/test/conformance/Clippy gate. Functions now lower scalar and aggregate `LoadGlobal` through symbolic global addresses, object emission resolves `.text` relocations against global symbols, aggregate reads materialize into ordinary C9 memory representation, and linked execution passes on native AArch64 and RV64/QEMU.
 
 ## C11d — runtime global initialization
 
