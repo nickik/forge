@@ -19,7 +19,7 @@ mod function;
 #[path = "globals_c11b.rs"]
 mod globals;
 mod machine;
-#[path = "object_c11b.rs"]
+#[path = "object_c11c.rs"]
 mod object;
 mod target;
 mod types;
