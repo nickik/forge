@@ -31,10 +31,11 @@ fn empty_module_prepares_empty_function_set() {
         .prepare_module(&FirModule::default())
         .expect("empty FIR");
     assert!(prepared.functions().is_empty());
+    assert!(prepared.globals().is_empty());
 }
 
 #[test]
-fn unsupported_global_is_rejected_explicitly() {
+fn global_is_prepared_but_emission_stops_at_c11b_boundary() {
     let backend = CraneliftBackend::aarch64().expect("backend");
     let mut module = FirModule::default();
     module.globals.insert(
@@ -46,14 +47,23 @@ fn unsupported_global_is_rejected_explicitly() {
         },
     );
 
-    let error = match backend.prepare_module(&module) {
-        Ok(_) => panic!("global-containing module unexpectedly prepared"),
-        Err(error) => error,
-    };
+    let prepared = backend
+        .prepare_module(&module)
+        .expect("C11a prepares global metadata");
+    assert!(prepared.global(DefId(1)).is_some());
+
+    let plan = backend
+        .plan_object_module(&prepared)
+        .expect("C11a plans global symbols");
+    assert!(plan.global_symbol(DefId(1)).is_some());
+
+    let error = backend
+        .emit_object(&prepared, &plan)
+        .expect_err("C11b must own global section emission");
     assert_eq!(
         error,
         BackendError::UnsupportedFir {
-            component: "globals"
+            component: "global object emission"
         }
     );
 }
