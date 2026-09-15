@@ -1,14 +1,20 @@
 mod module_linker;
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use forge_codegen_cranelift::CraneliftBackend;
+use forge_fir::{
+    ConstValue, FirConst, FirFunction, FirGlobal, FirInstructionKind, FirModule,
+    StaticGlobalInitializer, StaticGlobalInitializerTable, StaticSymbol, StaticValue,
+};
 use forge_frontend::{
-    ast::SourceFile, collect_type_definitions, lower_fir, lower_module, lower_resolved_bodies,
-    parse_source, type_check_module, DefId, IntWidth, Ty,
+    ast::{DeclKind, SourceFile},
+    collect_type_definitions, lower_fir, lower_module, lower_resolved_bodies, parse_source,
+    type_check_module, DefId, IntWidth, Ty,
 };
 use module_linker::{link_modules, ParsedLibrary};
 
@@ -82,6 +88,7 @@ pub struct CompiledProgram {
     main_owner: DefId,
     main_symbol: String,
     initializer_symbol: Option<String>,
+    console_symbol: Option<String>,
 }
 
 impl CompiledProgram {
@@ -99,6 +106,10 @@ impl CompiledProgram {
 
     pub fn initializer_symbol(&self) -> Option<&str> {
         self.initializer_symbol.as_deref()
+    }
+
+    pub fn console_symbol(&self) -> Option<&str> {
+        self.console_symbol.as_deref()
     }
 }
 
@@ -135,6 +146,14 @@ fn parse_ast(label: &str, source: &str) -> Result<SourceFile, CompilerError> {
 }
 
 fn compile_ast(ast: SourceFile) -> Result<CompiledProgram, CompilerError> {
+    const CONSOLE_PROVIDER: &str = "__forge_c12c_std_console____forge_console_write";
+    let has_console_provider = ast.declarations.iter().any(|declaration| {
+        matches!(
+            &declaration.kind.kind,
+            DeclKind::Function(function) if function.name == CONSOLE_PROVIDER
+        )
+    });
+
     let hir = lower_module(&ast);
     if !hir.diagnostics.is_empty() {
         return Err(CompilerError::message(format!(
@@ -146,6 +165,17 @@ fn compile_ast(ast: SourceFile) -> Result<CompiledProgram, CompilerError> {
         hir.module.imports.is_empty(),
         "C12c module linker must consume all imports"
     );
+    let console_provider_owner = if has_console_provider {
+        Some(
+            hir.module
+                .symbols
+                .get(CONSOLE_PROVIDER)
+                .and_then(|symbols| symbols.value_def)
+                .ok_or_else(|| CompilerError::message("hosted console provider has no DefId"))?,
+        )
+    } else {
+        None
+    };
 
     let bodies = lower_resolved_bodies(&ast, &hir.module);
     if !bodies.diagnostics.is_empty() {
@@ -164,13 +194,15 @@ fn compile_ast(ast: SourceFile) -> Result<CompiledProgram, CompilerError> {
     }
 
     let definitions = collect_type_definitions(&ast, &hir.module, &bodies, &typed);
-    let fir = lower_fir(&bodies, &typed);
+    let mut fir = lower_fir(&bodies, &typed);
     if !fir.diagnostics.is_empty() {
         return Err(CompilerError::message(format!(
             "FIR lowering failed: {:?}",
             fir.diagnostics
         )));
     }
+
+    let static_initializers = materialize_string_literals(&mut fir.module)?;
 
     let main_owner = hir
         .module
@@ -196,13 +228,22 @@ fn compile_ast(ast: SourceFile) -> Result<CompiledProgram, CompilerError> {
     }
 
     let backend = CraneliftBackend::aarch64()?;
-    let prepared = backend.prepare_module_with_types(&fir.module, &definitions)?;
+    let prepared = backend.prepare_module_with_static_initializers(
+        &fir.module,
+        &definitions,
+        &static_initializers,
+    )?;
     let initializer_owner = prepared.module_initializer_owner();
     let mut exports = vec![main_owner];
     if let Some(owner) = initializer_owner {
         exports.push(owner);
     }
-    let plan = backend.plan_object_module_with_exports(&prepared, exports)?;
+    let imports = console_provider_owner.into_iter().collect::<Vec<_>>();
+    let plan = backend.plan_object_module_with_exports_and_imports(
+        &prepared,
+        exports,
+        imports.iter().copied(),
+    )?;
     let main_symbol = plan
         .symbol(main_owner)
         .ok_or_else(|| CompilerError::message("object plan omitted main"))?
@@ -215,6 +256,16 @@ fn compile_ast(ast: SourceFile) -> Result<CompiledProgram, CompilerError> {
                 .ok_or_else(|| CompilerError::message("object plan omitted module initializer"))
         })
         .transpose()?;
+    let console_symbol = imports
+        .first()
+        .map(|owner| {
+            plan.symbol(*owner)
+                .map(|symbol| symbol.name().to_owned())
+                .ok_or_else(|| {
+                    CompilerError::message("object plan omitted hosted console provider")
+                })
+        })
+        .transpose()?;
     let object = backend.emit_object(&prepared, &plan)?.into_bytes();
 
     Ok(CompiledProgram {
@@ -222,7 +273,155 @@ fn compile_ast(ast: SourceFile) -> Result<CompiledProgram, CompilerError> {
         main_owner,
         main_symbol,
         initializer_symbol,
+        console_symbol,
     })
+}
+
+fn materialize_string_literals(
+    module: &mut FirModule,
+) -> Result<StaticGlobalInitializerTable, CompilerError> {
+    fn collect(function: &FirFunction, literals: &mut BTreeSet<String>) {
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                if let FirInstructionKind::Const {
+                    value: FirConst::String { value },
+                } = &instruction.kind
+                {
+                    literals.insert(value.clone());
+                }
+            }
+        }
+    }
+
+    fn allocate(used: &mut BTreeSet<DefId>, next: &mut u32) -> Result<DefId, CompilerError> {
+        loop {
+            let candidate = DefId(*next);
+            if used.insert(candidate) {
+                if *next > 0 {
+                    *next -= 1;
+                }
+                return Ok(candidate);
+            }
+            if *next == 0 {
+                return Err(CompilerError::message(
+                    "no DefId remains for native string literal storage",
+                ));
+            }
+            *next -= 1;
+        }
+    }
+
+    let mut literals = BTreeSet::new();
+    for function in module.functions.values() {
+        collect(function, &mut literals);
+    }
+    for initializer in module.global_initializers.values() {
+        collect(&initializer.function, &mut literals);
+    }
+
+    let mut used = BTreeSet::new();
+    used.extend(module.functions.keys().copied());
+    used.extend(module.globals.keys().copied());
+    let mut next = u32::MAX;
+    let mut descriptors = BTreeMap::new();
+    let mut static_initializers = StaticGlobalInitializerTable::new();
+
+    for literal in literals {
+        let bytes_owner = allocate(&mut used, &mut next)?;
+        let descriptor_owner = allocate(&mut used, &mut next)?;
+        let bytes = literal.as_bytes();
+        let stored_bytes = if bytes.is_empty() {
+            vec![0_u8]
+        } else {
+            bytes.to_vec()
+        };
+        let bytes_ty = Ty::Array {
+            element: Box::new(Ty::Byte),
+            length: Some(stored_bytes.len() as u64),
+        };
+        module.globals.insert(
+            bytes_owner,
+            FirGlobal {
+                owner: bytes_owner,
+                ty: bytes_ty,
+                constant: None,
+            },
+        );
+        static_initializers.insert(
+            bytes_owner,
+            StaticGlobalInitializer {
+                value: StaticValue::Array(
+                    stored_bytes
+                        .iter()
+                        .map(|byte| {
+                            StaticValue::Scalar(ConstValue::Integer {
+                                value: i128::from(*byte),
+                            })
+                        })
+                        .collect(),
+                ),
+                writable: false,
+            },
+        );
+
+        module.globals.insert(
+            descriptor_owner,
+            FirGlobal {
+                owner: descriptor_owner,
+                ty: Ty::Str,
+                constant: None,
+            },
+        );
+        let mut fields = BTreeMap::new();
+        fields.insert(
+            "data".to_owned(),
+            StaticValue::Address {
+                target: StaticSymbol::Global(bytes_owner),
+                addend: 0,
+            },
+        );
+        fields.insert(
+            "len".to_owned(),
+            StaticValue::Scalar(ConstValue::Integer {
+                value: bytes.len() as i128,
+            }),
+        );
+        static_initializers.insert(
+            descriptor_owner,
+            StaticGlobalInitializer {
+                value: StaticValue::Aggregate {
+                    variant: None,
+                    fields,
+                },
+                writable: false,
+            },
+        );
+        descriptors.insert(literal, descriptor_owner);
+    }
+
+    fn rewrite(function: &mut FirFunction, descriptors: &BTreeMap<String, DefId>) {
+        for block in &mut function.blocks {
+            for instruction in &mut block.instructions {
+                let descriptor = match &instruction.kind {
+                    FirInstructionKind::Const {
+                        value: FirConst::String { value },
+                    } => descriptors.get(value).copied(),
+                    _ => None,
+                };
+                if let Some(global) = descriptor {
+                    instruction.kind = FirInstructionKind::LoadGlobal { global };
+                }
+            }
+        }
+    }
+    for function in module.functions.values_mut() {
+        rewrite(function, &descriptors);
+    }
+    for initializer in module.global_initializers.values_mut() {
+        rewrite(&mut initializer.function, &descriptors);
+    }
+
+    Ok(static_initializers)
 }
 
 pub fn compile_file(path: &Path) -> Result<CompiledProgram, CompilerError> {
@@ -347,6 +546,11 @@ fn link_hosted(program: &CompiledProgram, output: &Path) -> Result<(), CompilerE
 }
 
 fn hosted_startup_source(program: &CompiledProgram) -> String {
+    let console_provider = program.console_symbol().map_or_else(String::new, |symbol| {
+        format!(
+            "void {symbol}(const uint8_t *data, uintptr_t len) {{\n    if (len != 0 && fwrite(data, 1, (size_t)len, stdout) != (size_t)len) abort();\n}}\n"
+        )
+    });
     let initializer = program
         .initializer_symbol()
         .map_or_else(String::new, |symbol| {
@@ -356,9 +560,10 @@ fn hosted_startup_source(program: &CompiledProgram) -> String {
         .initializer_symbol()
         .map_or_else(String::new, |symbol| format!("    {symbol}();\n"));
     format!(
-        "#include <stdint.h>\n#include <stdlib.h>\n\n\
+        "#include <stdint.h>\n#include <stdio.h>\n#include <stdlib.h>\n\n\
          extern int32_t {main_symbol}(void);\n\
          {initializer}\n\
+         {console_provider}\n\
          __attribute__((noreturn)) void __forge_panic(const void *info) {{\n\
              (void)info;\n\
              abort();\n\
@@ -463,6 +668,7 @@ fn hidden() -> i32 { return 0; }
             main_owner: DefId(3),
             main_symbol: "__forge_fn_00000003".into(),
             initializer_symbol: Some("__forge_fn_00000009".into()),
+            console_symbol: None,
         };
         let source = hosted_startup_source(&compiled);
         assert!(source.contains("__forge_fn_00000009();"));

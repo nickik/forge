@@ -483,8 +483,10 @@ fn record_c9d_call_result(
             if !results.is_empty() {
                 return Err(shape("void C9 call produced CLIF results"));
             }
-            if instruction.result.is_some() {
-                return Err(shape("void C9 call unexpectedly has a result value"));
+            if let Some(id) = instruction.result {
+                if value_type(caller, id)? != &Ty::Void {
+                    return Err(shape("void C9 call FIR result is not void"));
+                }
             }
         }
         C9ReturnPlan::Scalar { ty } => {

@@ -212,6 +212,7 @@ name = "forge-compiler"
 version = "0.1.0"
 dependencies = [
  "forge-codegen-cranelift",
+ "forge-fir",
  "forge-frontend",
 ]
 

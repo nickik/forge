@@ -15,6 +15,7 @@ use crate::{
 pub enum ObjectLinkage {
     Local,
     Export,
+    Import,
 }
 
 #[derive(Clone, Debug)]
@@ -122,6 +123,19 @@ impl CraneliftBackend {
     where
         I: IntoIterator<Item = DefId>,
     {
+        self.plan_object_module_with_exports_and_imports(prepared, exports, std::iter::empty())
+    }
+
+    pub fn plan_object_module_with_exports_and_imports<I, J>(
+        &self,
+        prepared: &PreparedModule,
+        exports: I,
+        imports: J,
+    ) -> Result<ObjectModulePlan, BackendError>
+    where
+        I: IntoIterator<Item = DefId>,
+        J: IntoIterator<Item = DefId>,
+    {
         if prepared.target() != self.target() {
             return Err(shape(format!(
                 "prepared module target {:?} does not match object-plan target {:?}",
@@ -131,11 +145,25 @@ impl CraneliftBackend {
         }
 
         let exports: BTreeSet<DefId> = exports.into_iter().collect();
+        let imports: BTreeSet<DefId> = imports.into_iter().collect();
+        if let Some(owner) = exports.intersection(&imports).next() {
+            return Err(shape(format!(
+                "function {owner:?} cannot be both exported and imported"
+            )));
+        }
         for owner in &exports {
             if !prepared.functions().contains_key(owner) && !prepared.globals().contains_key(owner)
             {
                 return Err(shape(format!(
                     "cannot export missing FIR definition {owner:?}"
+                )));
+            }
+        }
+
+        for owner in &imports {
+            if !prepared.functions().contains_key(owner) {
+                return Err(shape(format!(
+                    "cannot import missing FIR function {owner:?}"
                 )));
             }
         }
@@ -154,7 +182,9 @@ impl CraneliftBackend {
                 ObjectSymbol {
                     owner: *owner,
                     name,
-                    linkage: if exports.contains(owner) {
+                    linkage: if imports.contains(owner) {
+                        ObjectLinkage::Import
+                    } else if exports.contains(owner) {
                         ObjectLinkage::Export
                     } else {
                         ObjectLinkage::Local
@@ -202,6 +232,12 @@ impl CraneliftBackend {
         let mut text_alignment = 1u64;
 
         for (owner, function) in prepared.functions() {
+            if plan
+                .symbol(*owner)
+                .is_some_and(|symbol| symbol.linkage() == ObjectLinkage::Import)
+            {
+                continue;
+            }
             let mut context = Context::for_function(function.clone());
             let mut control = ControlPlane::default();
             let compiled = context.compile(&*isa, &mut control).map_err(|error| {
@@ -581,6 +617,21 @@ fn emit_elf64(
     }
 
     let first_global = symbols.len() as u32;
+    for (owner, symbol) in plan
+        .symbols()
+        .iter()
+        .filter(|(_, symbol)| symbol.linkage() == ObjectLinkage::Import)
+    {
+        let index = symbols.len() as u32;
+        symbols.push(ElfSymbol::function(
+            add_string(&mut strtab, symbol.name())?,
+            true,
+            0,
+            0,
+            0,
+        ));
+        function_symbols.insert(*owner, index);
+    }
     for (owner, symbol) in plan
         .symbols()
         .iter()

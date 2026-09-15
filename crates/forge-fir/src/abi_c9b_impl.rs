@@ -263,6 +263,17 @@ impl<'a> AbiDecomposer<'a> {
                     self.collect_type(element, offset, &element_layout, out)?;
                 }
             }
+            Ty::Str => {
+                let LayoutKind::Str {
+                    data_offset,
+                    len_offset,
+                } = &layout.kind
+                else {
+                    return Err(AbiError::UnsupportedType("str layout shape"));
+                };
+                out.push(pointer(base + *data_offset, self.target.pointer_bits));
+                out.push(integer(base + *len_offset, self.target.word_bits));
+            }
             Ty::Slice { .. } => {
                 let LayoutKind::Slice {
                     data_offset,
@@ -325,7 +336,6 @@ impl<'a> AbiDecomposer<'a> {
                     "floating-point ABI classes are deferred",
                 ));
             }
-            Ty::Str => return Err(AbiError::UnsupportedType("unsized str")),
             Ty::ContextSlot { .. } => return Err(AbiError::UnsupportedType("context slot")),
             Ty::Closure { .. } => return Err(AbiError::UnsupportedType("closure ABI")),
             Ty::Error | Ty::Unknown | Ty::IntLiteral | Ty::FloatLiteral | Ty::NoneLiteral => {

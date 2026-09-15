@@ -142,7 +142,8 @@ pub(crate) struct C9SignaturePlan {
 pub(crate) fn is_c9_aggregate_type(ty: &Ty) -> bool {
     matches!(
         ty,
-        Ty::Nominal(_)
+        Ty::Str
+            | Ty::Nominal(_)
             | Ty::Optional { .. }
             | Ty::Slice { .. }
             | Ty::Array { .. }

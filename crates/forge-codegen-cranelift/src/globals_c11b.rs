@@ -565,6 +565,7 @@ fn serialize_value(
             }
             Ok(())
         }
+        Ty::Str => serialize_str(owner, definitions, layouts, layout, value, base, output),
         Ty::Slice { element, .. } => serialize_slice(
             owner,
             definitions,
@@ -716,7 +717,6 @@ fn serialize_value(
         Ty::Void
         | Ty::Never
         | Ty::Float { .. }
-        | Ty::Str
         | Ty::ContextSlot { .. }
         | Ty::Closure { .. }
         | Ty::Error
@@ -1008,6 +1008,87 @@ fn serialize_result(
         &child,
         payload,
         base + sum_payload_offset(encoding, index),
+        output,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn serialize_str(
+    owner: DefId,
+    definitions: &TypeDefinitionTable,
+    layouts: &mut LayoutEngine<'_>,
+    layout: &Layout,
+    value: &StaticValue,
+    base: u64,
+    output: &mut PreparedStaticData,
+) -> Result<(), BackendError> {
+    let StaticValue::Aggregate {
+        variant: None,
+        fields,
+    } = value
+    else {
+        return Err(shape(format!(
+            "global {owner:?} str static initializer is not a plain aggregate"
+        )));
+    };
+    if fields.len() != 2 {
+        return Err(shape(format!(
+            "global {owner:?} str static initializer requires data and len"
+        )));
+    }
+    let LayoutKind::Str {
+        data_offset,
+        len_offset,
+    } = &layout.kind
+    else {
+        return Err(shape(format!(
+            "global {owner:?} C9 str layout kind mismatch"
+        )));
+    };
+    let pointer_ty = Ty::Pointer {
+        volatile: false,
+        inner: Box::new(Ty::Byte),
+    };
+    let pointer_layout = layouts.layout_of(&pointer_ty).map_err(|error| {
+        shape(format!(
+            "global {owner:?} str pointer layout failed: {error}"
+        ))
+    })?;
+    let len_ty = Ty::Int {
+        signed: false,
+        width: IntWidth::Pointer,
+    };
+    let len_layout = layouts.layout_of(&len_ty).map_err(|error| {
+        shape(format!(
+            "global {owner:?} str length layout failed: {error}"
+        ))
+    })?;
+    serialize_value(
+        owner,
+        definitions,
+        layouts,
+        &pointer_ty,
+        &pointer_layout,
+        fields.get("data").ok_or_else(|| {
+            shape(format!(
+                "global {owner:?} str static initializer is missing data"
+            ))
+        })?,
+        base + *data_offset,
+        output,
+    )?;
+    serialize_value(
+        owner,
+        definitions,
+        layouts,
+        &len_ty,
+        &len_layout,
+        fields.get("len").ok_or_else(|| {
+            shape(format!(
+                "global {owner:?} str static initializer is missing len"
+            ))
+        })?,
+        base + *len_offset,
         output,
     )
 }

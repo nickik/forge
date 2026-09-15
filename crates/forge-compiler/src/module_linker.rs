@@ -33,27 +33,24 @@ pub(crate) fn link_modules(
 ) -> Result<SourceFile, String> {
     let mut plans = BTreeMap::new();
     for library in libraries {
-        let declared = library
+        let module_name = library.ast.module.segments.join(".");
+        let alias = library
             .ast
             .module
             .segments
             .last()
             .cloned()
             .ok_or_else(|| format!("library `{}` has an empty module path", library.name))?;
-        if declared != library.name {
+        if library.name != alias && library.name != module_name {
             return Err(format!(
-                "--library {}=... provides module `{}`, whose import alias is `{declared}`",
-                library.name,
-                library.ast.module.segments.join(".")
+                "--library {}=... provides module `{module_name}`; expected the full module name or import alias `{alias}`",
+                library.name
             ));
         }
-        if plans.contains_key(&library.name) {
-            return Err(format!("duplicate library `{}`", library.name));
+        if plans.contains_key(&alias) {
+            return Err(format!("duplicate library import alias `{alias}`"));
         }
-        plans.insert(
-            library.name.clone(),
-            plan_module(library.name, library.ast, true),
-        );
+        plans.insert(alias, plan_module(module_name, library.ast, true));
     }
 
     let root_name = root.module.segments.join(".");
