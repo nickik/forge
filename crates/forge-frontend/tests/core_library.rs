@@ -1,4 +1,7 @@
-use forge_frontend::{ast::DeclKind, parse_source};
+use forge_frontend::{
+    ast::{DeclKind, PatternKind},
+    parse_source,
+};
 use std::{collections::BTreeSet, fs, path::PathBuf};
 
 fn core_source() -> String {
@@ -28,30 +31,32 @@ fn core_exports_required_bootstrap_contracts() {
 
     let mut exported = BTreeSet::new();
     for decl in &file.declarations {
-        match &decl.kind {
-            DeclKind::Function(x) if x.public => {
+        if !decl.kind.public {
+            continue;
+        }
+        match &decl.kind.kind {
+            DeclKind::Function(x) => {
                 exported.insert(x.name.as_str());
             }
-            DeclKind::Struct(x) if x.public => {
+            DeclKind::Struct(x) => {
                 exported.insert(x.name.as_str());
             }
-            DeclKind::Enum(x) if x.public => {
+            DeclKind::Enum(x) => {
                 exported.insert(x.name.as_str());
             }
-            DeclKind::Tagged(x) if x.public => {
+            DeclKind::Tagged(x) => {
                 exported.insert(x.name.as_str());
             }
-            DeclKind::Distinct(x) if x.public => {
+            DeclKind::Distinct(x) => {
                 exported.insert(x.name.as_str());
             }
-            DeclKind::TypeAlias(x) if x.public => {
+            DeclKind::TypeAlias(x) => {
                 exported.insert(x.name.as_str());
             }
-            DeclKind::Global {
-                public: true,
-                value,
-            } => {
-                exported.insert(value.name.as_str());
+            DeclKind::Global(value) => {
+                if let PatternKind::Binding { name, .. } = &value.pattern.kind {
+                    exported.insert(name.as_str());
+                }
             }
             _ => {}
         }
@@ -88,7 +93,7 @@ fn panic_info_is_allocation_free_data() {
     let panic_info = file
         .declarations
         .iter()
-        .find_map(|decl| match &decl.kind {
+        .find_map(|decl| match &decl.kind.kind {
             DeclKind::Struct(x) if x.name == "PanicInfo" => Some(x),
             _ => None,
         })
@@ -110,7 +115,7 @@ fn object_cache_spec_is_explicit_fixed_size_contract() {
     let spec = file
         .declarations
         .iter()
-        .find_map(|decl| match &decl.kind {
+        .find_map(|decl| match &decl.kind.kind {
             DeclKind::Struct(x) if x.name == "ObjectCacheSpec" => Some(x),
             _ => None,
         })
@@ -128,7 +133,7 @@ fn variable_sized_allocation_is_part_of_core_contract() {
     let block = file
         .declarations
         .iter()
-        .find_map(|decl| match &decl.kind {
+        .find_map(|decl| match &decl.kind.kind {
             DeclKind::Struct(x) if x.name == "MemoryBlock" => Some(x),
             _ => None,
         })
