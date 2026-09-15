@@ -6,9 +6,9 @@
 
 #[allow(dead_code)]
 mod abi;
+mod backend_c11a;
 #[path = "backend.rs"]
 mod backend_legacy;
-mod backend_c11a;
 mod c9_memory_checks;
 mod diagnostic;
 #[allow(clippy::too_many_arguments, dead_code)]
