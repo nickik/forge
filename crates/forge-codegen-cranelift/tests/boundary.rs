@@ -27,7 +27,9 @@ fn riscv64_backend_initializes() {
 #[test]
 fn empty_module_prepares_empty_function_set() {
     let backend = CraneliftBackend::aarch64().expect("backend");
-    let prepared = backend.prepare_module(&FirModule::default()).expect("empty FIR");
+    let prepared = backend
+        .prepare_module(&FirModule::default())
+        .expect("empty FIR");
     assert!(prepared.functions().is_empty());
 }
 
@@ -44,8 +46,12 @@ fn unsupported_global_is_rejected_explicitly() {
         },
     );
 
+    let error = match backend.prepare_module(&module) {
+        Ok(_) => panic!("global-containing module unexpectedly prepared"),
+        Err(error) => error,
+    };
     assert_eq!(
-        backend.prepare_module(&module).unwrap_err(),
+        error,
         BackendError::UnsupportedFir {
             component: "globals"
         }
