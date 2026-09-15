@@ -29,7 +29,7 @@ Goal: integrate the complete C9 Forge ABI/layout milestone onto the current C8 b
 - [ ] Combined review/test sweep
   - rebase old C9 semantics onto current C8 rather than replacing hardened code
   - port old tests, then add regression tests for layout determinism, direct/indirect ABI boundaries, aggregate call shape, mutability and non-topological dependencies
-  - run `cargo fmt --all -- --check`
-  - run strict workspace CI through Clippy
+  - formatting, frontend, workspace, native AArch64, RV64/QEMU and conformance have passed together
+  - run final strict workspace CI through Clippy
   - squash integration history to one clean C9 commit
   - fast-forward `main` only after the combined branch is green
