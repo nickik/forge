@@ -168,8 +168,8 @@ impl CraneliftBackend {
             .iter()
             .copied()
             .filter(|owner| prepared.globals().contains_key(owner));
-        let global_plan = self
-            .plan_global_objects_with_exports(prepared.prepared_globals(), global_exports)?;
+        let global_plan =
+            self.plan_global_objects_with_exports(prepared.prepared_globals(), global_exports)?;
         for symbol in global_plan.symbols().values() {
             if !names.insert(symbol.name().to_owned()) {
                 return Err(shape(format!(
@@ -287,7 +287,9 @@ fn validate_object_plan(
     if prepared.functions().len() != plan.symbols().len()
         || prepared.globals().len() != plan.global_symbols().len()
     {
-        return Err(shape("object plan definition count does not match prepared module"));
+        return Err(shape(
+            "object plan definition count does not match prepared module",
+        ));
     }
     if prepared.global_init_order() != plan.global_init_order() {
         return Err(shape("object plan has stale global initializer order"));
@@ -672,10 +674,22 @@ fn emit_elf64(
     let section_headers_offset = output.len() as u64;
 
     SectionHeader::null().write_to(&mut output);
-    SectionHeader::progbits(names.text, 0x6, text_offset, text.len() as u64, text_alignment.max(1))
-        .write_to(&mut output);
-    SectionHeader::rela(names.rela_text, rela_text_offset, rela_text.len() as u64, SYMTAB, 1)
-        .write_to(&mut output);
+    SectionHeader::progbits(
+        names.text,
+        0x6,
+        text_offset,
+        text.len() as u64,
+        text_alignment.max(1),
+    )
+    .write_to(&mut output);
+    SectionHeader::rela(
+        names.rela_text,
+        rela_text_offset,
+        rela_text.len() as u64,
+        SYMTAB,
+        1,
+    )
+    .write_to(&mut output);
     SectionHeader::progbits(
         names.rodata,
         0x2,
@@ -700,8 +714,14 @@ fn emit_elf64(
         data.data_alignment.max(1),
     )
     .write_to(&mut output);
-    SectionHeader::rela(names.rela_data, rela_data_offset, rela_data.len() as u64, SYMTAB, 5)
-        .write_to(&mut output);
+    SectionHeader::rela(
+        names.rela_data,
+        rela_data_offset,
+        rela_data.len() as u64,
+        SYMTAB,
+        5,
+    )
+    .write_to(&mut output);
     SectionHeader::nobits(
         names.bss,
         0x3,
@@ -710,8 +730,14 @@ fn emit_elf64(
         data.bss_alignment.max(1),
     )
     .write_to(&mut output);
-    SectionHeader::symtab(names.symtab, symtab_offset, symtab.len() as u64, STRTAB, first_global)
-        .write_to(&mut output);
+    SectionHeader::symtab(
+        names.symtab,
+        symtab_offset,
+        symtab.len() as u64,
+        STRTAB,
+        first_global,
+    )
+    .write_to(&mut output);
     SectionHeader::strtab(names.strtab, strtab_offset, strtab.len() as u64).write_to(&mut output);
     SectionHeader::strtab(names.shstrtab, shstrtab_offset, shstrtab.len() as u64)
         .write_to(&mut output);
@@ -771,12 +797,12 @@ fn encode_text_relocations(
     let mut output = Vec::with_capacity(relocs.len() * 24);
     for reloc in relocs {
         let symbol = match reloc.target {
-            TextRelocationTarget::Function(owner) => *function_symbols.get(&owner).ok_or_else(|| {
-                object_error(format!("unresolved function relocation {owner:?}"))
-            })?,
-            TextRelocationTarget::Global(owner) => *global_symbols.get(&owner).ok_or_else(|| {
-                object_error(format!("unresolved global relocation {owner:?}"))
-            })?,
+            TextRelocationTarget::Function(owner) => *function_symbols
+                .get(&owner)
+                .ok_or_else(|| object_error(format!("unresolved function relocation {owner:?}")))?,
+            TextRelocationTarget::Global(owner) => *global_symbols
+                .get(&owner)
+                .ok_or_else(|| object_error(format!("unresolved global relocation {owner:?}")))?,
             TextRelocationTarget::Label { owner, offset } => {
                 *label_symbols.get(&(owner, offset)).ok_or_else(|| {
                     object_error(format!("unresolved internal label {owner:?}+{offset}"))
@@ -892,9 +918,10 @@ impl ElfSymbol {
     }
 
     const fn typed(name: u32, global: bool, kind: u8, section: u16, value: u64, size: u64) -> Self {
+        let binding = if global { 1 } else { 0 };
         Self {
             name,
-            info: ((global as u8) << 4) | kind,
+            info: (binding << 4) | kind,
             other: 0,
             section,
             value,
@@ -1057,7 +1084,9 @@ fn align_vec(output: &mut Vec<u8>, alignment: u64) -> Result<(), BackendError> {
 
 fn align_u64(value: u64, alignment: u64) -> Result<u64, BackendError> {
     if alignment == 0 || !alignment.is_power_of_two() {
-        return Err(object_error(format!("invalid object alignment {alignment}")));
+        return Err(object_error(format!(
+            "invalid object alignment {alignment}"
+        )));
     }
     value
         .checked_add(alignment - 1)
@@ -1069,8 +1098,8 @@ fn add_string(table: &mut Vec<u8>, value: &str) -> Result<u32, BackendError> {
     if value.as_bytes().contains(&0) {
         return Err(object_error("object string contains NUL"));
     }
-    let offset = u32::try_from(table.len())
-        .map_err(|_| object_error("object string table exceeds u32"))?;
+    let offset =
+        u32::try_from(table.len()).map_err(|_| object_error("object string table exceeds u32"))?;
     table.extend_from_slice(value.as_bytes());
     table.push(0);
     Ok(offset)
