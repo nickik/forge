@@ -4,13 +4,15 @@ Goal: extend the C10 native object pipeline to represent, emit, access, initiali
 
 ## C11a — global object model
 
-- [ ] add globals to the prepared-module/object plan
-- [ ] define deterministic global symbol naming and linkage
-- [ ] derive global size/alignment only through the authoritative C9 layout engine
-- [ ] distinguish compile-time constants from runtime-initialized globals
-- [ ] classify global storage intent for later `.rodata` / `.data` / `.bss` emission
-- [ ] validate missing initializer plans, duplicate/stale symbols, illegal layouts, and initializer ordering
-- [ ] add deterministic AArch64/RV64 planning tests
+- [x] add globals to the prepared-module/object plan
+- [x] define deterministic global symbol naming and linkage
+- [x] derive global size/alignment only through the authoritative C9 layout engine
+- [x] distinguish compile-time constants from runtime-initialized globals
+- [x] classify global storage intent for later `.rodata` / `.data` / `.bss` emission
+- [x] validate missing initializer plans, duplicate/stale symbols, illegal layouts, and initializer ordering
+- [x] add deterministic AArch64/RV64 planning tests
+
+C11a completion record: CI run `34993211028` passed formatting, workspace check, build-system tests, generated collections snapshot, frontend tests, workspace tests, conformance, and Clippy. `PreparedModule` now retains functions, prepared globals, and global initializer order; `ObjectModulePlan` retains function and global symbols plus initializer order. Object emission explicitly rejects non-empty global plans until C11b rather than silently dropping them.
 
 ## C11b — static data emission
 
