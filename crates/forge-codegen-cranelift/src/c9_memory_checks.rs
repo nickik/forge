@@ -27,7 +27,11 @@ pub(crate) fn validate_c9_memory_places(fir: &FirFunction) -> Result<(), Backend
                     validate_place(
                         fir,
                         place,
-                        if *mutable { Access::Write } else { Access::Read },
+                        if *mutable {
+                            Access::Write
+                        } else {
+                            Access::Read
+                        },
                     )?;
                 }
                 _ => {}
@@ -44,9 +48,11 @@ fn validate_place(fir: &FirFunction, place: &FirPlace, access: Access) -> Result
             validate_place(fir, base, access)
         }
         FirPlace::Deref { address } => {
-            let ty = fir.value_types.get(address).ok_or_else(|| invalid(format!(
-                "missing type for safe dereference address {address:?}"
-            )))?;
+            let ty = fir.value_types.get(address).ok_or_else(|| {
+                invalid(format!(
+                    "missing type for safe dereference address {address:?}"
+                ))
+            })?;
             match ty {
                 Ty::Reference { mutable, .. } => {
                     if access == Access::Write && !*mutable {
@@ -60,9 +66,11 @@ fn validate_place(fir: &FirFunction, place: &FirPlace, access: Access) -> Result
             }
         }
         FirPlace::RawDeref { address, .. } => {
-            let ty = fir.value_types.get(address).ok_or_else(|| invalid(format!(
-                "missing type for raw dereference address {address:?}"
-            )))?;
+            let ty = fir.value_types.get(address).ok_or_else(|| {
+                invalid(format!(
+                    "missing type for raw dereference address {address:?}"
+                ))
+            })?;
             if matches!(ty, Ty::Pointer { .. }) {
                 Ok(())
             } else {
