@@ -89,11 +89,7 @@ fn add_one(owner: DefId) -> FirFunction {
                 value: Some(result),
             }),
         }],
-        value_types: BTreeMap::from([
-            (loaded, ty.clone()),
-            (one, ty.clone()),
-            (result, ty),
-        ]),
+        value_types: BTreeMap::from([(loaded, ty.clone()), (one, ty.clone()), (result, ty)]),
     }
 }
 
@@ -149,7 +145,9 @@ fn direct_scalar_call_lowers_and_reaches_relocation_boundary_on_both_targets() {
 
     for target in targets() {
         let backend = CraneliftBackend::new(target).expect("backend");
-        let prepared = backend.prepare_module(&module).expect("C8 direct call CLIF");
+        let prepared = backend
+            .prepare_module(&module)
+            .expect("C8 direct call CLIF");
         let clif = prepared
             .function(caller_owner)
             .expect("caller")
@@ -186,10 +184,7 @@ fn indirect_scalar_call_codegen_is_relocation_free_on_both_targets() {
         owner,
         params: vec![callee_local, arg_local],
         return_type: ty.clone(),
-        locals: BTreeMap::from([
-            (callee_local, callee_data),
-            (arg_local, arg_data),
-        ]),
+        locals: BTreeMap::from([(callee_local, callee_data), (arg_local, arg_data)]),
         closures: BTreeMap::new(),
         entry: FirBlockId(0),
         blocks: vec![FirBasicBlock {
@@ -226,11 +221,7 @@ fn indirect_scalar_call_codegen_is_relocation_free_on_both_targets() {
                 value: Some(result),
             }),
         }],
-        value_types: BTreeMap::from([
-            (callee, fn_ty),
-            (arg, ty.clone()),
-            (result, ty),
-        ]),
+        value_types: BTreeMap::from([(callee, fn_ty), (arg, ty.clone()), (result, ty)]),
     };
 
     let mut module = FirModule::default();
@@ -238,7 +229,9 @@ fn indirect_scalar_call_codegen_is_relocation_free_on_both_targets() {
 
     for target in targets() {
         let backend = CraneliftBackend::new(target).expect("backend");
-        let prepared = backend.prepare_module(&module).expect("C8 indirect call CLIF");
+        let prepared = backend
+            .prepare_module(&module)
+            .expect("C8 indirect call CLIF");
         let clif = prepared
             .function(owner)
             .expect("function")
