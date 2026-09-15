@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   implement-and-verify:
-    if: github.event.head_commit.message == 'C13b: stage native str and hosted console'
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
@@ -24,172 +23,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Implement native str literals and hosted console import
+      - name: Apply staged C13b implementation
         shell: bash
         run: |
           set -euo pipefail
+          git show HEAD^:.github/workflows/c13b-stage-console.yml > /tmp/c13b-stage-original.yml
           python3 - <<'PY'
           from pathlib import Path
+          import textwrap
 
-          def replace(path, old, new, count=1):
-              p = Path(path)
-              text = p.read_text()
-              actual = text.count(old)
-              if actual != count:
-                  raise SystemExit(f'{path}: expected {count} occurrences, found {actual}: {old[:80]!r}')
-              p.write_text(text.replace(old, new, count))
-
-          # C9 authoritative layout: str is an immutable UTF-8 view (data + byte length).
-          replace(
-              'crates/forge-fir/src/layout_c9a.rs',
-              '''    Slice {\n        data_offset: u64,\n        len_offset: u64,\n    },\n''',
-              '''    Slice {\n        data_offset: u64,\n        len_offset: u64,\n    },\n    Str {\n        data_offset: u64,\n        len_offset: u64,\n    },\n''')
-          replace(
-              'crates/forge-fir/src/layout_c9a.rs',
-              '''            Ty::Str => Err(LayoutError::UnsupportedType("unsized str")),\n''',
-              '''            Ty::Str => self.layout_str(),\n''')
-          replace(
-              'crates/forge-fir/src/layout_c9a.rs',
-              '''    fn layout_array(&mut self, element: &Ty, length: u64) -> Result<Layout, LayoutError> {\n''',
-              '''    fn layout_str(&self) -> Result<Layout, LayoutError> {\n        let pointer = self.layout_pointer()?;\n        let usize_layout = self.layout_integer(IntWidth::Pointer)?;\n        let mut layout = place_fields(vec![\n            FieldCandidate::new("data", 0, pointer),\n            FieldCandidate::new("len", 1, usize_layout),\n        ])?;\n        let data_offset = layout.field("data").expect("str data field").offset;\n        let len_offset = layout.field("len").expect("str len field").offset;\n        layout.niche = None;\n        layout.kind = LayoutKind::Str {\n            data_offset,\n            len_offset,\n        };\n        Ok(layout)\n    }\n\n    fn layout_array(&mut self, element: &Ty, length: u64) -> Result<Layout, LayoutError> {\n''')
-
-          # C9 ABI: pass str exactly like the two-word representation it owns.
-          replace(
-              'crates/forge-fir/src/abi_c9b_impl.rs',
-              '''            Ty::Slice { .. } => {\n''',
-              '''            Ty::Str => {\n                let LayoutKind::Str {\n                    data_offset,\n                    len_offset,\n                } = &layout.kind\n                else {\n                    return Err(AbiError::UnsupportedType("str layout shape"));\n                };\n                out.push(pointer(base + *data_offset, self.target.pointer_bits));\n                out.push(integer(base + *len_offset, self.target.word_bits));\n            }\n            Ty::Slice { .. } => {\n''')
-          replace(
-              'crates/forge-fir/src/abi_c9b_impl.rs',
-              '''            Ty::Str => return Err(AbiError::UnsupportedType("unsized str")),\n''',
-              '''''')
-          replace(
-              'crates/forge-codegen-cranelift/src/abi.rs',
-              '''        ty,\n        Ty::Nominal(_)\n''',
-              '''        ty,\n        Ty::Str\n            | Ty::Nominal(_)\n''')
-
-          # C11 static data: a str descriptor can point at another read-only Forge global.
-          replace(
-              'crates/forge-codegen-cranelift/src/globals_c11b.rs',
-              '''        Ty::Slice { element, .. } => serialize_slice(\n''',
-              '''        Ty::Str => serialize_str(owner, definitions, layouts, layout, value, base, output),\n        Ty::Slice { element, .. } => serialize_slice(\n''')
-          replace(
-              'crates/forge-codegen-cranelift/src/globals_c11b.rs',
-              '''        | Ty::Float { .. }\n        | Ty::Str\n        | Ty::ContextSlot { .. }\n''',
-              '''        | Ty::Float { .. }\n        | Ty::ContextSlot { .. }\n''')
-          replace(
-              'crates/forge-codegen-cranelift/src/globals_c11b.rs',
-              '''#[allow(clippy::too_many_arguments)]\nfn serialize_slice(\n''',
-              '''#[allow(clippy::too_many_arguments)]\nfn serialize_str(\n    owner: DefId,\n    definitions: &TypeDefinitionTable,\n    layouts: &mut LayoutEngine<'_>,\n    layout: &Layout,\n    value: &StaticValue,\n    base: u64,\n    output: &mut PreparedStaticData,\n) -> Result<(), BackendError> {\n    let StaticValue::Aggregate {\n        variant: None,\n        fields,\n    } = value\n    else {\n        return Err(shape(format!(\n            "global {owner:?} str static initializer is not a plain aggregate"\n        )));\n    };\n    if fields.len() != 2 {\n        return Err(shape(format!(\n            "global {owner:?} str static initializer requires data and len"\n        )));\n    }\n    let LayoutKind::Str {\n        data_offset,\n        len_offset,\n    } = &layout.kind\n    else {\n        return Err(shape(format!(\n            "global {owner:?} C9 str layout kind mismatch"\n        )));\n    };\n    let pointer_ty = Ty::Pointer {\n        volatile: false,\n        inner: Box::new(Ty::Byte),\n    };\n    let pointer_layout = layouts.layout_of(&pointer_ty).map_err(|error| {\n        shape(format!("global {owner:?} str pointer layout failed: {error}"))\n    })?;\n    let len_ty = Ty::Int {\n        signed: false,\n        width: IntWidth::Pointer,\n    };\n    let len_layout = layouts.layout_of(&len_ty).map_err(|error| {\n        shape(format!("global {owner:?} str length layout failed: {error}"))\n    })?;\n    serialize_value(\n        owner,\n        definitions,\n        layouts,\n        &pointer_ty,\n        &pointer_layout,\n        fields.get("data").ok_or_else(|| {\n            shape(format!("global {owner:?} str static initializer is missing data"))\n        })?,\n        base + *data_offset,\n        output,\n    )?;\n    serialize_value(\n        owner,\n        definitions,\n        layouts,\n        &len_ty,\n        &len_layout,\n        fields.get("len").ok_or_else(|| {\n            shape(format!("global {owner:?} str static initializer is missing len"))\n        })?,\n        base + *len_offset,\n        output,\n    )\n}\n\n#[allow(clippy::too_many_arguments)]\nfn serialize_slice(\n''')
-
-          # Object model: hosted providers are undefined global function imports.
-          replace(
-              'crates/forge-codegen-cranelift/src/object_c11c.rs',
-              '''pub enum ObjectLinkage {\n    Local,\n    Export,\n}\n''',
-              '''pub enum ObjectLinkage {\n    Local,\n    Export,\n    Import,\n}\n''')
-          replace(
-              'crates/forge-codegen-cranelift/src/object_c11c.rs',
-              '''    pub fn plan_object_module_with_exports<I>(\n        &self,\n        prepared: &PreparedModule,\n        exports: I,\n    ) -> Result<ObjectModulePlan, BackendError>\n    where\n        I: IntoIterator<Item = DefId>,\n    {\n''',
-              '''    pub fn plan_object_module_with_exports<I>(\n        &self,\n        prepared: &PreparedModule,\n        exports: I,\n    ) -> Result<ObjectModulePlan, BackendError>\n    where\n        I: IntoIterator<Item = DefId>,\n    {\n        self.plan_object_module_with_exports_and_imports(prepared, exports, std::iter::empty())\n    }\n\n    pub fn plan_object_module_with_exports_and_imports<I, J>(\n        &self,\n        prepared: &PreparedModule,\n        exports: I,\n        imports: J,\n    ) -> Result<ObjectModulePlan, BackendError>\n    where\n        I: IntoIterator<Item = DefId>,\n        J: IntoIterator<Item = DefId>,\n    {\n''')
-          replace(
-              'crates/forge-codegen-cranelift/src/object_c11c.rs',
-              '''        let exports: BTreeSet<DefId> = exports.into_iter().collect();\n        for owner in &exports {\n''',
-              '''        let exports: BTreeSet<DefId> = exports.into_iter().collect();\n        let imports: BTreeSet<DefId> = imports.into_iter().collect();\n        if let Some(owner) = exports.intersection(&imports).next() {\n            return Err(shape(format!(\n                "function {owner:?} cannot be both exported and imported"\n            )));\n        }\n        for owner in &exports {\n''')
-          replace(
-              'crates/forge-codegen-cranelift/src/object_c11c.rs',
-              '''        let mut names = BTreeSet::new();\n''',
-              '''        for owner in &imports {\n            if !prepared.functions().contains_key(owner) {\n                return Err(shape(format!("cannot import missing FIR function {owner:?}")));\n            }\n        }\n\n        let mut names = BTreeSet::new();\n''',
-              count=1)
-          replace(
-              'crates/forge-codegen-cranelift/src/object_c11c.rs',
-              '''                    linkage: if exports.contains(owner) {\n                        ObjectLinkage::Export\n                    } else {\n                        ObjectLinkage::Local\n                    },\n''',
-              '''                    linkage: if imports.contains(owner) {\n                        ObjectLinkage::Import\n                    } else if exports.contains(owner) {\n                        ObjectLinkage::Export\n                    } else {\n                        ObjectLinkage::Local\n                    },\n''',
-              count=1)
-          replace(
-              'crates/forge-codegen-cranelift/src/object_c11c.rs',
-              '''        for (owner, function) in prepared.functions() {\n            let mut context = Context::for_function(function.clone());\n''',
-              '''        for (owner, function) in prepared.functions() {\n            if plan\n                .symbol(*owner)\n                .is_some_and(|symbol| symbol.linkage() == ObjectLinkage::Import)\n            {\n                continue;\n            }\n            let mut context = Context::for_function(function.clone());\n''')
-          replace(
-              'crates/forge-codegen-cranelift/src/object_c11c.rs',
-              '''    let first_global = symbols.len() as u32;\n    for (owner, symbol) in plan\n        .symbols()\n        .iter()\n        .filter(|(_, symbol)| symbol.linkage() == ObjectLinkage::Export)\n''',
-              '''    let first_global = symbols.len() as u32;\n    for (owner, symbol) in plan\n        .symbols()\n        .iter()\n        .filter(|(_, symbol)| symbol.linkage() == ObjectLinkage::Import)\n    {\n        let index = symbols.len() as u32;\n        symbols.push(ElfSymbol::function(\n            add_string(&mut strtab, symbol.name())?,\n            true,\n            0,\n            0,\n            0,\n        ));\n        function_symbols.insert(*owner, index);\n    }\n    for (owner, symbol) in plan\n        .symbols()\n        .iter()\n        .filter(|(_, symbol)| symbol.linkage() == ObjectLinkage::Export)\n''')
-
-          # The compiler materializes all normal string literals into persistent .rodata.
-          p = Path('crates/forge-compiler/Cargo.toml')
-          text = p.read_text()
-          needle = 'forge-frontend = { path = "../forge-frontend" }\n'
-          if 'forge-fir = ' not in text:
-              if needle not in text:
-                  raise SystemExit('forge-compiler Cargo.toml dependency shape changed')
-              text = text.replace(needle, needle + 'forge-fir = { path = "../forge-fir" }\n')
-          p.write_text(text)
-
-          replace(
-              'crates/forge-compiler/src/lib.rs',
-              '''use std::fs;\n''',
-              '''use std::collections::{BTreeMap, BTreeSet};\nuse std::fs;\n''')
-          replace(
-              'crates/forge-compiler/src/lib.rs',
-              '''use forge_frontend::{\n    ast::SourceFile, collect_type_definitions, lower_fir, lower_module, lower_resolved_bodies,\n    parse_source, type_check_module, DefId, IntWidth, Ty,\n};\n''',
-              '''use forge_fir::{\n    ConstValue, FirConst, FirFunction, FirGlobal, FirInstructionKind, FirModule, StaticGlobalInitializer,\n    StaticGlobalInitializerTable, StaticSymbol, StaticValue,\n};\nuse forge_frontend::{\n    ast::{DeclKind, SourceFile}, collect_type_definitions, lower_fir, lower_module,\n    lower_resolved_bodies, parse_source, type_check_module, DefId, IntWidth, Ty,\n};\n''')
-          replace(
-              'crates/forge-compiler/src/lib.rs',
-              '''    initializer_symbol: Option<String>,\n}\n''',
-              '''    initializer_symbol: Option<String>,\n    console_symbol: Option<String>,\n}\n''')
-          replace(
-              'crates/forge-compiler/src/lib.rs',
-              '''    pub fn initializer_symbol(&self) -> Option<&str> {\n        self.initializer_symbol.as_deref()\n    }\n}\n''',
-              '''    pub fn initializer_symbol(&self) -> Option<&str> {\n        self.initializer_symbol.as_deref()\n    }\n\n    pub fn console_symbol(&self) -> Option<&str> {\n        self.console_symbol.as_deref()\n    }\n}\n''')
-          replace(
-              'crates/forge-compiler/src/lib.rs',
-              '''fn compile_ast(ast: SourceFile) -> Result<CompiledProgram, CompilerError> {\n    let hir = lower_module(&ast);\n''',
-              '''fn compile_ast(ast: SourceFile) -> Result<CompiledProgram, CompilerError> {\n    const CONSOLE_PROVIDER: &str = "__forge_c12c_std_console____forge_console_write";\n    let has_console_provider = ast.declarations.iter().any(|declaration| {\n        matches!(\n            &declaration.kind.kind,\n            DeclKind::Function(function) if function.name == CONSOLE_PROVIDER\n        )\n    });\n\n    let hir = lower_module(&ast);\n''')
-          replace(
-              'crates/forge-compiler/src/lib.rs',
-              '''    debug_assert!(\n        hir.module.imports.is_empty(),\n        "C12c module linker must consume all imports"\n    );\n\n    let bodies = lower_resolved_bodies(&ast, &hir.module);\n''',
-              '''    debug_assert!(\n        hir.module.imports.is_empty(),\n        "C12c module linker must consume all imports"\n    );\n    let console_provider_owner = if has_console_provider {\n        Some(\n            hir.module\n                .symbols\n                .get(CONSOLE_PROVIDER)\n                .and_then(|symbols| symbols.value_def)\n                .ok_or_else(|| CompilerError::message("hosted console provider has no DefId"))?,\n        )\n    } else {\n        None\n    };\n\n    let bodies = lower_resolved_bodies(&ast, &hir.module);\n''')
-          replace(
-              'crates/forge-compiler/src/lib.rs',
-              '''    let definitions = collect_type_definitions(&ast, &hir.module, &bodies, &typed);\n    let fir = lower_fir(&bodies, &typed);\n    if !fir.diagnostics.is_empty() {\n''',
-              '''    let definitions = collect_type_definitions(&ast, &hir.module, &bodies, &typed);\n    let mut fir = lower_fir(&bodies, &typed);\n    if !fir.diagnostics.is_empty() {\n''')
-          replace(
-              'crates/forge-compiler/src/lib.rs',
-              '''    let main_owner = hir\n''',
-              '''    let static_initializers = materialize_string_literals(&mut fir.module)?;\n\n    let main_owner = hir\n''')
-          replace(
-              'crates/forge-compiler/src/lib.rs',
-              '''    let backend = CraneliftBackend::aarch64()?;\n    let prepared = backend.prepare_module_with_types(&fir.module, &definitions)?;\n''',
-              '''    let backend = CraneliftBackend::aarch64()?;\n    let prepared = backend.prepare_module_with_static_initializers(\n        &fir.module,\n        &definitions,\n        &static_initializers,\n    )?;\n''')
-          replace(
-              'crates/forge-compiler/src/lib.rs',
-              '''    let plan = backend.plan_object_module_with_exports(&prepared, exports)?;\n''',
-              '''    let imports = console_provider_owner.into_iter().collect::<Vec<_>>();\n    let plan = backend.plan_object_module_with_exports_and_imports(\n        &prepared,\n        exports,\n        imports.iter().copied(),\n    )?;\n''')
-          replace(
-              'crates/forge-compiler/src/lib.rs',
-              '''    let object = backend.emit_object(&prepared, &plan)?.into_bytes();\n\n    Ok(CompiledProgram {\n        object,\n        main_owner,\n        main_symbol,\n        initializer_symbol,\n    })\n}\n''',
-              '''    let console_symbol = imports\n        .first()\n        .map(|owner| {\n            plan.symbol(*owner)\n                .map(|symbol| symbol.name().to_owned())\n                .ok_or_else(|| CompilerError::message("object plan omitted hosted console provider"))\n        })\n        .transpose()?;\n    let object = backend.emit_object(&prepared, &plan)?.into_bytes();\n\n    Ok(CompiledProgram {\n        object,\n        main_owner,\n        main_symbol,\n        initializer_symbol,\n        console_symbol,\n    })\n}\n\nfn materialize_string_literals(\n    module: &mut FirModule,\n) -> Result<StaticGlobalInitializerTable, CompilerError> {\n    fn collect(function: &FirFunction, literals: &mut BTreeSet<String>) {\n        for block in &function.blocks {\n            for instruction in &block.instructions {\n                if let FirInstructionKind::Const {\n                    value: FirConst::String { value },\n                } = &instruction.kind\n                {\n                    literals.insert(value.clone());\n                }\n            }\n        }\n    }\n\n    fn allocate(\n        used: &mut BTreeSet<DefId>,\n        next: &mut u32,\n    ) -> Result<DefId, CompilerError> {\n        loop {\n            let candidate = DefId(*next);\n            if used.insert(candidate) {\n                if *next > 0 {\n                    *next -= 1;\n                }\n                return Ok(candidate);\n            }\n            if *next == 0 {\n                return Err(CompilerError::message(\n                    "no DefId remains for native string literal storage",\n                ));\n            }\n            *next -= 1;\n        }\n    }\n\n    let mut literals = BTreeSet::new();\n    for function in module.functions.values() {\n        collect(function, &mut literals);\n    }\n    for initializer in module.global_initializers.values() {\n        collect(&initializer.function, &mut literals);\n    }\n\n    let mut used = BTreeSet::new();\n    used.extend(module.functions.keys().copied());\n    used.extend(module.globals.keys().copied());\n    let mut next = u32::MAX;\n    let mut descriptors = BTreeMap::new();\n    let mut static_initializers = StaticGlobalInitializerTable::new();\n\n    for literal in literals {\n        let bytes_owner = allocate(&mut used, &mut next)?;\n        let descriptor_owner = allocate(&mut used, &mut next)?;\n        let bytes = literal.as_bytes();\n        let stored_bytes = if bytes.is_empty() {\n            vec![0_u8]\n        } else {\n            bytes.to_vec()\n        };\n        let bytes_ty = Ty::Array {\n            element: Box::new(Ty::Byte),\n            length: Some(stored_bytes.len() as u64),\n        };\n        module.globals.insert(\n            bytes_owner,\n            FirGlobal {\n                owner: bytes_owner,\n                ty: bytes_ty,\n                constant: None,\n            },\n        );\n        static_initializers.insert(\n            bytes_owner,\n            StaticGlobalInitializer {\n                value: StaticValue::Array(\n                    stored_bytes\n                        .iter()\n                        .map(|byte| {\n                            StaticValue::Scalar(ConstValue::Integer {\n                                value: i128::from(*byte),\n                            })\n                        })\n                        .collect(),\n                ),\n                writable: false,\n            },\n        );\n\n        module.globals.insert(\n            descriptor_owner,\n            FirGlobal {\n                owner: descriptor_owner,\n                ty: Ty::Str,\n                constant: None,\n            },\n        );\n        let mut fields = BTreeMap::new();\n        fields.insert(\n            "data".to_owned(),\n            StaticValue::Address {\n                target: StaticSymbol::Global(bytes_owner),\n                addend: 0,\n            },\n        );\n        fields.insert(\n            "len".to_owned(),\n            StaticValue::Scalar(ConstValue::Integer {\n                value: bytes.len() as i128,\n            }),\n        );\n        static_initializers.insert(\n            descriptor_owner,\n            StaticGlobalInitializer {\n                value: StaticValue::Aggregate {\n                    variant: None,\n                    fields,\n                },\n                writable: false,\n            },\n        );\n        descriptors.insert(literal, descriptor_owner);\n    }\n\n    fn rewrite(function: &mut FirFunction, descriptors: &BTreeMap<String, DefId>) {\n        for block in &mut function.blocks {\n            for instruction in &mut block.instructions {\n                let descriptor = match &instruction.kind {\n                    FirInstructionKind::Const {\n                        value: FirConst::String { value },\n                    } => descriptors.get(value).copied(),\n                    _ => None,\n                };\n                if let Some(global) = descriptor {\n                    instruction.kind = FirInstructionKind::LoadGlobal { global };\n                }\n            }\n        }\n    }\n    for function in module.functions.values_mut() {\n        rewrite(function, &descriptors);\n    }\n    for initializer in module.global_initializers.values_mut() {\n        rewrite(&mut initializer.function, &descriptors);\n    }\n\n    Ok(static_initializers)\n}\n''')
-          replace(
-              'crates/forge-compiler/src/lib.rs',
-              '''fn hosted_startup_source(program: &CompiledProgram) -> String {\n    let initializer = program\n''',
-              '''fn hosted_startup_source(program: &CompiledProgram) -> String {\n    let console_provider = program.console_symbol().map_or_else(String::new, |symbol| {\n        format!(\n            "void {symbol}(const uint8_t *data, uintptr_t len) {{\\n    if (len != 0 && fwrite(data, 1, (size_t)len, stdout) != (size_t)len) abort();\\n}}\\n"\n        )\n    });\n    let initializer = program\n''')
-          replace(
-              'crates/forge-compiler/src/lib.rs',
-              '''        "#include <stdint.h>\\n#include <stdlib.h>\\n\\n\\\n         extern int32_t {main_symbol}(void);\\n\\\n         {initializer}\\n\\\n''',
-              '''        "#include <stdint.h>\\n#include <stdio.h>\\n#include <stdlib.h>\\n\\n\\\n         extern int32_t {main_symbol}(void);\\n\\\n         {initializer}\\n\\\n         {console_provider}\\n\\\n''')
-          replace(
-              'crates/forge-compiler/src/lib.rs',
-              '''            initializer_symbol: Some("__forge_fn_00000009".into()),\n        };\n''',
-              '''            initializer_symbol: Some("__forge_fn_00000009".into()),\n            console_symbol: None,\n        };\n''')
-
-          # std.console has no dependency on core; keeping the unused import blocks focused hosted use.
-          replace('lib/std/console.fg', 'import core;\n\n', '')
-
-          # Mark the first C13b acceptance gate complete only after this workflow verifies it.
-          replace(
-              'C13_TODO.md',
-              '- [ ] make `std.console` usable natively so the existing CForge Game of Life runs unchanged and matches its golden output\n',
-              '- [x] make `std.console` usable natively so the existing CForge Game of Life runs unchanged and produces its expected console output\n')
+          source = Path('/tmp/c13b-stage-original.yml').read_text()
+          marker = "          python3 - <<'PY'\n"
+          start = source.index(marker) + len(marker)
+          end = source.index("\n          PY", start)
+          script = textwrap.dedent(source[start:end])
+          exec(compile(script, '<c13b-stage>', 'exec'))
           PY
-
           cargo fmt --all
           cargo check -p forge-compiler
       - name: Verify compiler and ABI tests
@@ -233,7 +82,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git show HEAD^:.github/workflows/c13-native-compat-baseline.yml > .github/workflows/c13-native-compat-baseline.yml 2>/dev/null || true
           rm .github/workflows/c13b-stage-console.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
