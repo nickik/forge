@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use cranelift_codegen::cursor::{Cursor, FuncCursor};
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{
-    Block, ExtFuncData, ExternalName, FuncRef, Function, Inst, InstBuilder, MemFlags, MemFlagsData,
-    StackSlot, StackSlotData, StackSlotKind, TrapCode, UserExternalName, UserFuncName, Value,
+    Block, ExtFuncData, ExternalName, FuncRef, Function, Inst, InstBuilder, MemFlagsData, StackSlot,
+    StackSlotData, StackSlotKind, TrapCode, UserExternalName, UserFuncName, Value,
 };
 use cranelift_codegen::isa::{CallConv, TargetIsa};
 use cranelift_codegen::verifier::verify_function;
@@ -18,8 +18,8 @@ use crate::{BackendError, TypeLowering};
 
 #[derive(Clone, Copy)]
 struct MemoryFlags {
-    stack: MemFlags,
-    deref: MemFlags,
+    stack: MemFlagsData,
+    deref: MemFlagsData,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -46,14 +46,11 @@ pub(crate) fn lower_function(
 
     let local_slots = allocate_addressable_locals(fir, types, &mut function)?;
     let memory_flags = MemoryFlags {
-        stack: function
-            .dfg
-            .mem_flags
-            .insert_unchecked(MemFlagsData::trusted()),
+        stack: MemFlagsData::trusted(),
         // Dereferences are deliberately conservative: potentially trapping,
         // unaligned, and not freely movable. C7 does not claim volatile access
         // semantics; volatile raw dereferences are rejected below.
-        deref: function.dfg.mem_flags.insert_unchecked(MemFlagsData::new()),
+        deref: MemFlagsData::new(),
     };
 
     let mut blocks = BTreeMap::new();
@@ -246,7 +243,7 @@ fn lower_one_block(
 fn initialize_parameter_slots(
     parameter_values: &BTreeMap<FirLocalId, Value>,
     local_slots: &BTreeMap<FirLocalId, StackSlot>,
-    stack_flags: MemFlags,
+    stack_flags: MemFlagsData,
     types: &TypeLowering<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
@@ -698,7 +695,7 @@ fn lower_place_address(
     values: &BTreeMap<FirValueId, Value>,
     types: &TypeLowering<'_>,
     cursor: &mut FuncCursor<'_>,
-) -> Result<(Value, Ty, MemFlags), BackendError> {
+) -> Result<(Value, Ty, MemFlagsData), BackendError> {
     match place {
         FirPlace::Local { local } => {
             let slot = local_slots
