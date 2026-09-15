@@ -203,7 +203,7 @@ fn lower_c11c_load_global(
         colocated: true,
         tls: false,
     });
-    let address = cursor.ins().global_value(types.pointer_type()?, symbolic);
+    let address = cursor.ins().symbol_value(types.pointer_type()?, symbolic);
 
     if is_memory_value(result_ty) {
         materialize_result(
