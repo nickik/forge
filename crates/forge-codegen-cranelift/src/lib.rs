@@ -12,6 +12,7 @@ mod diagnostic;
 #[allow(clippy::too_many_arguments, dead_code)]
 #[path = "function_c9d_impl.rs"]
 mod function;
+mod globals;
 mod machine;
 mod object;
 mod target;
@@ -19,6 +20,10 @@ mod types;
 
 pub use backend::{CraneliftBackend, PreparedModule};
 pub use diagnostic::BackendError;
+pub use globals::{
+    GlobalInitialization, GlobalObjectPlan, GlobalObjectSymbol, GlobalStorageClass, PreparedGlobal,
+    PreparedGlobals,
+};
 pub use machine::MachineCode;
 pub use object::{NativeObject, ObjectLinkage, ObjectModulePlan, ObjectSymbol};
 pub use target::{CraneliftTarget, TargetLayout};
