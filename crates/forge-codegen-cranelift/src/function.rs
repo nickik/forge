@@ -3,22 +3,24 @@ use std::collections::{BTreeMap, BTreeSet};
 use cranelift_codegen::cursor::{Cursor, FuncCursor};
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{
-    AbiParam, Block, Function, InstBuilder, MemFlagsData, Signature, StackSlot, StackSlotData,
-    StackSlotKind, TrapCode, UserFuncName, Value,
+    Block, ExtFuncData, ExternalName, FuncRef, Function, Inst, InstBuilder, MemFlags,
+    MemFlagsData, StackSlot, StackSlotData, StackSlotKind, TrapCode, UserExternalName,
+    UserFuncName, Value,
 };
 use cranelift_codegen::isa::{CallConv, TargetIsa};
 use cranelift_codegen::verifier::verify_function;
 use forge_fir::{
-    BinaryOp, FirBlockId, FirConst, FirFunction, FirInstruction, FirInstructionKind, FirLocalId,
-    FirPlace, FirTerminator, FirUnaryOp, FirValueId, IntWidth, OverflowMode, Ty,
+    BinaryOp, DefId, FirBlockId, FirConst, FirFunction, FirInstruction, FirInstructionKind,
+    FirLocalId, FirPlace, FirTerminator, FirUnaryOp, FirValueId, IntWidth, OverflowMode, Ty,
 };
 
+use crate::abi::{fir_parameter_types, lower_fir_signature, lower_function_type_signature};
 use crate::{BackendError, TypeLowering};
 
 #[derive(Clone, Copy)]
 struct MemoryFlags {
-    stack: MemFlagsData,
-    deref: MemFlagsData,
+    stack: MemFlags,
+    deref: MemFlags,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -29,6 +31,7 @@ enum PlaceAccess {
 
 pub(crate) fn lower_function(
     fir: &FirFunction,
+    all_functions: &BTreeMap<DefId, FirFunction>,
     types: &TypeLowering<'_>,
     isa: &dyn TargetIsa,
 ) -> Result<Function, BackendError> {
@@ -38,16 +41,23 @@ pub(crate) fn lower_function(
         });
     }
 
-    let signature = lower_signature(fir, types, isa)?;
+    let call_conv = CallConv::triple_default(isa.triple());
+    let signature = lower_fir_signature(fir, types, call_conv)?;
     let mut function = Function::with_name_signature(UserFuncName::user(0, fir.owner.0), signature);
 
     let local_slots = allocate_addressable_locals(fir, types, &mut function)?;
     let memory_flags = MemoryFlags {
-        stack: MemFlagsData::trusted(),
+        stack: function
+            .dfg
+            .mem_flags
+            .insert_unchecked(MemFlagsData::trusted()),
         // Dereferences are deliberately conservative: potentially trapping,
         // unaligned, and not freely movable. C7 does not claim volatile access
         // semantics; volatile raw dereferences are rejected below.
-        deref: MemFlagsData::new(),
+        deref: function
+            .dfg
+            .mem_flags
+            .insert_unchecked(MemFlagsData::new()),
     };
 
     let mut blocks = BTreeMap::new();
@@ -80,14 +90,18 @@ pub(crate) fn lower_function(
     }
 
     let mut values = BTreeMap::<FirValueId, Value>::new();
+    let mut direct_functions = BTreeMap::<DefId, FuncRef>::new();
     lower_one_block(
         fir,
+        all_functions,
         fir.entry,
         entry,
         &blocks,
         &parameter_values,
         &local_slots,
         memory_flags,
+        call_conv,
+        &mut direct_functions,
         &mut values,
         types,
         &mut function,
@@ -102,12 +116,15 @@ pub(crate) fn lower_function(
             .ok_or_else(|| shape(format!("missing CLIF block for {:?}", fir_block.id)))?;
         lower_one_block(
             fir,
+            all_functions,
             fir_block.id,
             clif_block,
             &blocks,
             &parameter_values,
             &local_slots,
             memory_flags,
+            call_conv,
+            &mut direct_functions,
             &mut values,
             types,
             &mut function,
@@ -115,36 +132,10 @@ pub(crate) fn lower_function(
     }
 
     verify_function(&function, isa).map_err(|errors| BackendError::Cranelift {
-        message: format!(
-            "CLIF verifier rejected FIR function {:?}: {errors}",
-            fir.owner
-        ),
+        message: format!("CLIF verifier rejected FIR function {:?}: {errors}", fir.owner),
     })?;
 
     Ok(function)
-}
-
-fn lower_signature(
-    fir: &FirFunction,
-    types: &TypeLowering<'_>,
-    isa: &dyn TargetIsa,
-) -> Result<Signature, BackendError> {
-    let mut signature = Signature::new(CallConv::triple_default(isa.triple()));
-    for local_id in &fir.params {
-        let local = fir
-            .locals
-            .get(local_id)
-            .ok_or_else(|| shape(format!("missing FIR parameter local {local_id:?}")))?;
-        signature
-            .params
-            .push(AbiParam::new(types.value_type(&local.ty)?));
-    }
-    if fir.return_type != Ty::Void {
-        signature
-            .returns
-            .push(AbiParam::new(types.value_type(&fir.return_type)?));
-    }
-    Ok(signature)
 }
 
 fn allocate_addressable_locals(
@@ -194,12 +185,15 @@ fn allocate_addressable_locals(
 #[allow(clippy::too_many_arguments)]
 fn lower_one_block(
     fir: &FirFunction,
+    all_functions: &BTreeMap<DefId, FirFunction>,
     block_id: FirBlockId,
     clif_block: Block,
     blocks: &BTreeMap<FirBlockId, Block>,
     parameter_values: &BTreeMap<FirLocalId, Value>,
     local_slots: &BTreeMap<FirLocalId, StackSlot>,
     memory_flags: MemoryFlags,
+    call_conv: CallConv,
+    direct_functions: &mut BTreeMap<DefId, FuncRef>,
     values: &mut BTreeMap<FirValueId, Value>,
     types: &TypeLowering<'_>,
     function: &mut Function,
@@ -231,9 +225,12 @@ fn lower_one_block(
     for instruction in &fir_block.instructions {
         lower_instruction(
             fir,
+            all_functions,
             instruction,
             local_slots,
             memory_flags,
+            call_conv,
+            direct_functions,
             values,
             types,
             &mut cursor,
@@ -250,7 +247,7 @@ fn lower_one_block(
 fn initialize_parameter_slots(
     parameter_values: &BTreeMap<FirLocalId, Value>,
     local_slots: &BTreeMap<FirLocalId, StackSlot>,
-    stack_flags: MemFlagsData,
+    stack_flags: MemFlags,
     types: &TypeLowering<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
@@ -265,11 +262,15 @@ fn initialize_parameter_slots(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn lower_instruction(
     fir: &FirFunction,
+    all_functions: &BTreeMap<DefId, FirFunction>,
     instruction: &FirInstruction,
     local_slots: &BTreeMap<FirLocalId, StackSlot>,
     memory_flags: MemoryFlags,
+    call_conv: CallConv,
+    direct_functions: &mut BTreeMap<DefId, FuncRef>,
     values: &mut BTreeMap<FirValueId, Value>,
     types: &TypeLowering<'_>,
     cursor: &mut FuncCursor<'_>,
@@ -291,6 +292,50 @@ fn lower_instruction(
         return Ok(());
     }
 
+    match &instruction.kind {
+        FirInstructionKind::Call {
+            target,
+            args,
+            tail,
+        } => {
+            if *tail {
+                return Err(BackendError::UnsupportedInstruction {
+                    kind: "required tail call",
+                });
+            }
+            return lower_direct_call_instruction(
+                fir,
+                all_functions,
+                instruction,
+                *target,
+                args,
+                call_conv,
+                direct_functions,
+                values,
+                types,
+                cursor,
+            );
+        }
+        FirInstructionKind::CallIndirect { callee, args, tail } => {
+            if *tail {
+                return Err(BackendError::UnsupportedInstruction {
+                    kind: "required tail call",
+                });
+            }
+            return lower_indirect_call_instruction(
+                fir,
+                instruction,
+                *callee,
+                args,
+                call_conv,
+                values,
+                types,
+                cursor,
+            );
+        }
+        _ => {}
+    }
+
     let result_id = instruction
         .result
         .ok_or(BackendError::UnsupportedInstruction {
@@ -303,6 +348,15 @@ fn lower_instruction(
 
     let value = match &instruction.kind {
         FirInstructionKind::Const { value } => lower_const(value, result_ty, types, cursor)?,
+        FirInstructionKind::FunctionRef { target } => lower_function_ref(
+            *target,
+            result_ty,
+            all_functions,
+            call_conv,
+            direct_functions,
+            types,
+            cursor,
+        )?,
         FirInstructionKind::Load { place } => lower_load(
             fir,
             place,
@@ -313,16 +367,29 @@ fn lower_instruction(
             types,
             cursor,
         )?,
-        FirInstructionKind::AddressOf { place, mutable } => {
-            lower_address_of(fir, place, *mutable, result_ty, local_slots, types, cursor)?
-        }
+        FirInstructionKind::AddressOf { place, mutable } => lower_address_of(
+            fir,
+            place,
+            *mutable,
+            result_ty,
+            local_slots,
+            types,
+            cursor,
+        )?,
         FirInstructionKind::PointerOffset {
             pointer,
             offset,
             subtract,
             provenance: _,
         } => lower_pointer_offset(
-            fir, *pointer, *offset, *subtract, result_ty, values, types, cursor,
+            fir,
+            *pointer,
+            *offset,
+            *subtract,
+            result_ty,
+            values,
+            types,
+            cursor,
         )?,
         FirInstructionKind::Unary { op, value } => {
             lower_integer_unary(fir, *op, *value, values, cursor)?
@@ -357,6 +424,246 @@ fn lower_instruction(
     }
     values.insert(result_id, value);
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_direct_call_instruction(
+    caller: &FirFunction,
+    all_functions: &BTreeMap<DefId, FirFunction>,
+    instruction: &FirInstruction,
+    target: DefId,
+    args: &[FirValueId],
+    call_conv: CallConv,
+    direct_functions: &mut BTreeMap<DefId, FuncRef>,
+    values: &mut BTreeMap<FirValueId, Value>,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<(), BackendError> {
+    let callee = all_functions
+        .get(&target)
+        .ok_or_else(|| shape(format!("direct FIR call target {target:?} is not in the module")))?;
+    let params = fir_parameter_types(callee)?;
+    let lowered_args = lower_call_arguments(caller, args, &params, values)?;
+    let func_ref = import_direct_function(
+        target,
+        callee,
+        call_conv,
+        direct_functions,
+        types,
+        cursor,
+    )?;
+    let inst = cursor.ins().call(func_ref, &lowered_args);
+    record_call_result(
+        caller,
+        instruction,
+        &callee.return_type,
+        inst,
+        values,
+        types,
+        cursor,
+    )
+}
+
+fn lower_indirect_call_instruction(
+    caller: &FirFunction,
+    instruction: &FirInstruction,
+    callee: FirValueId,
+    args: &[FirValueId],
+    call_conv: CallConv,
+    values: &mut BTreeMap<FirValueId, Value>,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<(), BackendError> {
+    let callee_ty = caller
+        .value_types
+        .get(&callee)
+        .ok_or_else(|| shape(format!("missing type for indirect callee {callee:?}")))?;
+    let Ty::Function {
+        params,
+        result,
+        named_arguments: _,
+    } = callee_ty
+    else {
+        return Err(shape(format!(
+            "indirect FIR call has non-function callee type {callee_ty:?}"
+        )));
+    };
+    let lowered_args = lower_call_arguments(caller, args, params, values)?;
+    let signature = lower_function_type_signature(callee_ty, types, call_conv)?;
+    let sig_ref = cursor.func.import_signature(signature);
+    let inst = cursor.ins().call_indirect(
+        sig_ref,
+        lookup_value(values, callee)?,
+        &lowered_args,
+    );
+    record_call_result(
+        caller,
+        instruction,
+        result,
+        inst,
+        values,
+        types,
+        cursor,
+    )
+}
+
+fn lower_call_arguments(
+    caller: &FirFunction,
+    args: &[FirValueId],
+    params: &[Ty],
+    values: &BTreeMap<FirValueId, Value>,
+) -> Result<Vec<Value>, BackendError> {
+    if args.len() != params.len() {
+        return Err(shape(format!(
+            "FIR call has {} arguments but ABI signature has {} parameters",
+            args.len(),
+            params.len()
+        )));
+    }
+
+    args.iter()
+        .zip(params)
+        .enumerate()
+        .map(|(index, (arg, expected_ty))| {
+            let actual_ty = caller
+                .value_types
+                .get(arg)
+                .ok_or_else(|| shape(format!("missing type for call argument {arg:?}")))?;
+            if actual_ty != expected_ty {
+                return Err(shape(format!(
+                    "FIR call argument {index} has type {actual_ty:?}, expected {expected_ty:?}"
+                )));
+            }
+            lookup_value(values, *arg)
+        })
+        .collect()
+}
+
+fn record_call_result(
+    caller: &FirFunction,
+    instruction: &FirInstruction,
+    expected_ty: &Ty,
+    inst: Inst,
+    values: &mut BTreeMap<FirValueId, Value>,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<(), BackendError> {
+    if *expected_ty == Ty::Void {
+        if !cursor.func.dfg.inst_results(inst).is_empty() {
+            return Err(shape("void FIR call produced CLIF results"));
+        }
+        if let Some(result_id) = instruction.result {
+            let declared = caller
+                .value_types
+                .get(&result_id)
+                .ok_or_else(|| shape(format!("missing type for FIR call value {result_id:?}")))?;
+            if *declared != Ty::Void {
+                return Err(shape(format!(
+                    "void FIR call is declared with non-void result type {declared:?}"
+                )));
+            }
+        }
+        return Ok(());
+    }
+
+    let result_id = instruction
+        .result
+        .ok_or_else(|| shape("non-void FIR call has no result value"))?;
+    let declared = caller
+        .value_types
+        .get(&result_id)
+        .ok_or_else(|| shape(format!("missing type for FIR call value {result_id:?}")))?;
+    if declared != expected_ty {
+        return Err(shape(format!(
+            "FIR call result type {declared:?} does not match callee return type {expected_ty:?}"
+        )));
+    }
+
+    let result_value = match cursor.func.dfg.inst_results(inst) {
+        [value] => *value,
+        results => {
+            return Err(shape(format!(
+                "scalar FIR call expected one CLIF result, got {}",
+                results.len()
+            )));
+        }
+    };
+    let actual = cursor.func.dfg.value_type(result_value);
+    let expected = types.value_type(expected_ty)?;
+    if actual != expected {
+        return Err(shape(format!(
+            "FIR call value {result_id:?} lowers to CLIF {actual}, expected {expected}"
+        )));
+    }
+    values.insert(result_id, result_value);
+    Ok(())
+}
+
+fn lower_function_ref(
+    target: DefId,
+    result_ty: &Ty,
+    all_functions: &BTreeMap<DefId, FirFunction>,
+    call_conv: CallConv,
+    direct_functions: &mut BTreeMap<DefId, FuncRef>,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    let callee = all_functions
+        .get(&target)
+        .ok_or_else(|| shape(format!("FIR function ref target {target:?} is not in the module")))?;
+    let target_params = fir_parameter_types(callee)?;
+    let Ty::Function {
+        params,
+        result,
+        named_arguments: _,
+    } = result_ty
+    else {
+        return Err(shape(format!(
+            "FIR function ref has non-function result type {result_ty:?}"
+        )));
+    };
+    if params != &target_params || result.as_ref() != &callee.return_type {
+        return Err(shape(format!(
+            "FIR function ref type {result_ty:?} does not match target {target:?} signature"
+        )));
+    }
+
+    let func_ref = import_direct_function(
+        target,
+        callee,
+        call_conv,
+        direct_functions,
+        types,
+        cursor,
+    )?;
+    Ok(cursor.ins().func_addr(types.pointer_type()?, func_ref))
+}
+
+fn import_direct_function(
+    target: DefId,
+    callee: &FirFunction,
+    call_conv: CallConv,
+    direct_functions: &mut BTreeMap<DefId, FuncRef>,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<FuncRef, BackendError> {
+    if let Some(func_ref) = direct_functions.get(&target) {
+        return Ok(*func_ref);
+    }
+
+    let signature = lower_fir_signature(callee, types, call_conv)?;
+    let sig_ref = cursor.func.import_signature(signature);
+    let user_name = cursor
+        .func
+        .declare_imported_user_function(UserExternalName::new(0, target.0));
+    let func_ref = cursor.func.import_function(ExtFuncData {
+        name: ExternalName::user(user_name),
+        signature: sig_ref,
+        colocated: true,
+        patchable: false,
+    });
+    direct_functions.insert(target, func_ref);
+    Ok(func_ref)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -435,7 +742,7 @@ fn lower_place_address(
     values: &BTreeMap<FirValueId, Value>,
     types: &TypeLowering<'_>,
     cursor: &mut FuncCursor<'_>,
-) -> Result<(Value, Ty, MemFlagsData), BackendError> {
+) -> Result<(Value, Ty, MemFlags), BackendError> {
     match place {
         FirPlace::Local { local } => {
             let slot = local_slots
@@ -452,9 +759,10 @@ fn lower_place_address(
             Ok((address, local_ty, memory_flags.stack))
         }
         FirPlace::Deref { address } => {
-            let address_ty = fir.value_types.get(address).ok_or_else(|| {
-                shape(format!("missing type for dereference address {address:?}"))
-            })?;
+            let address_ty = fir
+                .value_types
+                .get(address)
+                .ok_or_else(|| shape(format!("missing type for dereference address {address:?}")))?;
             let (mutable, inner) = match address_ty {
                 Ty::Reference { mutable, inner } => (*mutable, inner.as_ref().clone()),
                 _ => {
@@ -466,7 +774,11 @@ fn lower_place_address(
             if access == PlaceAccess::Store && !mutable {
                 return Err(shape("store through shared FIR reference"));
             }
-            Ok((lookup_value(values, *address)?, inner, memory_flags.deref))
+            Ok((
+                lookup_value(values, *address)?,
+                inner,
+                memory_flags.deref,
+            ))
         }
         FirPlace::RawDeref {
             address,
@@ -478,11 +790,10 @@ fn lower_place_address(
                     kind: "volatile raw dereference",
                 });
             }
-            let address_ty = fir.value_types.get(address).ok_or_else(|| {
-                shape(format!(
-                    "missing type for raw dereference address {address:?}"
-                ))
-            })?;
+            let address_ty = fir
+                .value_types
+                .get(address)
+                .ok_or_else(|| shape(format!("missing type for raw dereference address {address:?}")))?;
             let inner = match address_ty {
                 Ty::Pointer { inner, .. } => inner.as_ref().clone(),
                 _ => {
@@ -491,7 +802,11 @@ fn lower_place_address(
                     )));
                 }
             };
-            Ok((lookup_value(values, *address)?, inner, memory_flags.deref))
+            Ok((
+                lookup_value(values, *address)?,
+                inner,
+                memory_flags.deref,
+            ))
         }
         FirPlace::ClosureCapture { .. } => Err(BackendError::UnsupportedInstruction {
             kind: "closure capture place",
@@ -518,16 +833,11 @@ fn lower_address_of(
             kind: "address of non-local place before aggregate layout",
         });
     };
-    let local_data = fir
+    let local_ty = &fir
         .locals
         .get(local)
-        .ok_or_else(|| shape(format!("missing FIR local {local:?}")))?;
-    if mutable && !local_data.mutable {
-        return Err(shape(format!(
-            "mutable address requested for immutable FIR local {local:?}"
-        )));
-    }
-    let local_ty = &local_data.ty;
+        .ok_or_else(|| shape(format!("missing FIR local {local:?}")))?
+        .ty;
     match result_ty {
         Ty::Reference {
             mutable: result_mutable,
@@ -539,11 +849,10 @@ fn lower_address_of(
             )));
         }
     }
-    let slot = local_slots.get(local).copied().ok_or_else(|| {
-        shape(format!(
-            "addressed FIR local {local:?} has no C7 stack slot"
-        ))
-    })?;
+    let slot = local_slots
+        .get(local)
+        .copied()
+        .ok_or_else(|| shape(format!("addressed FIR local {local:?} has no C7 stack slot")))?;
     Ok(cursor.ins().stack_addr(types.pointer_type()?, slot, 0))
 }
 
@@ -696,7 +1005,7 @@ fn lower_integer_binary(
                 )));
             }
             let bits = cursor.func.dfg.value_type(left_value).bits();
-            let out_of_range = cursor.ins().icmp_imm_u(
+            let out_of_range = cursor.ins().icmp_imm(
                 IntCC::UnsignedGreaterThanOrEqual,
                 right_value,
                 bits as i64,
@@ -869,7 +1178,9 @@ fn lower_terminator(
             else_block,
         } => {
             if fir.value_types.get(condition) != Some(&Ty::Bool) {
-                return Err(shape(format!("branch condition {condition:?} is not bool")));
+                return Err(shape(format!(
+                    "branch condition {condition:?} is not bool"
+                )));
             }
             cursor.ins().brif(
                 lookup_value(values, *condition)?,
