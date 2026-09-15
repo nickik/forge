@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use cranelift_codegen::cursor::{Cursor, FuncCursor};
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{
-    types as clif_types, Block, FuncRef, Function, InstBuilder, MemFlags, MemFlagsData, StackSlot,
+    types as clif_types, Block, FuncRef, Function, InstBuilder, MemFlagsData, StackSlot,
     StackSlotData, StackSlotKind, TrapCode, UserFuncName, Value,
 };
 use cranelift_codegen::isa::{CallConv, TargetIsa};
@@ -16,6 +16,8 @@ use forge_fir::{
 
 use crate::abi::lower_fir_signature;
 use crate::{BackendError, TypeLowering};
+
+type MemFlags = MemFlagsData;
 
 #[allow(dead_code)]
 mod legacy {
@@ -187,14 +189,8 @@ fn lower_aggregate_function(
     let mut layouts = LayoutEngine::new(LayoutTarget::new(types.target().pointer_bits), definitions);
     let local_slots = allocate_local_slots(fir, &mut layouts, &mut function)?;
     let flags = MemoryFlags {
-        stack: function
-            .dfg
-            .mem_flags
-            .insert_unchecked(MemFlagsData::trusted()),
-        deref: function
-            .dfg
-            .mem_flags
-            .insert_unchecked(MemFlagsData::new()),
+        stack: MemFlagsData::trusted(),
+        deref: MemFlagsData::new(),
     };
 
     let mut blocks = BTreeMap::new();
@@ -323,7 +319,15 @@ fn lower_mixed_instruction(
                 return Err(shape("store value and place types differ"));
             }
             store_typed_value(
-                *value, ty, address, dst_flags, flags.stack, scalars, aggregates, layouts, cursor,
+                *value,
+                ty,
+                address,
+                dst_flags,
+                flags.stack,
+                scalars,
+                aggregates,
+                layouts,
+                cursor,
             )?;
             return Ok(());
         }
@@ -361,7 +365,15 @@ fn lower_mixed_instruction(
                 return Err(shape("load result and place types differ"));
             }
             materialize_result(
-                id, ty, address, src_flags, flags.stack, scalars, aggregates, layouts, types,
+                id,
+                ty,
+                address,
+                src_flags,
+                flags.stack,
+                scalars,
+                aggregates,
+                layouts,
+                types,
                 cursor,
             )?;
             return Ok(());
@@ -398,7 +410,10 @@ fn lower_mixed_instruction(
             };
             let stride = layouts.layout_of(inner).map_err(layout_error)?.size;
             let normalized = normalize_index(
-                value_type(fir, *offset)?, scalar(scalars, *offset)?, types, cursor,
+                value_type(fir, *offset)?,
+                scalar(scalars, *offset)?,
+                types,
+                cursor,
             )?;
             let scaled = scale_index(normalized, stride, types, cursor)?;
             let base = scalar(scalars, *pointer)?;
@@ -510,8 +525,16 @@ fn lower_mixed_instruction(
             }
             let address = add_offset(source.address, offset, cursor)?;
             materialize_result(
-                id, result_ty, address, flags.stack, flags.stack, scalars, aggregates, layouts,
-                types, cursor,
+                id,
+                result_ty,
+                address,
+                flags.stack,
+                flags.stack,
+                scalars,
+                aggregates,
+                layouts,
+                types,
+                cursor,
             )?;
             return Ok(());
         }
@@ -543,8 +566,16 @@ fn lower_mixed_instruction(
                 return Err(shape("index result type mismatch"));
             }
             materialize_result(
-                id, result_ty, address, flags.stack, flags.stack, scalars, aggregates, layouts,
-                types, cursor,
+                id,
+                result_ty,
+                address,
+                flags.stack,
+                flags.stack,
+                scalars,
+                aggregates,
+                layouts,
+                types,
+                cursor,
             )?;
             return Ok(());
         }
@@ -565,8 +596,16 @@ fn lower_mixed_instruction(
             let layout = layouts.layout_of(option_ty).map_err(layout_error)?;
             let address = payload_address(&layout, source.address, cursor)?;
             materialize_result(
-                id, result_ty, address, flags.stack, flags.stack, scalars, aggregates, layouts,
-                types, cursor,
+                id,
+                result_ty,
+                address,
+                flags.stack,
+                flags.stack,
+                scalars,
+                aggregates,
+                layouts,
+                types,
+                cursor,
             )?;
             return Ok(());
         }
@@ -604,8 +643,16 @@ fn lower_mixed_instruction(
             let layout = layouts.layout_of(sum_ty).map_err(layout_error)?;
             let address = payload_address(&layout, source.address, cursor)?;
             materialize_result(
-                id, result_ty, address, flags.stack, flags.stack, scalars, aggregates, layouts,
-                types, cursor,
+                id,
+                result_ty,
+                address,
+                flags.stack,
+                flags.stack,
+                scalars,
+                aggregates,
+                layouts,
+                types,
+                cursor,
             )?;
             return Ok(());
         }
@@ -713,7 +760,11 @@ fn lower_place_address(
             let Ty::Reference { inner, .. } = value_type(fir, *address)? else {
                 return Err(shape("safe dereference has non-reference address"));
             };
-            Ok((scalar(scalars, *address)?, inner.as_ref().clone(), flags.deref))
+            Ok((
+                scalar(scalars, *address)?,
+                inner.as_ref().clone(),
+                flags.deref,
+            ))
         }
         FirPlace::RawDeref {
             address, volatile, ..
@@ -726,18 +777,38 @@ fn lower_place_address(
             let Ty::Pointer { inner, .. } = value_type(fir, *address)? else {
                 return Err(shape("raw dereference has non-pointer address"));
             };
-            Ok((scalar(scalars, *address)?, inner.as_ref().clone(), flags.deref))
+            Ok((
+                scalar(scalars, *address)?,
+                inner.as_ref().clone(),
+                flags.deref,
+            ))
         }
         FirPlace::Field { base, field } => {
             let (address, base_ty, mem_flags) = lower_place_address(
-                fir, definitions, base, local_slots, flags, scalars, types, layouts, cursor,
+                fir,
+                definitions,
+                base,
+                local_slots,
+                flags,
+                scalars,
+                types,
+                layouts,
+                cursor,
             )?;
             let (field_ty, offset) = field_projection(definitions, layouts, &base_ty, field)?;
             Ok((add_offset(address, offset, cursor)?, field_ty, mem_flags))
         }
         FirPlace::Index { base, index } => {
             let (address, base_ty, mem_flags) = lower_place_address(
-                fir, definitions, base, local_slots, flags, scalars, types, layouts, cursor,
+                fir,
+                definitions,
+                base,
+                local_slots,
+                flags,
+                scalars,
+                types,
+                layouts,
+                cursor,
             )?;
             let (address, element_ty) = index_address(
                 fir,
@@ -834,7 +905,12 @@ fn index_address(
     types: &TypeLowering<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(Value, Ty), BackendError> {
-    let index = normalize_index(value_type(fir, index)?, scalar(scalars, index)?, types, cursor)?;
+    let index = normalize_index(
+        value_type(fir, index)?,
+        scalar(scalars, index)?,
+        types,
+        cursor,
+    )?;
     match base_ty {
         Ty::Array { element, .. } => {
             let layout = layouts.layout_of(base_ty).map_err(layout_error)?;
@@ -842,7 +918,10 @@ fn index_address(
                 return Err(shape("array has non-array layout"));
             };
             let offset = scale_index(index, stride, types, cursor)?;
-            Ok((cursor.ins().iadd(base_address, offset), element.as_ref().clone()))
+            Ok((
+                cursor.ins().iadd(base_address, offset),
+                element.as_ref().clone(),
+            ))
         }
         Ty::Slice { element, .. } => {
             let layout = layouts.layout_of(base_ty).map_err(layout_error)?;
@@ -857,7 +936,10 @@ fn index_address(
             );
             let stride = layouts.layout_of(element).map_err(layout_error)?.size;
             let offset = scale_index(index, stride, types, cursor)?;
-            Ok((cursor.ins().iadd(data, offset), element.as_ref().clone()))
+            Ok((
+                cursor.ins().iadd(data, offset),
+                element.as_ref().clone(),
+            ))
         }
         _ => Err(shape(format!("index on non-array/slice {base_ty:?}"))),
     }
@@ -933,7 +1015,9 @@ fn lower_make_aggregate(
     let result = new_aggregate(ty, layouts, types, cursor)?;
 
     match &definition.kind {
-        TypeDefinitionKind::Struct { fields: source_fields } if variant_name.is_none() => {
+        TypeDefinitionKind::Struct {
+            fields: source_fields,
+        } if variant_name.is_none() => {
             for (name, value) in fields {
                 let source = source_fields
                     .iter()
@@ -1061,7 +1145,10 @@ fn lower_make_result_err(
     types: &TypeLowering<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
-    let Ty::Result { error: error_ty, .. } = ty else {
+    let Ty::Result {
+        error: error_ty, ..
+    } = ty
+    else {
         return Err(shape("result-err result is not Result"));
     };
     if value_type(fir, error)? != error_ty.as_ref() {
@@ -1204,7 +1291,10 @@ fn lower_len(
     cursor: &mut FuncCursor<'_>,
 ) -> Result<Value, BackendError> {
     match ty {
-        Ty::Array { length: Some(length), .. } => {
+        Ty::Array {
+            length: Some(length),
+            ..
+        } => {
             let length = i64::try_from(*length).map_err(|_| shape("array length exceeds i64"))?;
             Ok(cursor.ins().iconst(types.pointer_type()?, length))
         }
@@ -1269,7 +1359,14 @@ fn write_variant(
     match &layout.kind {
         LayoutKind::Enum { tag } => {
             if let Some(tag) = tag {
-                store_integer_immediate(tag.size as u16 * 8, variant as u128, base, tag.offset, flags, cursor)?;
+                store_integer_immediate(
+                    tag.size as u16 * 8,
+                    variant as u128,
+                    base,
+                    tag.offset,
+                    flags,
+                    cursor,
+                )?;
             }
         }
         LayoutKind::Optional { encoding }
@@ -1277,7 +1374,14 @@ fn write_variant(
         | LayoutKind::Tagged { encoding, .. } => match encoding {
             SumEncoding::Single => {}
             SumEncoding::Tagged { tag, .. } => {
-                store_integer_immediate(tag.size as u16 * 8, variant as u128, base, tag.offset, flags, cursor)?;
+                store_integer_immediate(
+                    tag.size as u16 * 8,
+                    variant as u128,
+                    base,
+                    tag.offset,
+                    flags,
+                    cursor,
+                )?;
             }
             SumEncoding::Niche {
                 payload_variant,
@@ -1291,7 +1395,14 @@ fn write_variant(
                         .find(|(index, _)| *index == variant)
                         .map(|(_, value)| *value)
                         .ok_or_else(|| shape("missing niche for fieldless variant"))?;
-                    store_integer_immediate(*niche_bits as u16, value, base, *niche_offset, flags, cursor)?;
+                    store_integer_immediate(
+                        *niche_bits as u16,
+                        value,
+                        base,
+                        *niche_offset,
+                        flags,
+                        cursor,
+                    )?;
                 }
             }
         },
@@ -1378,8 +1489,12 @@ fn store_integer_immediate(
     flags: MemFlags,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
-    let value = cursor.ins().iconst(clif_integer_type(bits)?, value as u64 as i64);
-    cursor.ins().store(flags, value, base, i32_offset(offset)?);
+    let value = cursor
+        .ins()
+        .iconst(clif_integer_type(bits)?, value as u64 as i64);
+    cursor
+        .ins()
+        .store(flags, value, base, i32_offset(offset)?);
     Ok(())
 }
 
@@ -1440,7 +1555,11 @@ fn scale_index(
     Ok(cursor.ins().imul(index, scale))
 }
 
-fn add_offset(base: Value, offset: u64, cursor: &mut FuncCursor<'_>) -> Result<Value, BackendError> {
+fn add_offset(
+    base: Value,
+    offset: u64,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
     if offset == 0 {
         return Ok(base);
     }
