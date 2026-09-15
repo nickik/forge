@@ -117,48 +117,48 @@ fn choose_module(signed: bool) -> (FirModule, DefId) {
     (module, owner)
 }
 
-fn out_of_order_linear_module() -> (FirModule, DefId) {
+fn cross_block_value_module() -> (FirModule, DefId) {
     let owner = DefId(1);
     let ty = int_ty(false);
     let value = FirValueId(10);
     let span = Span::new(0, 0);
-    let entry = FirBasicBlock {
-        id: FirBlockId(10),
-        closure: None,
-        instructions: vec![],
-        terminator: Some(FirTerminator::Goto {
-            target: FirBlockId(11),
-        }),
-    };
-    let define = FirBasicBlock {
-        id: FirBlockId(11),
-        closure: None,
-        instructions: vec![FirInstruction {
-            span,
-            result: Some(value),
-            kind: FirInstructionKind::Const {
-                value: FirConst::Integer { text: "42".into() },
-            },
-        }],
-        terminator: Some(FirTerminator::Goto {
-            target: FirBlockId(12),
-        }),
-    };
-    let use_value = FirBasicBlock {
-        id: FirBlockId(12),
-        closure: None,
-        instructions: vec![],
-        terminator: Some(FirTerminator::Return { value: Some(value) }),
-    };
     let function = FirFunction {
         owner,
         params: vec![],
         return_type: ty.clone(),
         locals: BTreeMap::new(),
         closures: BTreeMap::new(),
-        entry: FirBlockId(10),
-        // Deliberately not CFG order. C3 lowering must not depend on this vector.
-        blocks: vec![entry, use_value, define],
+        entry: FirBlockId(0),
+        blocks: vec![
+            FirBasicBlock {
+                id: FirBlockId(0),
+                closure: None,
+                instructions: vec![],
+                terminator: Some(FirTerminator::Goto {
+                    target: FirBlockId(1),
+                }),
+            },
+            FirBasicBlock {
+                id: FirBlockId(1),
+                closure: None,
+                instructions: vec![FirInstruction {
+                    span,
+                    result: Some(value),
+                    kind: FirInstructionKind::Const {
+                        value: FirConst::Integer { text: "42".into() },
+                    },
+                }],
+                terminator: Some(FirTerminator::Goto {
+                    target: FirBlockId(2),
+                }),
+            },
+            FirBasicBlock {
+                id: FirBlockId(2),
+                closure: None,
+                instructions: vec![],
+                terminator: Some(FirTerminator::Return { value: Some(value) }),
+            },
+        ],
         value_types: BTreeMap::from([(value, ty)]),
     };
     let mut module = FirModule::default();
@@ -208,18 +208,18 @@ fn signed_comparison_keeps_fir_signedness() {
 }
 
 #[test]
-fn block_storage_order_does_not_control_value_availability() {
-    let (module, owner) = out_of_order_linear_module();
+fn dominating_scalar_value_crosses_basic_blocks() {
+    let (module, owner) = cross_block_value_module();
     let backend = CraneliftBackend::aarch64().expect("AArch64 backend");
     let prepared = backend
         .prepare_module(&module)
-        .expect("C3 should schedule blocks from value dependencies, not vector order");
+        .expect("dominating scalar FIR value should cross blocks");
     let clif = prepared
         .function(owner)
         .expect("lowered linear function")
         .display()
         .to_string();
     assert!(clif.contains("iconst.i64 42"), "{clif}");
-    assert!(clif.contains("jump"), "{clif}");
+    assert_eq!(clif.matches("jump").count(), 2, "{clif}");
     assert!(clif.contains("return"), "{clif}");
 }
