@@ -1,0 +1,71 @@
+name: C13 native compatibility baseline
+
+on:
+  push:
+    branches: [agent/cranelift-c13-native-existing-code]
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: nickik/CForge
+          path: .cforge
+      - uses: actions/checkout@v4
+        with:
+          repository: nickik/Cosmic
+          path: .cosmic
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build native Forge compiler
+        run: cargo build -p forge-compiler --bin forgec --locked
+      - name: Probe existing CForge and Cosmic sources
+        shell: bash
+        run: |
+          set +e
+          fail=0
+          run_case() {
+            name="$1"
+            shift
+            echo "===== CASE: $name ====="
+            "$@"
+            rc=$?
+            echo "===== RESULT: $name rc=$rc ====="
+            if [ "$rc" -ne 0 ]; then fail=1; fi
+            echo
+          }
+
+          FORGEC="$GITHUB_WORKSPACE/target/debug/forgec"
+
+          run_case cforge-arithmetic \
+            "$FORGEC" \
+            --library "bootstrap_support=$GITHUB_WORKSPACE/.cforge/packages/bootstrap-support/src/lib.fg" \
+            --run "$GITHUB_WORKSPACE/.cforge/harness/fixtures/smoke/arithmetic.fg"
+
+          run_case cosmic-address-space-minimal \
+            "$FORGEC" \
+            --library "cosmic.kernel.memory.address_space=$GITHUB_WORKSPACE/.cosmic/kernel/memory/address_space.fg" \
+            --run "$GITHUB_WORKSPACE/.cosmic/tests/address_space_minimal_test.fg"
+
+          run_case cosmic-capability-security \
+            "$FORGEC" \
+            --library "cosmic.kernel.capability.capability=$GITHUB_WORKSPACE/.cosmic/kernel/capability/capability.fg" \
+            --run "$GITHUB_WORKSPACE/.cosmic/tests/capability_security_test.fg"
+
+          run_case cosmic-handle-space \
+            "$FORGEC" \
+            --library "cosmic.kernel.capability.capability=$GITHUB_WORKSPACE/.cosmic/kernel/capability/capability.fg" \
+            --library "cosmic.kernel.capability.handle_space=$GITHUB_WORKSPACE/.cosmic/kernel/capability/handle_space.fg" \
+            --run "$GITHUB_WORKSPACE/.cosmic/tests/handle_space_test.fg"
+
+          run_case cforge-game-of-life \
+            "$FORGEC" \
+            --library "std.console=$GITHUB_WORKSPACE/lib/std/console.fg" \
+            --library "bootstrap_support=$GITHUB_WORKSPACE/.cforge/packages/bootstrap-support/src/lib.fg" \
+            --run "$GITHUB_WORKSPACE/.cforge/examples/game_of_life.fg"
+
+          exit "$fail"
