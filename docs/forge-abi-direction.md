@@ -20,12 +20,6 @@ r15      callee-saved general register; optional frame pointer
 
 This physical register partition is not yet normative SIA ABI. Forge therefore describes logical ABI pieces; the future SIA Cranelift backend maps those pieces to physical registers and stack locations.
 
-## C8 boundary
-
-C8 supports scalar integer, `bool`, pointer, reference and function-pointer calls, direct calls, first-class function references and indirect calls. It deliberately does not use Cranelift's C-struct ABI facilities for native Forge values.
-
-Required Forge tail calls remain an explicit unsupported boundary until a target backend can guarantee a non-growing tail call.
-
 # C9 accepted rules
 
 ## 1. Keep memory layout, call decomposition and register assignment separate
@@ -71,8 +65,6 @@ uses storage order equivalent to:
 b, d, c, a
 ```
 
-rather than source order.
-
 For each field in that order:
 
 1. round the current offset up to the field alignment;
@@ -101,48 +93,75 @@ No additional address-identity rule is specified for zero-sized fields in C9.
 
 A zero-sized function parameter decomposes to zero ABI pieces and consumes no argument register or stack slot. A zero-sized return value similarly consumes no return ABI location.
 
-## 4. Forge call ABI recursively decomposes values into ABI pieces
+## 4. Forge call ABI recursively decomposes values into scalar fragments
 
 Call ABI decomposition is mechanical and independent from C struct classification.
 
 Baseline recursive decomposition:
 
 ```text
-integer scalar        -> integer piece
-bool                  -> scalar piece
-pointer/reference     -> pointer piece
-function pointer      -> pointer piece
-distinct scalar       -> underlying representation piece
+integer scalar        -> integer fragment
+bool                  -> integer fragment
+pointer/reference     -> pointer fragment
+function pointer      -> pointer fragment
+distinct scalar       -> underlying representation fragment
 struct                -> recursively decompose fields
 array [T; N]          -> N repetitions of T decomposition
-slice / string view   -> pointer piece + usize piece
-zero-sized value      -> no pieces
+slice / string view   -> pointer fragment + usize fragment
+zero-sized value      -> no fragments
 ```
 
-Struct fields are decomposed in increasing physical field offset so register order naturally follows storage order. Nested aggregates apply the same rule recursively.
+Struct fields are decomposed in increasing physical field offset. Nested aggregates apply the same rule recursively.
 
-Padding is not an ABI piece and does not consume a register or stack slot.
+Padding is not a fragment and never becomes an ABI piece.
 
-Type aliases have exactly the decomposition of their aliased type. `distinct` types preserve their source-level type identity but have the ABI decomposition of their underlying representation.
+Type aliases have exactly the decomposition of their aliased type. `distinct` types preserve source-level type identity but have the ABI decomposition of their underlying representation.
 
-## 5. SIA32 uses four words as the direct single-aggregate limit
+## 5. Compatible sub-word integer fragments are coalesced into ABI words
+
+After recursive decomposition, Forge mechanically coalesces compatible adjacent sub-word integer fragments before register/stack assignment.
+
+For an integer ABI word of `W` bits:
+
+1. walk scalar fragments in decomposition order;
+2. consecutive integer/bool fragments smaller than `W` may share one ABI word while their total occupied bits fit;
+3. preserve each fragment's increasing-memory-offset order within the word;
+4. start a new ABI word when the next fragment does not fit;
+5. full-word and multiword integer fragments start at the next ABI-word boundary;
+6. pointer, reference and function-pointer fragments always start their own ABI piece and are never packed together with integer fragments;
+7. padding bytes are ignored rather than encoded into the ABI word.
+
+For SIA32, `W = 32`. Thus values such as:
+
+```text
+{ u8, u8, u8, u8 } -> 1 ABI word
+{ u16, u8, u8 }    -> 1 ABI word
+{ u32, u8, u8 }    -> 2 ABI words
+```
+
+The packed word is a call representation only. It does not change the aggregate's in-memory representation.
+
+On little-endian targets, the earliest fragment occupies the least-significant available bits of the ABI word. Later big-endian targets must define the corresponding deterministic mapping as part of their target ABI.
+
+The callee reconstructs the original scalar fragments mechanically from the ABI word before ordinary FIR semantics observe them.
+
+## 6. SIA32 uses four words as the direct single-aggregate limit
 
 For the initial SIA32 Forge ABI design:
 
 - one integer ABI word is 32 bits;
+- the four-word limit is applied **after sub-word coalescing**;
 - a single aggregate with at most four ABI words may be passed or returned directly;
 - a single aggregate requiring more than four ABI words is indirect;
 - the overall scalar argument bank may still use the proposed `r1-r6`; the four-word rule is a per-aggregate direct-value limit, not a six-argument limit.
 
 This intentionally favors the natural `LD4/ST4` group size while still leaving `r5-r6` useful for additional scalar arguments.
 
-The logical direct aggregate return bank therefore uses at most four words even if the final SIA ABI retains six general argument/return registers.
-
-## 6. Register/stack splitting is allowed
+## 7. Register/stack splitting is allowed
 
 When a directly passed value fits the direct-value rule but there are not enough argument registers left, it may be split between the remaining argument registers and stack ABI locations.
 
-Example direction:
+Example:
 
 ```text
 r1-r5 already occupied
@@ -155,15 +174,15 @@ piece 2 -> stack
 
 The value is not forced wholly to the stack merely because all of its pieces do not fit in registers.
 
-The target ABI must define the deterministic continuation order from registers to stack. For SIA32 this should be ordinary increasing ABI-piece order.
+The target ABI must define deterministic continuation order from registers to stack. For SIA32 this is ordinary increasing ABI-piece order.
 
-## 7. SIA32 64-bit values use ordinary consecutive slots
+## 8. SIA32 64-bit values use ordinary consecutive slots
 
 A 64-bit integer on SIA32 decomposes into two consecutive 32-bit ABI words.
 
 It may begin in any available argument or return slot. There is no artificial even-register alignment rule.
 
-Piece order follows increasing memory offset. On little-endian SIA32 this means:
+Piece order follows increasing memory significance. On little-endian SIA32:
 
 ```text
 lower-numbered ABI slot -> low 32 bits
@@ -172,21 +191,17 @@ next ABI slot           -> high 32 bits
 
 If only one register remains, the low word may occupy that register and the high word may continue on the stack under the normal splitting rule.
 
-## 8. Indirect aggregates remain value semantics
+## 9. Indirect aggregates retain value semantics
 
 An aggregate exceeding the direct-value limit is passed indirectly through caller-provided storage containing the value.
 
-For an indirect parameter, the ABI behaves as if the callee receives a pointer to the argument value. The language value remains a value; the indirection is only a calling convention representation.
+For an indirect parameter, the ABI behaves as if the callee receives a pointer to the argument value. For an indirect return, the caller provides return storage and the callee writes the result there through a hidden ABI argument.
 
-For an indirect return, the caller provides return storage and the callee writes the result there through a hidden ABI argument.
-
-The compiler may eliminate temporary copies when it can prove that doing so preserves Forge value semantics.
-
-The physical placement of hidden indirect pointers belongs to each target ABI, not FIR semantics.
+The language value remains a value; the indirection is only a calling-convention representation. The compiler may eliminate temporary copies when it can prove Forge value semantics are preserved.
 
 # Sum types and stable niches
 
-## 9. Layout carries stable niche information
+## 10. Layout carries stable niche information
 
 A representation may expose bit patterns that cannot represent a valid value. C9 calls these stable niches.
 
@@ -197,11 +212,11 @@ The initial guaranteed niche sources are:
 - raw pointers under Forge's non-null raw-pointer semantics: zero is not an ordinary valid pointer value;
 - enum discriminant representations: unused discriminant values are niches.
 
-C9 does not derive additional pointer niches merely from alignment. Alignment-derived tagged-pointer encodings remain a possible later optimization.
+C9 does not derive additional pointer niches merely from alignment.
 
 Niche choice is deterministic: when several equivalent numeric niche values are available, use the lowest available representation first.
 
-## 10. `Option<T>` uses a stable niche when available
+## 11. `Option<T>` uses a stable niche when available
 
 If `T` exposes at least one stable niche, `Option<T>` uses one niche for `None` and otherwise uses the unchanged valid representation of `T` for `Some(T)`.
 
@@ -215,11 +230,11 @@ Option<bool>
 
 need no separate tag when a stable niche is available.
 
-Unused niches remain available to the resulting type. This permits nested optional values to remain compact when sufficient unused representations remain.
+Unused niches remain available to the resulting type, permitting nested optional values to remain compact while sufficient unused representations remain.
 
-If no stable niche is available, `Option<T>` uses the ordinary explicit-tag sum representation described below.
+If no stable niche is available, `Option<T>` uses the ordinary explicit-tag sum representation.
 
-## 11. Simple tagged unions may consume payload niches
+## 12. Simple tagged unions may consume payload niches
 
 A tagged union with exactly one payload-bearing variant and one or more fieldless variants may encode the fieldless variants in stable niches of the payload representation when enough niches exist.
 
@@ -233,7 +248,7 @@ If there are not enough stable niches, use the explicit-tag representation inste
 
 C9 does not attempt general niche packing for multiple independent payload-bearing variants.
 
-## 12. Explicit tags use the smallest ordinary integer storage class
+## 13. Explicit tags use the smallest ordinary integer storage class
 
 When a sum type cannot use a stable niche, it uses an explicit discriminant plus payload storage.
 
@@ -250,71 +265,26 @@ that can encode every variant.
 
 The payload storage has the maximum size and alignment needed by any variant payload. The tag and payload storage participate in the normal deterministic Forge aggregate-layout algorithm.
 
-Inactive payload storage has no source-level value.
+Inactive payload storage has no source-level value. The call ABI decomposes the resulting representation mechanically and may coalesce compatible sub-word integer fragments under the normal C9 rule.
 
-The call ABI decomposes the resulting representation mechanically; it does not replace it with a C enum ABI.
+# Deferred beyond C9
 
-# Important optimization opportunities deliberately not frozen yet
+The following are intentionally left for future Forge/ABI versions rather than being part of C9:
 
-The accepted rules above are enough to implement a correct first C9 layout engine, but several worthwhile optimizations should be evaluated before declaring the ABI permanently frozen.
+- reusing nested aggregate tail padding for outer fields or discriminants;
+- alignment-derived pointer niches and other aggressive niche discovery;
+- bit-packing `bool` or small integer fields in memory;
+- floating-point aggregate/register classes;
+- private/LTO-specific ABI rewriting and scalar replacement;
+- source-order, C-compatible and packed aggregate representations;
+- C interoperability;
+- varargs;
+- TLS;
+- unwind/debug ABI;
+- object/relocation format.
 
-## A. Sub-word ABI coalescing
+C9 should keep its internal layout/ABI abstractions extensible enough that these can be added later without confusing memory layout, call decomposition and physical target assignment.
 
-Naive recursive scalar decomposition can waste registers. For example:
+# Remaining C9 implementation detail
 
-```text
-struct FourBytes {
-    a: u8;
-    b: u8;
-    c: u8;
-    d: u8;
-}
-```
-
-should not necessarily consume four 32-bit SIA argument registers.
-
-A later ABI-classification pass could coalesce compatible adjacent sub-word scalar pieces into a word-sized ABI piece. This is probably the most important remaining call-ABI optimization to measure before freeze.
-
-The design must decide whether coalescing follows contiguous memory bytes, a canonical field-bit stream, or another deterministic rule. Pointer/reference pieces should not be silently packed together with integer fragments.
-
-## B. Reusing aggregate padding
-
-Forge could eventually place outer fields or sum-type discriminants into otherwise-unused tail padding of nested aggregates.
-
-This can reduce size beyond simple field reordering, especially for nested records and tagged values, but it complicates aggregate copying and address/layout reasoning. C9 should not require it for the first implementation.
-
-## C. More aggressive niches
-
-Potential later niches include alignment-invalid pointer bit patterns and other type-specific invalid states.
-
-These can make tagged pointers and richer sums extremely compact, but they should become ABI-visible only after their validity/provenance rules are unambiguous. C9 initially uses only the stable niches listed above.
-
-## D. Bit-packing bools and very small fields
-
-Multiple `bool` or small integer fields could be bit-packed in memory. That saves space but makes field access, mutation and references substantially more complicated.
-
-Do not implement this in the initial C9 default layout. Keep byte-addressable scalar fields for now.
-
-## E. Floating-point register classes
-
-Forge's eventual native ABI should be able to classify floating-point pieces separately on targets with FP argument registers rather than forcing all aggregates through integer words.
-
-C9's first aggregate work can remain integer/pointer focused, but the ABI model should not assume that all future pieces belong to one register class.
-
-## F. Private/LTO ABI rewriting
-
-The stable ABI remains deterministic. Whole-program compilation may later choose different private call decompositions, eliminate indirect temporaries, scalar-replace aggregates or reorder private representations when no externally visible contract is affected.
-
-This is an optimization layer, not part of the stable C9 ABI.
-
-# Remaining C9 questions before final freeze
-
-The design is now substantially narrower. The main remaining ABI questions are:
-
-1. Whether and how to coalesce sub-word scalar pieces into word-sized call pieces.
-2. Exact target stack-slot layout/alignment for split arguments.
-3. Whether tail-padding reuse is worthwhile enough to become part of the stable default layout.
-4. Whether any stable niches beyond null pointers/references, canonical `bool`, and unused enum discriminants should be guaranteed in v1.
-5. Later floating-point piece classification.
-
-C interoperability, packed representations, varargs, TLS, unwind/debug ABI and object/relocation format are outside the current C9 focus.
+The major aggregate design choices are now specified. The remaining target-level detail to settle during implementation is the exact stack-slot size/alignment rule for split SIA32 arguments. This should be kept in the target ABI layer rather than embedded in Forge aggregate semantics.
