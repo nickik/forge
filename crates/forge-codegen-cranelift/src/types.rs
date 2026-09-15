@@ -98,9 +98,7 @@ impl<'a> TypeLowering<'a> {
                 IntWidth::Pointer => self.pointer_type(),
             },
 
-            Ty::Pointer { .. } | Ty::Reference { .. } | Ty::Function { .. } => {
-                self.pointer_type()
-            }
+            Ty::Pointer { .. } | Ty::Reference { .. } | Ty::Function { .. } => self.pointer_type(),
 
             Ty::Never => unsupported("never"),
             Ty::Void => unsupported("void"),
@@ -126,14 +124,16 @@ impl<'a> TypeLowering<'a> {
 
     fn authoritative_scalar_layout(&self, ty: &Ty) -> Result<ScalarLayout, BackendError> {
         let definitions = TypeDefinitionTable::new();
-        let mut layouts = LayoutEngine::new(LayoutTarget::new(self.target.pointer_bits), &definitions);
+        let mut layouts =
+            LayoutEngine::new(LayoutTarget::new(self.target.pointer_bits), &definitions);
         let layout = layouts.layout_of(ty).map_err(layout_error)?;
         let size_bytes = u32::try_from(layout.size).map_err(|_| BackendError::UnsupportedType {
             kind: "scalar layout size",
         })?;
-        let align_bytes = u32::try_from(layout.align).map_err(|_| BackendError::UnsupportedType {
-            kind: "scalar layout alignment",
-        })?;
+        let align_bytes =
+            u32::try_from(layout.align).map_err(|_| BackendError::UnsupportedType {
+                kind: "scalar layout alignment",
+            })?;
         Ok(ScalarLayout::new(size_bytes, align_bytes))
     }
 }
