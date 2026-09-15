@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -163,96 +162,80 @@ fn executes_riscv64_machine_code_under_qemu() {
 }
 
 fn run_under_qemu(machine: &MachineCode, argument: u16) -> i32 {
-    assert!(argument < 2048, "test launcher uses ADDI immediate");
-    let image = rv64_elf_launcher(machine.bytes(), argument);
-    let path = temporary_executable(argument);
-    let mut file = fs::File::create(&path).expect("create RV64 ELF");
-    file.write_all(&image).expect("write RV64 ELF");
-    drop(file);
+    let dir = temporary_directory(argument);
+    fs::create_dir_all(&dir).expect("create RV64 test directory");
+    let function = dir.join("function.bin");
+    let source = dir.join("launcher.s");
+    let object = dir.join("launcher.o");
+    let executable = dir.join("launcher.elf");
+
+    fs::write(&function, machine.bytes()).expect("write RV64 function bytes");
+    fs::write(
+        &source,
+        format!(
+            ".section .text\n\
+             .globl _start\n\
+             .type _start, @function\n\
+             _start:\n\
+               li a0, {argument}\n\
+               call forge_fn\n\
+               li a7, 93\n\
+               ecall\n\
+             .balign 4\n\
+             .globl forge_fn\n\
+             .type forge_fn, @function\n\
+             forge_fn:\n\
+               .incbin \"{}\"\n",
+            function.display()
+        ),
+    )
+    .expect("write RV64 launcher assembly");
+
+    run_tool(
+        "riscv64-linux-gnu-as",
+        [
+            "-march=rv64gc",
+            "-mabi=lp64d",
+            "-o",
+            object.to_str().expect("object path"),
+            source.to_str().expect("source path"),
+        ],
+    );
+    run_tool(
+        "riscv64-linux-gnu-ld",
+        [
+            "-nostdlib",
+            "-static",
+            "-e",
+            "_start",
+            "-o",
+            executable.to_str().expect("executable path"),
+            object.to_str().expect("object path"),
+        ],
+    );
 
     let status = Command::new("qemu-riscv64")
-        .arg(&path)
+        .arg(&executable)
         .status()
         .expect("qemu-riscv64 must be installed when FORGE_RISCV64_EXECUTION is set");
-    let _ = fs::remove_file(&path);
+    let _ = fs::remove_dir_all(&dir);
     status.code().expect("qemu terminated by signal")
 }
 
-fn temporary_executable(argument: u16) -> PathBuf {
-    std::env::temp_dir().join(format!("forge-rv64-{}-{argument}.elf", std::process::id()))
+fn run_tool<const N: usize>(program: &str, args: [&str; N]) {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .unwrap_or_else(|error| panic!("failed to run {program}: {error}"));
+    assert!(
+        output.status.success(),
+        "{program} failed with {}:\nstdout:\n{}\nstderr:\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
-fn rv64_elf_launcher(function: &[u8], argument: u16) -> Vec<u8> {
-    const ELF_HEADER: usize = 64;
-    const PROGRAM_HEADER: usize = 56;
-    const CODE_OFFSET: usize = 0x1000;
-    const BASE_ADDRESS: u64 = 0x1_0000;
-
-    let wrapper = [
-        encode_addi(10, 0, argument as i16),
-        encode_jal(1, 12),
-        encode_addi(17, 0, 93),
-        0x0000_0073,
-    ];
-
-    let mut code = Vec::with_capacity(wrapper.len() * 4 + function.len());
-    for instruction in wrapper {
-        code.extend_from_slice(&instruction.to_le_bytes());
-    }
-    code.extend_from_slice(function);
-
-    let mut elf = vec![0_u8; CODE_OFFSET];
-    elf[0..4].copy_from_slice(b"\x7fELF");
-    elf[4] = 2;
-    elf[5] = 1;
-    elf[6] = 1;
-    put_u16(&mut elf, 16, 2);
-    put_u16(&mut elf, 18, 243);
-    put_u32(&mut elf, 20, 1);
-    put_u64(&mut elf, 24, BASE_ADDRESS);
-    put_u64(&mut elf, 32, ELF_HEADER as u64);
-    put_u16(&mut elf, 52, ELF_HEADER as u16);
-    put_u16(&mut elf, 54, PROGRAM_HEADER as u16);
-    put_u16(&mut elf, 56, 1);
-
-    let ph = ELF_HEADER;
-    put_u32(&mut elf, ph, 1);
-    put_u32(&mut elf, ph + 4, 5);
-    put_u64(&mut elf, ph + 8, CODE_OFFSET as u64);
-    put_u64(&mut elf, ph + 16, BASE_ADDRESS);
-    put_u64(&mut elf, ph + 24, BASE_ADDRESS);
-    put_u64(&mut elf, ph + 32, code.len() as u64);
-    put_u64(&mut elf, ph + 40, code.len() as u64);
-    put_u64(&mut elf, ph + 48, 0x1000);
-
-    elf.extend_from_slice(&code);
-    elf
-}
-
-fn encode_addi(rd: u32, rs1: u32, immediate: i16) -> u32 {
-    let imm = (immediate as u16 as u32) & 0x0fff;
-    (imm << 20) | (rs1 << 15) | (rd << 7) | 0x13
-}
-
-fn encode_jal(rd: u32, offset: i32) -> u32 {
-    assert_eq!(offset & 1, 0);
-    assert!((-1_048_576..=1_048_574).contains(&offset));
-    let imm = offset as u32;
-    let bit20 = (imm >> 20) & 0x1;
-    let bits10_1 = (imm >> 1) & 0x3ff;
-    let bit11 = (imm >> 11) & 0x1;
-    let bits19_12 = (imm >> 12) & 0xff;
-    (bit20 << 31) | (bits10_1 << 21) | (bit11 << 20) | (bits19_12 << 12) | (rd << 7) | 0x6f
-}
-
-fn put_u16(buffer: &mut [u8], offset: usize, value: u16) {
-    buffer[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
-}
-
-fn put_u32(buffer: &mut [u8], offset: usize, value: u32) {
-    buffer[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
-}
-
-fn put_u64(buffer: &mut [u8], offset: usize, value: u64) {
-    buffer[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+fn temporary_directory(argument: u16) -> PathBuf {
+    std::env::temp_dir().join(format!("forge-rv64-{}-{argument}", std::process::id()))
 }
