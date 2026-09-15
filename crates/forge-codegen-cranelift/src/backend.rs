@@ -3,15 +3,17 @@ use std::collections::BTreeMap;
 use cranelift_codegen::ir::{Function, Signature};
 use cranelift_codegen::isa::{CallConv, OwnedTargetIsa};
 use cranelift_codegen::Context;
-use forge_fir::{verify_fir_module, DefId, FirModule};
+use forge_fir::{verify_fir_module, DefId, FirModule, TypeDefinitionTable};
 use target_lexicon::Triple;
 
+use crate::c9_memory_checks::validate_c9_memory_places;
 use crate::function::lower_function;
 use crate::machine::compile_prepared_function;
 use crate::{BackendError, CraneliftTarget, MachineCode, TargetLayout, TypeLowering};
 
 /// Target-specific Cranelift state. It deliberately owns no Forge semantic
-/// state other than verified FIR passed to lowering operations.
+/// state other than verified FIR and the resolved type-definition table passed
+/// to lowering operations.
 pub struct CraneliftBackend {
     target: CraneliftTarget,
     layout: TargetLayout,
@@ -60,9 +62,20 @@ impl CraneliftBackend {
         Signature::new(CallConv::triple_default(self.isa.triple()))
     }
 
-    /// Verify FIR and mechanically lower every supported FIR function to CLIF.
-    /// Globals and runtime initializers remain explicit unsupported boundaries.
+    /// Compatibility entry point for scalar-only FIR modules.
     pub fn prepare_module(&self, module: &FirModule) -> Result<PreparedModule, BackendError> {
+        let definitions = TypeDefinitionTable::new();
+        self.prepare_module_with_types(module, &definitions)
+    }
+
+    /// Verify FIR and mechanically lower every supported FIR function to CLIF,
+    /// using the resolved Forge nominal-type table as the sole aggregate layout
+    /// source. The backend still never consults AST/HIR/Typed HIR.
+    pub fn prepare_module_with_types(
+        &self,
+        module: &FirModule,
+        definitions: &TypeDefinitionTable,
+    ) -> Result<PreparedModule, BackendError> {
         let diagnostics = verify_fir_module(module);
         if !diagnostics.is_empty() {
             return Err(BackendError::InvalidFir {
@@ -89,7 +102,14 @@ impl CraneliftBackend {
         let lowering = self.type_lowering();
         let mut functions = BTreeMap::new();
         for (owner, fir) in &module.functions {
-            let function = lower_function(fir, &module.functions, &lowering, &*self.isa)?;
+            validate_c9_memory_places(fir)?;
+            let function = lower_function(
+                fir,
+                &module.functions,
+                definitions,
+                &lowering,
+                &*self.isa,
+            )?;
             functions.insert(*owner, function);
         }
 
@@ -101,7 +121,7 @@ impl CraneliftBackend {
 
     /// Compile one already-prepared FIR function all the way to target machine code.
     ///
-    /// Relocation-free functions can be emitted directly. C8 may produce call
+    /// Relocation-free functions can be emitted directly. Calls may produce
     /// relocations; resolving/linking them remains part of the later AOT/object
     /// milestone rather than an implicit backend policy.
     pub fn emit_machine_code(
