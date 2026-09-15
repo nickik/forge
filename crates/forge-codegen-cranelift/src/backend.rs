@@ -132,8 +132,10 @@ fn validate_c4_scalar_contract(fir: &FirFunction) -> Result<(), BackendError> {
                 }
                 FirInstructionKind::Unary { op, value } => {
                     let input_ty = value_type(fir, *value, "unary operand")?;
-                    if matches!(op, forge_fir::FirUnaryOp::Neg | forge_fir::FirUnaryOp::BitNot)
-                        && input_ty != result_ty
+                    if matches!(
+                        op,
+                        forge_fir::FirUnaryOp::Neg | forge_fir::FirUnaryOp::BitNot
+                    ) && input_ty != result_ty
                     {
                         return Err(shape(format!(
                             "integer unary result has FIR type {result_ty:?}, operand is {input_ty:?}"
@@ -141,10 +143,7 @@ fn validate_c4_scalar_contract(fir: &FirFunction) -> Result<(), BackendError> {
                     }
                 }
                 FirInstructionKind::Binary {
-                    op,
-                    left,
-                    right,
-                    ..
+                    op, left, right, ..
                 } => {
                     let left_ty = value_type(fir, *left, "binary operand")?;
                     let right_ty = value_type(fir, *right, "binary operand")?;
@@ -222,8 +221,9 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
     let mut available = outer.clone();
     for instruction in &block.instructions {
         let ready = match &instruction.kind {
-            FirInstructionKind::Unary { value, .. }
-            | FirInstructionKind::Convert { value, .. } => available.contains(value),
+            FirInstructionKind::Unary { value, .. } | FirInstructionKind::Convert { value, .. } => {
+                available.contains(value)
+            }
             FirInstructionKind::Binary { left, right, .. } => {
                 available.contains(left) && available.contains(right)
             }
