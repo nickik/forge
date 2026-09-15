@@ -6,14 +6,15 @@
 
 #[allow(dead_code)]
 mod abi;
+#[path = "backend_c11c.rs"]
 mod backend_c11a;
 #[allow(dead_code)]
-#[path = "backend.rs"]
+#[path = "backend_c11c_legacy.rs"]
 mod backend_legacy;
 mod c9_memory_checks;
 mod diagnostic;
 #[allow(clippy::too_many_arguments, dead_code)]
-#[path = "function_c9d_impl.rs"]
+#[path = "function_c11c_impl.rs"]
 mod function;
 #[path = "globals_c11b.rs"]
 mod globals;
