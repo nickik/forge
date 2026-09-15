@@ -1,11 +1,9 @@
 use std::collections::BTreeMap;
 
-use forge_codegen_cranelift::{
-    BackendError, CraneliftBackend, CraneliftTarget, ObjectLinkage,
-};
+use forge_codegen_cranelift::{BackendError, CraneliftBackend, CraneliftTarget, ObjectLinkage};
 use forge_fir::{
-    DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction,
-    FirInstructionKind, FirModule, FirTerminator, FirValueId, IntWidth, Span, Ty,
+    DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction, FirInstructionKind,
+    FirModule, FirTerminator, FirValueId, IntWidth, Span, Ty,
 };
 
 fn u64_ty() -> Ty {
@@ -49,7 +47,9 @@ fn module() -> FirModule {
     let earlier = DefId(2);
     // Deliberately insert in reverse semantic order. FirModule uses a BTreeMap,
     // and the object plan must remain independent of construction order.
-    module.functions.insert(later, constant_function(later, "9"));
+    module
+        .functions
+        .insert(later, constant_function(later, "9"));
     module
         .functions
         .insert(earlier, constant_function(earlier, "2"));
@@ -78,7 +78,9 @@ fn c10a_symbols_are_deterministic_and_preserve_c9_signatures() {
         assert_eq!(symbols[1].linkage(), ObjectLinkage::Local);
 
         for symbol in symbols {
-            let prepared_function = prepared.function(symbol.owner()).expect("prepared function");
+            let prepared_function = prepared
+                .function(symbol.owner())
+                .expect("prepared function");
             assert_eq!(
                 format!("{:?}", symbol.signature()),
                 format!("{:?}", prepared_function.signature),
