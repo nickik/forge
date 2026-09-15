@@ -2,25 +2,25 @@
 
 Goal: integrate the complete C9 Forge ABI/layout milestone onto the current C8 backend in one reviewed branch.
 
-- [ ] C9a — authoritative Forge layout engine
+- [x] C9a — authoritative Forge layout engine
   - memory size/alignment/field order owned by Forge, not CLIF/C ABI
   - nominal structs/enums/tagged types, arrays/slices, option/result layout
   - stable niche handling and recursion/error boundaries
   - preserve scalar C7/C8 behavior through the new layout engine
 
-- [ ] C9b — Forge ABI decomposition
+- [x] C9b — Forge ABI decomposition
   - decompose aggregate representations into Forge ABI pieces
   - support SIA32/native64 target models and direct/indirect threshold
   - coalesce sub-word fragments deterministically
   - keep floating-point ABI classes and unsupported semantic forms explicit
 
-- [ ] C9c — aggregate FIR memory/value lowering
+- [x] C9c — aggregate FIR memory/value lowering
   - aggregate locals and stack storage
   - aggregate construction/extraction and field/index places
   - option/result/tagged operations driven only by Forge layout metadata
   - preserve mutability, scheduler and exact FIR type invariants from C7/C8
 
-- [ ] C9d — aggregate calls and returns
+- [x] C9d — aggregate calls and returns
   - direct aggregate parameters/returns via Forge ABI pieces
   - indirect aggregate parameters and hidden return storage
   - direct and indirect calls use exact Forge function types
