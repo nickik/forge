@@ -7,6 +7,7 @@
 #[allow(dead_code)]
 mod abi;
 mod backend_c11a;
+#[allow(dead_code)]
 #[path = "backend.rs"]
 mod backend_legacy;
 mod c9_memory_checks;
