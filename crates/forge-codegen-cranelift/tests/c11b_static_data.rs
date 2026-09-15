@@ -296,7 +296,10 @@ fn c11b_emits_deterministic_elf_sections_symbols_alignment_and_data_relocations(
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let first = emit(target);
         let second = emit(target);
-        assert_eq!(first, second, "{target:?} C11b object must be deterministic");
+        assert_eq!(
+            first, second,
+            "{target:?} C11b object must be deterministic"
+        );
         assert_eq!(&first[..4], b"\x7fELF");
         if !tool_available("readelf") {
             continue;
