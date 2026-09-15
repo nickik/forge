@@ -13,31 +13,31 @@ Goal: turn the C9-complete FIR -> CLIF backend into a real relocatable native-co
 
 ## C10b — object emission
 
-- [ ] add the object-emission dependency/API needed by the Cranelift backend
-- [ ] emit every prepared function into one target relocatable object
-- [ ] keep the existing relocation-free `emit_machine_code` API working
-- [ ] expose object bytes plus target/module metadata through a stable backend result type
-- [ ] test object format, sections, symbols, and deterministic emission
+- [x] add the object-emission API needed by the Cranelift backend
+- [x] emit every prepared function into one target relocatable object
+- [x] keep the existing relocation-free `emit_machine_code` API working
+- [x] expose object bytes plus target/module metadata through a stable backend result type
+- [x] test object format, sections, symbols, and deterministic emission
 
 ## C10c — relocations
 
-- [ ] translate direct calls into object relocations rather than rejecting them
-- [ ] translate first-class `FunctionRef` addresses into object relocations
-- [ ] resolve references to functions defined in the same Forge module
-- [ ] retain explicit diagnostics for unresolved/unsupported relocation forms
-- [ ] test scalar and C9 aggregate calls across actual symbol boundaries
+- [x] translate direct calls into object relocations rather than rejecting them
+- [x] translate first-class `FunctionRef` addresses into object relocations
+- [x] resolve references to functions defined in the same Forge module
+- [x] retain explicit diagnostics for unresolved/unsupported relocation forms
+- [x] test scalar and C9 aggregate calls across actual symbol boundaries
 
 ## C10d — linked executable validation
 
-- [ ] link emitted AArch64 objects into runnable test executables
-- [ ] run scalar cross-function calls through the linked image
-- [ ] run direct/indirect C9 aggregate parameter and return cases
-- [ ] validate hidden aggregate-return storage across the machine-code boundary
-- [ ] add RV64/QEMU linked execution where the CI environment supports it
-- [ ] run formatting, workspace check/tests, frontend tests, conformance and Clippy
+- [x] link emitted AArch64 objects into runnable test executables
+- [x] run scalar cross-function calls through the linked image
+- [x] run direct/indirect C9 aggregate parameter and return cases
+- [x] validate hidden aggregate-return storage across the machine-code boundary
+- [x] add RV64/QEMU linked execution where the CI environment supports it
+- [x] run formatting, workspace check/tests, frontend tests, conformance and Clippy
 
-## Completion gate
+## Completion record
 
-C10 is complete only when a non-trivial Forge FIR module containing multiple functions can be lowered through the C9 Forge ABI, emitted as a relocatable native object, linked, and executed successfully on AArch64, with RV64 object/linked coverage retained where available.
+Final CI run `34990436853` passed formatting, workspace check, build-system tests, generated collections snapshot, frontend tests, workspace tests, conformance, and Clippy. Linked execution covers native AArch64 and RV64/QEMU, including direct and indirect calls plus C9 aggregate ABI paths.
 
 C10 does not redefine Forge layout or ABI. Bugs discovered there are C9 regressions and should receive focused regression tests rather than new C10 policy.
