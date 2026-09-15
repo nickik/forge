@@ -125,7 +125,6 @@ pub(crate) fn lower_module_initializer_c11d(
     }
 
     cursor.ins().return_(&[]);
-    drop(cursor);
     verify_function(&function, isa).map_err(|errors| BackendError::Cranelift {
         message: format!("CLIF verifier rejected C11d module initializer: {errors}"),
     })?;
