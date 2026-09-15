@@ -22,25 +22,23 @@ const RO_STRUCT: DefId = DefId(15);
 const RO_FN: DefId = DefId(16);
 const STRUCT_TY: DefId = DefId(100);
 
-fn u8_ty() -> Ty {
+fn int_ty(width: IntWidth) -> Ty {
     Ty::Int {
         signed: false,
-        width: IntWidth::W8,
+        width,
     }
+}
+
+fn u8_ty() -> Ty {
+    int_ty(IntWidth::W8)
 }
 
 fn u16_ty() -> Ty {
-    Ty::Int {
-        signed: false,
-        width: IntWidth::W16,
-    }
+    int_ty(IntWidth::W16)
 }
 
 fn u64_ty() -> Ty {
-    Ty::Int {
-        signed: false,
-        width: IntWidth::W64,
-    }
+    int_ty(IntWidth::W64)
 }
 
 fn function_ty() -> Ty {
@@ -216,6 +214,7 @@ fn emit(target: CraneliftTarget) -> Vec<u8> {
         .emit_object_with_exports(
             &prepared,
             [
+                FUNCTION,
                 RO_SCALAR,
                 RO_ARRAY,
                 BSS,
@@ -266,33 +265,30 @@ fn c11b_serializes_scalars_aggregates_and_relocations_from_c9_layout() {
         assert_eq!(bss.storage(), GlobalStorageClass::ZeroFill);
         assert!(bss.static_data().is_none());
 
-        let data_fn = prepared.global(DATA_FN).expect("function address");
-        assert_eq!(data_fn.storage(), GlobalStorageClass::WritableData);
-        let relocations = data_fn.static_data().expect("data bytes").relocations();
-        assert_eq!(relocations.len(), 1);
-        assert_eq!(relocations[0].target(), StaticSymbol::Function(FUNCTION));
-        assert_eq!(relocations[0].width(), 8);
-
-        let data_global = prepared.global(DATA_GLOBAL).expect("global address");
-        assert_eq!(data_global.storage(), GlobalStorageClass::WritableData);
-        let relocations = data_global
-            .static_data()
-            .expect("global-address bytes")
-            .relocations();
-        assert_eq!(relocations.len(), 1);
-        assert_eq!(relocations[0].target(), StaticSymbol::Global(BSS));
-        assert_eq!(relocations[0].width(), 8);
-
-        let ro_fn = prepared.global(RO_FN).expect("ro function address");
-        assert_eq!(ro_fn.storage(), GlobalStorageClass::ReadOnlyData);
-        assert_eq!(
-            ro_fn
-                .static_data()
-                .expect("ro function bytes")
-                .relocations()[0]
-                .target(),
-            StaticSymbol::Function(FUNCTION)
-        );
+        for (owner, target_symbol, storage) in [
+            (
+                DATA_FN,
+                StaticSymbol::Function(FUNCTION),
+                GlobalStorageClass::WritableData,
+            ),
+            (
+                DATA_GLOBAL,
+                StaticSymbol::Global(BSS),
+                GlobalStorageClass::WritableData,
+            ),
+            (
+                RO_FN,
+                StaticSymbol::Function(FUNCTION),
+                GlobalStorageClass::ReadOnlyData,
+            ),
+        ] {
+            let global = prepared.global(owner).expect("relocated global");
+            assert_eq!(global.storage(), storage);
+            let relocations = global.static_data().expect("static data").relocations();
+            assert_eq!(relocations.len(), 1);
+            assert_eq!(relocations[0].target(), target_symbol);
+            assert_eq!(relocations[0].width(), 8);
+        }
     }
 }
 
@@ -342,11 +338,16 @@ fn c11b_emits_deterministic_elf_sections_symbols_alignment_and_data_relocations(
         ] {
             let line = report
                 .lines()
-                .find(|line| line.contains(symbol))
-                .unwrap_or_else(|| panic!("missing symbol {symbol}:\n{report}"));
-            assert!(line.contains("OBJECT"), "global is not STT_OBJECT: {line}");
+                .find(|line| line.contains(symbol) && line.contains("OBJECT"))
+                .unwrap_or_else(|| panic!("missing STT_OBJECT symbol {symbol}:\n{report}"));
+            assert!(line.contains(symbol));
         }
-        assert!(report.contains("__forge_fn_00000001"), "{report}");
+        assert!(
+            report
+                .lines()
+                .any(|line| line.contains("__forge_fn_00000001") && line.contains("FUNC")),
+            "missing function symbol:\n{report}"
+        );
         assert!(
             report.contains("__forge_global_0000000c"),
             "global-address relocation target missing:\n{report}"
@@ -367,6 +368,7 @@ fn c11b_links_and_executes_aarch64_static_data() {
         &harness,
         r#"#include <stdint.h>
 typedef uint64_t (*fn0)(void);
+extern uint64_t __forge_fn_00000001(void);
 extern const uint64_t __forge_global_0000000a;
 extern const uint16_t __forge_global_0000000b[3];
 extern uint64_t __forge_global_0000000c;
@@ -377,11 +379,12 @@ int main(void) {
     if (__forge_global_0000000a != UINT64_C(0x1122334455667788)) return 1;
     if (__forge_global_0000000b[0] != 1 || __forge_global_0000000b[1] != 0x2233 || __forge_global_0000000b[2] != 0x4455) return 2;
     if (__forge_global_0000000c != 0) return 3;
-    if (__forge_global_0000000d() != 9) return 4;
-    if (__forge_global_00000010() != 9) return 5;
-    if (__forge_global_0000000e != &__forge_global_0000000c) return 6;
+    if (__forge_global_0000000d != __forge_fn_00000001) return 4;
+    if (__forge_global_00000010 != __forge_fn_00000001) return 5;
+    if (__forge_fn_00000001() != 9) return 6;
+    if (__forge_global_0000000e != &__forge_global_0000000c) return 7;
     *__forge_global_0000000e = 77;
-    if (__forge_global_0000000c != 77) return 7;
+    if (__forge_global_0000000c != 77) return 8;
     return 0;
 }
 "#,
@@ -449,15 +452,16 @@ _start:
 
     la t0, __forge_global_0000000d
     ld t1, 0(t0)
-    jalr ra, t1, 0
-    li t2, 9
-    bne a0, t2, fail
+    la t2, __forge_fn_00000001
+    bne t1, t2, fail
 
     la t0, __forge_global_00000010
     ld t1, 0(t0)
-    jalr ra, t1, 0
-    li t2, 9
-    bne a0, t2, fail
+    bne t1, t2, fail
+
+    call __forge_fn_00000001
+    li t3, 9
+    bne a0, t3, fail
 
     la t0, __forge_global_0000000e
     ld t1, 0(t0)
