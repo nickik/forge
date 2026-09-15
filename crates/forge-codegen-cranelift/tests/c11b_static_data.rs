@@ -232,7 +232,6 @@ fn emit(target: CraneliftTarget) -> Vec<u8> {
 fn c11b_serializes_scalars_aggregates_and_relocations_from_c9_layout() {
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let prepared = prepare(target);
-
         let scalar = prepared.global(RO_SCALAR).expect("scalar global");
         assert_eq!(scalar.storage(), GlobalStorageClass::ReadOnlyData);
         assert_eq!(
@@ -297,15 +296,12 @@ fn c11b_emits_deterministic_elf_sections_symbols_alignment_and_data_relocations(
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let first = emit(target);
         let second = emit(target);
-        assert_eq!(
-            first, second,
-            "{target:?} C11b object must be deterministic"
-        );
+        assert_eq!(first, second, "{target:?} C11b object must be deterministic");
         assert_eq!(&first[..4], b"\x7fELF");
-
         if !tool_available("readelf") {
             continue;
         }
+
         let dir = temporary_directory("inspect");
         let object = dir.join("forge.o");
         fs::write(&object, &first).expect("write object");
@@ -425,6 +421,7 @@ fn c11b_links_and_executes_riscv64_static_data_under_qemu() {
     fs::write(
         &source,
         r#".option nopic
+.option norelax
 .section .text
 .globl _start
 _start:
@@ -455,12 +452,17 @@ _start:
 
     lla t0, __forge_global_00000010
     ld t1, 0(t0)
+    lla t2, __forge_fn_00000001
     bne t1, t2, fail
 
     lla t0, __forge_global_0000000e
     ld t1, 0(t0)
     lla t2, __forge_global_0000000c
     bne t1, t2, fail
+
+    call __forge_fn_00000001
+    li t0, 9
+    bne a0, t0, fail
 
     li a0, 0
     li a7, 93
@@ -481,7 +483,11 @@ fail:
     successful_output(&mut assembler, "assemble RV64 C11b harness");
 
     let mut linker = Command::new("riscv64-linux-gnu-ld");
-    linker.arg("-o").arg(&executable).arg(&start).arg(&object);
+    linker
+        .args(["--no-relax", "-e", "_start", "-o"])
+        .arg(&executable)
+        .arg(&start)
+        .arg(&object);
     successful_output(&mut linker, "link RV64 C11b object");
 
     let mut run = Command::new("qemu-riscv64");
