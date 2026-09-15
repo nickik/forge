@@ -6,13 +6,16 @@ use cranelift_codegen::ir::{ExternalName, Function, Signature};
 use cranelift_codegen::{Context, RelocTarget};
 use forge_fir::DefId;
 
-use crate::{BackendError, CraneliftBackend, CraneliftTarget, PreparedModule};
+use crate::{
+    BackendError, CraneliftBackend, CraneliftTarget, GlobalObjectSymbol, PreparedModule,
+};
 
 /// Linkage policy at the Forge object boundary.
 ///
 /// C10a keeps functions local unless the caller explicitly marks a FIR
-/// definition for export. Source-language export semantics remain a frontend
-/// concern and are not inferred from function names here.
+/// definition for export. C11a applies the same explicit policy to globals.
+/// Source-language export semantics remain a frontend concern and are not
+/// inferred from definition names here.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ObjectLinkage {
     Local,
@@ -47,11 +50,15 @@ impl ObjectSymbol {
     }
 }
 
-/// Deterministic symbol/linkage plan consumed by native object emission.
+/// Deterministic function/global symbol plan consumed by native object
+/// emission. C11a records global symbols and initialization order here, while
+/// C11b remains responsible for assigning data sections and byte offsets.
 #[derive(Clone, Debug)]
 pub struct ObjectModulePlan {
     target: CraneliftTarget,
     symbols: BTreeMap<DefId, ObjectSymbol>,
+    global_symbols: BTreeMap<DefId, GlobalObjectSymbol>,
+    global_init_order: Vec<DefId>,
 }
 
 impl ObjectModulePlan {
@@ -59,12 +66,29 @@ impl ObjectModulePlan {
         self.target
     }
 
+    /// Function symbols retained for C10 API compatibility.
     pub fn symbols(&self) -> &BTreeMap<DefId, ObjectSymbol> {
+        &self.symbols
+    }
+
+    pub fn function_symbols(&self) -> &BTreeMap<DefId, ObjectSymbol> {
         &self.symbols
     }
 
     pub fn symbol(&self, owner: DefId) -> Option<&ObjectSymbol> {
         self.symbols.get(&owner)
+    }
+
+    pub fn global_symbols(&self) -> &BTreeMap<DefId, GlobalObjectSymbol> {
+        &self.global_symbols
+    }
+
+    pub fn global_symbol(&self, owner: DefId) -> Option<&GlobalObjectSymbol> {
+        self.global_symbols.get(&owner)
+    }
+
+    pub fn global_init_order(&self) -> &[DefId] {
+        &self.global_init_order
     }
 }
 
@@ -97,7 +121,7 @@ impl NativeObject {
 }
 
 impl CraneliftBackend {
-    /// Plan a module with all FIR functions kept local.
+    /// Plan a module with all FIR functions and globals kept local.
     pub fn plan_object_module(
         &self,
         prepared: &PreparedModule,
@@ -106,7 +130,7 @@ impl CraneliftBackend {
     }
 
     /// Plan deterministic object symbols while explicitly promoting selected
-    /// FIR definitions to exported linkage.
+    /// FIR definitions—functions or globals—to exported linkage.
     pub fn plan_object_module_with_exports<I>(
         &self,
         prepared: &PreparedModule,
@@ -125,12 +149,22 @@ impl CraneliftBackend {
 
         let exports: BTreeSet<DefId> = exports.into_iter().collect();
         for owner in &exports {
-            if !prepared.functions().contains_key(owner) {
+            if !prepared.functions().contains_key(owner) && !prepared.globals().contains_key(owner) {
                 return Err(shape(format!(
-                    "cannot export missing FIR function {owner:?}"
+                    "cannot export missing FIR definition {owner:?}"
                 )));
             }
         }
+        let function_exports: BTreeSet<DefId> = exports
+            .iter()
+            .copied()
+            .filter(|owner| prepared.functions().contains_key(owner))
+            .collect();
+        let global_exports: BTreeSet<DefId> = exports
+            .iter()
+            .copied()
+            .filter(|owner| prepared.globals().contains_key(owner))
+            .collect();
 
         let mut names = BTreeSet::new();
         let mut symbols = BTreeMap::new();
@@ -141,7 +175,7 @@ impl CraneliftBackend {
                     "duplicate Forge object symbol generated for {owner:?}: {name}"
                 )));
             }
-            let linkage = if exports.contains(owner) {
+            let linkage = if function_exports.contains(owner) {
                 ObjectLinkage::Export
             } else {
                 ObjectLinkage::Local
@@ -157,21 +191,41 @@ impl CraneliftBackend {
             );
         }
 
+        let global_plan =
+            self.plan_global_objects_with_exports(prepared.prepared_globals(), global_exports)?;
+        for symbol in global_plan.symbols().values() {
+            if !names.insert(symbol.name().to_owned()) {
+                return Err(shape(format!(
+                    "duplicate Forge object symbol generated for global {:?}: {}",
+                    symbol.owner(),
+                    symbol.name()
+                )));
+            }
+        }
+
         Ok(ObjectModulePlan {
             target: self.target(),
             symbols,
+            global_symbols: global_plan.symbols().clone(),
+            global_init_order: prepared.global_init_order().to_vec(),
         })
     }
 
     /// Emit one deterministic ELF64 relocatable object using an already
-    /// validated C10 symbol plan. Direct-call and function-address relocations
-    /// remain symbolic for the system linker to resolve.
+    /// validated symbol plan. C11a carries global metadata into this plan but
+    /// deliberately does not emit global data sections; C11b owns that step.
     pub fn emit_object(
         &self,
         prepared: &PreparedModule,
         plan: &ObjectModulePlan,
     ) -> Result<NativeObject, BackendError> {
         validate_object_plan(self.target(), prepared, plan)?;
+        if !plan.global_symbols().is_empty() {
+            return Err(BackendError::UnsupportedFir {
+                component: "global object emission",
+            });
+        }
+
         let isa = self.target().isa()?;
         let mut text = Vec::new();
         let mut functions = BTreeMap::new();
@@ -270,6 +324,17 @@ fn validate_object_plan(
             prepared.functions().len()
         )));
     }
+    if prepared.globals().len() != plan.global_symbols().len() {
+        return Err(shape(format!(
+            "object plan has {} global symbols for {} prepared globals",
+            plan.global_symbols().len(),
+            prepared.globals().len()
+        )));
+    }
+    if prepared.global_init_order() != plan.global_init_order() {
+        return Err(shape("object plan has stale global initializer order"));
+    }
+
     for (owner, function) in prepared.functions() {
         let symbol = plan
             .symbol(*owner)
@@ -284,6 +349,28 @@ fn validate_object_plan(
         if !prepared.functions().contains_key(owner) {
             return Err(shape(format!(
                 "object plan contains stale function symbol {owner:?}"
+            )));
+        }
+    }
+
+    for (owner, global) in prepared.globals() {
+        let symbol = plan
+            .global_symbol(*owner)
+            .ok_or_else(|| shape(format!("object plan is missing global {owner:?}")))?;
+        if symbol.owner() != *owner
+            || symbol.layout() != global.layout()
+            || symbol.initialization() != global.initialization()
+            || symbol.storage() != global.storage()
+        {
+            return Err(shape(format!(
+                "object plan has stale global metadata for {owner:?}"
+            )));
+        }
+    }
+    for owner in plan.global_symbols().keys() {
+        if !prepared.globals().contains_key(owner) {
+            return Err(shape(format!(
+                "object plan contains stale global symbol {owner:?}"
             )));
         }
     }
