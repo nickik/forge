@@ -41,6 +41,11 @@ jobs:
       - name: Frontend tests
         timeout-minutes: 5
         run: cargo test -p forge-frontend --locked -- --nocapture
+      - name: RV64 launcher smoke
+        timeout-minutes: 2
+        env:
+          FORGE_RISCV64_EXECUTION: "1"
+        run: cargo test -p forge-codegen-cranelift --locked --test riscv64_launcher -- --nocapture
       - name: Workspace tests
         timeout-minutes: 10
         env:
