@@ -3,9 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use cranelift_codegen::cursor::{Cursor, FuncCursor};
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{
-    Block, ExtFuncData, ExternalName, FuncRef, Function, Inst, InstBuilder, MemFlags,
-    MemFlagsData, StackSlot, StackSlotData, StackSlotKind, TrapCode, UserExternalName,
-    UserFuncName, Value,
+    Block, ExtFuncData, ExternalName, FuncRef, Function, Inst, InstBuilder, MemFlags, MemFlagsData,
+    StackSlot, StackSlotData, StackSlotKind, TrapCode, UserExternalName, UserFuncName, Value,
 };
 use cranelift_codegen::isa::{CallConv, TargetIsa};
 use cranelift_codegen::verifier::verify_function;
@@ -54,10 +53,7 @@ pub(crate) fn lower_function(
         // Dereferences are deliberately conservative: potentially trapping,
         // unaligned, and not freely movable. C7 does not claim volatile access
         // semantics; volatile raw dereferences are rejected below.
-        deref: function
-            .dfg
-            .mem_flags
-            .insert_unchecked(MemFlagsData::new()),
+        deref: function.dfg.mem_flags.insert_unchecked(MemFlagsData::new()),
     };
 
     let mut blocks = BTreeMap::new();
@@ -132,7 +128,10 @@ pub(crate) fn lower_function(
     }
 
     verify_function(&function, isa).map_err(|errors| BackendError::Cranelift {
-        message: format!("CLIF verifier rejected FIR function {:?}: {errors}", fir.owner),
+        message: format!(
+            "CLIF verifier rejected FIR function {:?}: {errors}",
+            fir.owner
+        ),
     })?;
 
     Ok(function)
@@ -293,11 +292,7 @@ fn lower_instruction(
     }
 
     match &instruction.kind {
-        FirInstructionKind::Call {
-            target,
-            args,
-            tail,
-        } => {
+        FirInstructionKind::Call { target, args, tail } => {
             if *tail {
                 return Err(BackendError::UnsupportedInstruction {
                     kind: "required tail call",
@@ -367,29 +362,16 @@ fn lower_instruction(
             types,
             cursor,
         )?,
-        FirInstructionKind::AddressOf { place, mutable } => lower_address_of(
-            fir,
-            place,
-            *mutable,
-            result_ty,
-            local_slots,
-            types,
-            cursor,
-        )?,
+        FirInstructionKind::AddressOf { place, mutable } => {
+            lower_address_of(fir, place, *mutable, result_ty, local_slots, types, cursor)?
+        }
         FirInstructionKind::PointerOffset {
             pointer,
             offset,
             subtract,
             provenance: _,
         } => lower_pointer_offset(
-            fir,
-            *pointer,
-            *offset,
-            *subtract,
-            result_ty,
-            values,
-            types,
-            cursor,
+            fir, *pointer, *offset, *subtract, result_ty, values, types, cursor,
         )?,
         FirInstructionKind::Unary { op, value } => {
             lower_integer_unary(fir, *op, *value, values, cursor)?
@@ -439,19 +421,15 @@ fn lower_direct_call_instruction(
     types: &TypeLowering<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
-    let callee = all_functions
-        .get(&target)
-        .ok_or_else(|| shape(format!("direct FIR call target {target:?} is not in the module")))?;
+    let callee = all_functions.get(&target).ok_or_else(|| {
+        shape(format!(
+            "direct FIR call target {target:?} is not in the module"
+        ))
+    })?;
     let params = fir_parameter_types(callee)?;
     let lowered_args = lower_call_arguments(caller, args, &params, values)?;
-    let func_ref = import_direct_function(
-        target,
-        callee,
-        call_conv,
-        direct_functions,
-        types,
-        cursor,
-    )?;
+    let func_ref =
+        import_direct_function(target, callee, call_conv, direct_functions, types, cursor)?;
     let inst = cursor.ins().call(func_ref, &lowered_args);
     record_call_result(
         caller,
@@ -491,20 +469,10 @@ fn lower_indirect_call_instruction(
     let lowered_args = lower_call_arguments(caller, args, params, values)?;
     let signature = lower_function_type_signature(callee_ty, types, call_conv)?;
     let sig_ref = cursor.func.import_signature(signature);
-    let inst = cursor.ins().call_indirect(
-        sig_ref,
-        lookup_value(values, callee)?,
-        &lowered_args,
-    );
-    record_call_result(
-        caller,
-        instruction,
-        result,
-        inst,
-        values,
-        types,
-        cursor,
-    )
+    let inst = cursor
+        .ins()
+        .call_indirect(sig_ref, lookup_value(values, callee)?, &lowered_args);
+    record_call_result(caller, instruction, result, inst, values, types, cursor)
 }
 
 fn lower_call_arguments(
@@ -552,16 +520,8 @@ fn record_call_result(
         if !cursor.func.dfg.inst_results(inst).is_empty() {
             return Err(shape("void FIR call produced CLIF results"));
         }
-        if let Some(result_id) = instruction.result {
-            let declared = caller
-                .value_types
-                .get(&result_id)
-                .ok_or_else(|| shape(format!("missing type for FIR call value {result_id:?}")))?;
-            if *declared != Ty::Void {
-                return Err(shape(format!(
-                    "void FIR call is declared with non-void result type {declared:?}"
-                )));
-            }
+        if instruction.result.is_some() {
+            return Err(shape("void FIR call unexpectedly has a result value"));
         }
         return Ok(());
     }
@@ -608,9 +568,11 @@ fn lower_function_ref(
     types: &TypeLowering<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<Value, BackendError> {
-    let callee = all_functions
-        .get(&target)
-        .ok_or_else(|| shape(format!("FIR function ref target {target:?} is not in the module")))?;
+    let callee = all_functions.get(&target).ok_or_else(|| {
+        shape(format!(
+            "FIR function ref target {target:?} is not in the module"
+        ))
+    })?;
     let target_params = fir_parameter_types(callee)?;
     let Ty::Function {
         params,
@@ -628,14 +590,8 @@ fn lower_function_ref(
         )));
     }
 
-    let func_ref = import_direct_function(
-        target,
-        callee,
-        call_conv,
-        direct_functions,
-        types,
-        cursor,
-    )?;
+    let func_ref =
+        import_direct_function(target, callee, call_conv, direct_functions, types, cursor)?;
     Ok(cursor.ins().func_addr(types.pointer_type()?, func_ref))
 }
 
@@ -759,10 +715,9 @@ fn lower_place_address(
             Ok((address, local_ty, memory_flags.stack))
         }
         FirPlace::Deref { address } => {
-            let address_ty = fir
-                .value_types
-                .get(address)
-                .ok_or_else(|| shape(format!("missing type for dereference address {address:?}")))?;
+            let address_ty = fir.value_types.get(address).ok_or_else(|| {
+                shape(format!("missing type for dereference address {address:?}"))
+            })?;
             let (mutable, inner) = match address_ty {
                 Ty::Reference { mutable, inner } => (*mutable, inner.as_ref().clone()),
                 _ => {
@@ -774,11 +729,7 @@ fn lower_place_address(
             if access == PlaceAccess::Store && !mutable {
                 return Err(shape("store through shared FIR reference"));
             }
-            Ok((
-                lookup_value(values, *address)?,
-                inner,
-                memory_flags.deref,
-            ))
+            Ok((lookup_value(values, *address)?, inner, memory_flags.deref))
         }
         FirPlace::RawDeref {
             address,
@@ -790,10 +741,11 @@ fn lower_place_address(
                     kind: "volatile raw dereference",
                 });
             }
-            let address_ty = fir
-                .value_types
-                .get(address)
-                .ok_or_else(|| shape(format!("missing type for raw dereference address {address:?}")))?;
+            let address_ty = fir.value_types.get(address).ok_or_else(|| {
+                shape(format!(
+                    "missing type for raw dereference address {address:?}"
+                ))
+            })?;
             let inner = match address_ty {
                 Ty::Pointer { inner, .. } => inner.as_ref().clone(),
                 _ => {
@@ -802,11 +754,7 @@ fn lower_place_address(
                     )));
                 }
             };
-            Ok((
-                lookup_value(values, *address)?,
-                inner,
-                memory_flags.deref,
-            ))
+            Ok((lookup_value(values, *address)?, inner, memory_flags.deref))
         }
         FirPlace::ClosureCapture { .. } => Err(BackendError::UnsupportedInstruction {
             kind: "closure capture place",
@@ -833,11 +781,16 @@ fn lower_address_of(
             kind: "address of non-local place before aggregate layout",
         });
     };
-    let local_ty = &fir
+    let local_data = fir
         .locals
         .get(local)
-        .ok_or_else(|| shape(format!("missing FIR local {local:?}")))?
-        .ty;
+        .ok_or_else(|| shape(format!("missing FIR local {local:?}")))?;
+    if mutable && !local_data.mutable {
+        return Err(shape(format!(
+            "mutable address requested for immutable FIR local {local:?}"
+        )));
+    }
+    let local_ty = &local_data.ty;
     match result_ty {
         Ty::Reference {
             mutable: result_mutable,
@@ -849,10 +802,11 @@ fn lower_address_of(
             )));
         }
     }
-    let slot = local_slots
-        .get(local)
-        .copied()
-        .ok_or_else(|| shape(format!("addressed FIR local {local:?} has no C7 stack slot")))?;
+    let slot = local_slots.get(local).copied().ok_or_else(|| {
+        shape(format!(
+            "addressed FIR local {local:?} has no C7 stack slot"
+        ))
+    })?;
     Ok(cursor.ins().stack_addr(types.pointer_type()?, slot, 0))
 }
 
@@ -1005,7 +959,7 @@ fn lower_integer_binary(
                 )));
             }
             let bits = cursor.func.dfg.value_type(left_value).bits();
-            let out_of_range = cursor.ins().icmp_imm(
+            let out_of_range = cursor.ins().icmp_imm_u(
                 IntCC::UnsignedGreaterThanOrEqual,
                 right_value,
                 bits as i64,
@@ -1178,9 +1132,7 @@ fn lower_terminator(
             else_block,
         } => {
             if fir.value_types.get(condition) != Some(&Ty::Bool) {
-                return Err(shape(format!(
-                    "branch condition {condition:?} is not bool"
-                )));
+                return Err(shape(format!("branch condition {condition:?} is not bool")));
             }
             cursor.ins().brif(
                 lookup_value(values, *condition)?,
