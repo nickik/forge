@@ -21,25 +21,16 @@ jobs:
           cargo generate-lockfile
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           boundary = Path('crates/forge-frontend/src/fir_boundary_v1.rs')
           text = boundary.read_text()
           text = text.replace('use std::collections::{BTreeMap, BTreeSet};', 'use std::collections::BTreeMap;')
-          duplicate_check = '''    let mut expression_ids = BTreeSet::new();
-          for expression in &body.expressions {
-              if !expression_ids.insert(expression.id) {
-                  diagnostics.push(diagnostic(
-                      expression.span,
-                      "fir/boundary-expression",
-                      format!("typed expression {:?} appears more than once", expression.id),
-                  ));
-              }
-          '''
-          replacement = '''    for expression in &body.expressions {
-          '''
-          if duplicate_check not in text:
-              raise SystemExit('expected FIR boundary duplicate-expression check not found')
-          boundary.write_text(text.replace(duplicate_check, replacement))
+          pattern = re.compile(r'''    let mut expression_ids = BTreeSet::new\(\);\n    for expression in &body\.expressions \{\n        if !expression_ids\.insert\(expression\.id\) \{\n            diagnostics\.push\(diagnostic\(\n                expression\.span,\n                "fir/boundary-expression",\n                format!\("typed expression \{:\?\} appears more than once", expression\.id\),\n            \)\);\n        \}\n''')
+          text, count = pattern.subn('    for expression in &body.expressions {\n', text, count=1)
+          if count != 1:
+              raise SystemExit(f'expected one FIR boundary duplicate-expression check, found {count}')
+          boundary.write_text(text)
 
           workflow = Path('.github/workflows/ci.yml')
           workflow.write_text('''name: ci
