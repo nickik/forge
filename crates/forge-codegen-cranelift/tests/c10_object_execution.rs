@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -260,11 +260,7 @@ fn function_ref_entry() -> FirFunction {
                 value: Some(result),
             }),
         }],
-        value_types: BTreeMap::from([
-            (function, fn_ty),
-            (argument, u64_ty()),
-            (result, u64_ty()),
-        ]),
+        value_types: BTreeMap::from([(function, fn_ty), (argument, u64_ty()), (result, u64_ty())]),
     }
 }
 
@@ -300,7 +296,10 @@ fn c10b_c_object_is_deterministic_and_contains_real_relocations() {
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let first = emit(target);
         let second = emit(target);
-        assert_eq!(first, second, "{target:?} object emission must be deterministic");
+        assert_eq!(
+            first, second,
+            "{target:?} object emission must be deterministic"
+        );
         assert_eq!(&first[..4], b"\x7fELF");
         assert_eq!(first[4], 2, "ELF64");
         assert_eq!(first[5], 1, "little endian");
@@ -386,7 +385,10 @@ fn c10d_links_and_executes_riscv64_object_under_qemu() {
         "riscv64-linux-gnu-ld",
         "qemu-riscv64",
     ] {
-        assert!(tool_available(tool), "required RV64 execution tool missing: {tool}");
+        assert!(
+            tool_available(tool),
+            "required RV64 execution tool missing: {tool}"
+        );
     }
 
     let dir = temporary_directory("riscv64-run");
@@ -425,11 +427,7 @@ fail:
     successful_output(&mut assembler, "assemble RV64 C10 harness");
 
     let mut linker = Command::new("riscv64-linux-gnu-ld");
-    linker
-        .arg("-o")
-        .arg(&executable)
-        .arg(&start)
-        .arg(&object);
+    linker.arg("-o").arg(&executable).arg(&start).arg(&object);
     successful_output(&mut linker, "link RV64 C10 object");
 
     let mut run = Command::new("qemu-riscv64");
@@ -462,16 +460,11 @@ fn successful_output(command: &mut Command, label: &str) -> Output {
 fn temporary_directory(label: &str) -> PathBuf {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let serial = NEXT.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!(
-        "forge-c10-{label}-{}-{serial}",
-        std::process::id()
-    ));
+    let path =
+        std::env::temp_dir().join(format!("forge-c10-{label}-{}-{serial}", std::process::id()));
     if path.exists() {
         fs::remove_dir_all(&path).expect("remove stale C10 temp directory");
     }
     fs::create_dir_all(&path).expect("create C10 temp directory");
     path
 }
-
-#[allow(dead_code)]
-fn _assert_path(_: &Path) {}
