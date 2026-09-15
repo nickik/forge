@@ -46,14 +46,8 @@ fn lower_c9d_function(
     let mut layouts = LayoutEngine::new(LayoutTarget::new(types.target().pointer_bits), definitions);
     let local_slots = allocate_local_slots(fir, &mut layouts, &mut function)?;
     let flags = MemoryFlags {
-        stack: function
-            .dfg
-            .mem_flags
-            .insert_unchecked(MemFlagsData::trusted()),
-        deref: function
-            .dfg
-            .mem_flags
-            .insert_unchecked(MemFlagsData::new()),
+        stack: MemFlagsData::trusted(),
+        deref: MemFlagsData::new(),
     };
 
     let mut blocks = BTreeMap::new();
@@ -346,12 +340,7 @@ fn lower_c9d_direct_call(
         layouts,
         cursor,
     )?;
-    let func_ref = import_c9d_direct_function(
-        target,
-        &plan,
-        direct_functions,
-        cursor,
-    )?;
+    let func_ref = import_c9d_direct_function(target, &plan, direct_functions, cursor)?;
     let inst = cursor.ins().call(func_ref, &lowered_args);
     record_c9d_call_result(
         caller,
@@ -397,11 +386,9 @@ fn lower_c9d_indirect_call(
         cursor,
     )?;
     let sig_ref = cursor.func.import_signature(plan.signature.clone());
-    let inst = cursor.ins().call_indirect(
-        sig_ref,
-        scalar(scalars, callee)?,
-        &lowered_args,
-    );
+    let inst = cursor
+        .ins()
+        .call_indirect(sig_ref, scalar(scalars, callee)?, &lowered_args);
     record_c9d_call_result(
         caller,
         instruction,
@@ -438,7 +425,9 @@ fn lower_c9d_call_arguments(
     }
 
     let indirect_result = match &plan.result {
-        C9ReturnPlan::AggregateIndirect { ty, .. } => Some(new_aggregate(ty, layouts, types, cursor)?),
+        C9ReturnPlan::AggregateIndirect { ty, .. } => {
+            Some(new_aggregate(ty, layouts, types, cursor)?)
+        }
         _ => None,
     };
     let mut lowered = Vec::new();
@@ -494,10 +483,8 @@ fn record_c9d_call_result(
             if !results.is_empty() {
                 return Err(shape("void C9 call produced CLIF results"));
             }
-            if let Some(id) = instruction.result {
-                if value_type(caller, id)? != &Ty::Void {
-                    return Err(shape("void C9 call has non-void FIR result"));
-                }
+            if instruction.result.is_some() {
+                return Err(shape("void C9 call unexpectedly has a result value"));
             }
         }
         C9ReturnPlan::Scalar { ty } => {
@@ -639,7 +626,10 @@ fn lower_c9d_terminator(
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
     match (terminator, plan) {
-        (FirTerminator::Return { value: Some(id) }, C9ReturnPlan::AggregateDirect { ty, decomposition }) => {
+        (
+            FirTerminator::Return { value: Some(id) },
+            C9ReturnPlan::AggregateDirect { ty, decomposition },
+        ) => {
             if value_type(fir, *id)? != ty {
                 return Err(shape("direct aggregate return type mismatch"));
             }
@@ -654,7 +644,10 @@ fn lower_c9d_terminator(
             cursor.ins().return_(&pieces);
             Ok(())
         }
-        (FirTerminator::Return { value: Some(id) }, C9ReturnPlan::AggregateIndirect { ty, .. }) => {
+        (
+            FirTerminator::Return { value: Some(id) },
+            C9ReturnPlan::AggregateIndirect { ty, .. },
+        ) => {
             if value_type(fir, *id)? != ty {
                 return Err(shape("indirect aggregate return type mismatch"));
             }
@@ -676,11 +669,12 @@ fn lower_c9d_terminator(
         (FirTerminator::Return { value: Some(_) }, C9ReturnPlan::Void) => {
             Err(shape("void C9 function returns a value"))
         }
-        (FirTerminator::Return { value: None }, C9ReturnPlan::AggregateDirect { .. }
+        (
+            FirTerminator::Return { value: None },
+            C9ReturnPlan::AggregateDirect { .. }
             | C9ReturnPlan::AggregateIndirect { .. }
-            | C9ReturnPlan::Scalar { .. }) => {
-            Err(shape("non-void C9 function returns no value"))
-        }
+            | C9ReturnPlan::Scalar { .. },
+        ) => Err(shape("non-void C9 function returns no value")),
         _ => legacy::lower_scalar_terminator(fir, terminator, blocks, scalars, cursor),
     }
 }
