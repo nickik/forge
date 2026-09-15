@@ -137,8 +137,16 @@ fn emits_riscv64_machine_code_from_the_same_fir() {
 
     assert_eq!(first.target(), CraneliftTarget::Riscv64);
     assert!(!first.bytes().is_empty());
-    assert_eq!(first.bytes().len() % 2, 0, "RV64GC instruction stream alignment");
-    assert_eq!(first.bytes(), second.bytes(), "machine code must be deterministic");
+    assert_eq!(
+        first.bytes().len() % 2,
+        0,
+        "RV64GC instruction stream alignment"
+    );
+    assert_eq!(
+        first.bytes(),
+        second.bytes(),
+        "machine code must be deterministic"
+    );
 }
 
 #[test]
@@ -171,10 +179,7 @@ fn run_under_qemu(machine: &MachineCode, argument: u16) -> i32 {
 }
 
 fn temporary_executable(argument: u16) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "forge-rv64-{}-{argument}.elf",
-        std::process::id()
-    ))
+    std::env::temp_dir().join(format!("forge-rv64-{}-{argument}.elf", std::process::id()))
 }
 
 fn rv64_elf_launcher(function: &[u8], argument: u16) -> Vec<u8> {
@@ -237,12 +242,7 @@ fn encode_jal(rd: u32, offset: i32) -> u32 {
     let bits10_1 = (imm >> 1) & 0x3ff;
     let bit11 = (imm >> 11) & 0x1;
     let bits19_12 = (imm >> 12) & 0xff;
-    (bit20 << 31)
-        | (bits10_1 << 21)
-        | (bit11 << 20)
-        | (bits19_12 << 12)
-        | (rd << 7)
-        | 0x6f
+    (bit20 << 31) | (bits10_1 << 21) | (bit11 << 20) | (bits19_12 << 12) | (rd << 7) | 0x6f
 }
 
 fn put_u16(buffer: &mut [u8], offset: usize, value: u16) {
