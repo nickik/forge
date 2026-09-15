@@ -65,7 +65,7 @@ pub struct MemoryBlock {
 }
 
 // Arena is an explicit capability object, not a language trait/interface.
-// `context` is provider-specific state and `ops` is a static operations table.
+// `state` is provider-specific state and `ops` is a static operations table.
 // The same core algorithms can therefore use a Cosmic kernel provider, hosted
 // VM provider, firmware/static-RAM provider, or deterministic test provider.
 pub struct ArenaOps {
@@ -75,7 +75,7 @@ pub struct ArenaOps {
 }
 
 pub struct Arena {
-    context: *void;
+    state: *void;
     ops: &ArenaOps;
 }
 
@@ -83,17 +83,17 @@ pub fn arena_alloc(
     arena: &mut Arena,
     request: AllocRequest
 ) -> Result[MemoryBlock, AllocError] {
-    return arena.ops.alloc(arena.context, request);
+    return arena.ops.alloc(arena.state, request);
 }
 
 pub fn arena_free(arena: &mut Arena, block: MemoryBlock) -> void {
-    arena.ops.free(arena.context, block);
+    arena.ops.free(arena.state, block);
 }
 
 // Ask the provider to release up to `target_bytes` of unused backing resource.
 // The return value is the number of bytes actually released.
 pub fn arena_reclaim(arena: &mut Arena, target_bytes: usize) -> usize {
-    return arena.ops.reclaim(arena.context, target_bytes);
+    return arena.ops.reclaim(arena.state, target_bytes);
 }
 
 // General allocator capability for arbitrary-size allocations. This is kept
@@ -114,7 +114,7 @@ pub struct AllocatorOps {
 }
 
 pub struct Allocator {
-    context: *void;
+    state: *void;
     ops: &AllocatorOps;
 }
 
@@ -122,14 +122,14 @@ pub fn allocator_alloc(
     allocator: &mut Allocator,
     request: AllocRequest
 ) -> Result[MemoryBlock, AllocError] {
-    return allocator.ops.alloc(allocator.context, request);
+    return allocator.ops.alloc(allocator.state, request);
 }
 
 pub fn allocator_free(
     allocator: &mut Allocator,
     block: MemoryBlock
 ) -> Result[void, AllocError] {
-    return allocator.ops.free(allocator.context, block);
+    return allocator.ops.free(allocator.state, block);
 }
 
 pub fn allocator_resize(
@@ -137,14 +137,14 @@ pub fn allocator_resize(
     block: MemoryBlock,
     new_size: usize
 ) -> Result[MemoryBlock, AllocError] {
-    return allocator.ops.resize(allocator.context, block, new_size);
+    return allocator.ops.resize(allocator.state, block, new_size);
 }
 
 pub fn allocator_validate(
     allocator: &mut Allocator,
     block: MemoryBlock
 ) -> Result[void, AllocError] {
-    return allocator.ops.validate(allocator.context, block);
+    return allocator.ops.validate(allocator.state, block);
 }
 
 // Fixed-size object-cache configuration. Object caches are optimized for
