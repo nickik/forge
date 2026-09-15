@@ -182,11 +182,11 @@ impl CraneliftBackend {
         for (owner, function) in prepared.functions() {
             let mut context = Context::for_function(function.clone());
             let mut control = ControlPlane::default();
-            let compiled = context
-                .compile(&*isa, &mut control)
-                .map_err(|error| object_error(format!(
+            let compiled = context.compile(&*isa, &mut control).map_err(|error| {
+                object_error(format!(
                     "object compilation failed for {owner:?}: {error:?}"
-                )))?;
+                ))
+            })?;
 
             let alignment = u64::from(compiled.buffer.min_alignment.max(1));
             section_alignment = section_alignment.max(alignment);
@@ -370,7 +370,9 @@ fn emit_elf64(
         .filter(|(_, symbol)| symbol.linkage() == ObjectLinkage::Local)
     {
         let emitted = functions.get(owner).ok_or_else(|| {
-            object_error(format!("no emitted machine code for local function {owner:?}"))
+            object_error(format!(
+                "no emitted machine code for local function {owner:?}"
+            ))
         })?;
         let name = add_string(&mut strtab, symbol.name())?;
         let index = symbols.len() as u32;
@@ -386,7 +388,9 @@ fn emit_elf64(
 
     for &(owner, offset) in labels {
         let emitted = functions.get(&owner).ok_or_else(|| {
-            object_error(format!("relocation label refers to missing function {owner:?}"))
+            object_error(format!(
+                "relocation label refers to missing function {owner:?}"
+            ))
         })?;
         if u64::from(offset) > emitted.size {
             return Err(object_error(format!(
@@ -395,7 +399,10 @@ fn emit_elf64(
             )));
         }
         let index = symbols.len() as u32;
-        symbols.push(ElfSymbol::label(TEXT_SECTION, emitted.start + u64::from(offset)));
+        symbols.push(ElfSymbol::label(
+            TEXT_SECTION,
+            emitted.start + u64::from(offset),
+        ));
         label_symbols.insert((owner, offset), index);
     }
 
@@ -406,7 +413,9 @@ fn emit_elf64(
         .filter(|(_, symbol)| symbol.linkage() == ObjectLinkage::Export)
     {
         let emitted = functions.get(owner).ok_or_else(|| {
-            object_error(format!("no emitted machine code for exported function {owner:?}"))
+            object_error(format!(
+                "no emitted machine code for exported function {owner:?}"
+            ))
         })?;
         let name = add_string(&mut strtab, symbol.name())?;
         let index = symbols.len() as u32;
@@ -421,17 +430,21 @@ fn emit_elf64(
     }
 
     if function_symbols.len() != functions.len() {
-        return Err(object_error("not every emitted function received an ELF symbol"));
+        return Err(object_error(
+            "not every emitted function received an ELF symbol",
+        ));
     }
 
     let mut rela_text = Vec::with_capacity(relocs.len() * 24);
     for reloc in relocs {
         let symbol = match reloc.target {
-            RelocationTarget::Function(owner) => *function_symbols.get(&owner).ok_or_else(|| {
-                object_error(format!(
-                    "unresolved Forge relocation target {owner:?}; target is not in object plan"
-                ))
-            })?,
+            RelocationTarget::Function(owner) => {
+                *function_symbols.get(&owner).ok_or_else(|| {
+                    object_error(format!(
+                        "unresolved Forge relocation target {owner:?}; target is not in object plan"
+                    ))
+                })?
+            }
             RelocationTarget::Label { owner, offset } => {
                 *label_symbols.get(&(owner, offset)).ok_or_else(|| {
                     object_error(format!(
