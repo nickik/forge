@@ -86,7 +86,10 @@ fn c11a_prepared_module_carries_functions_globals_and_init_order() {
             .expect("integrated prepared module");
 
         assert_eq!(prepared.target(), target);
-        assert_eq!(prepared.functions().keys().copied().collect::<Vec<_>>(), vec![DefId(1)]);
+        assert_eq!(
+            prepared.functions().keys().copied().collect::<Vec<_>>(),
+            vec![DefId(1)]
+        );
         assert_eq!(
             prepared.globals().keys().copied().collect::<Vec<_>>(),
             vec![DefId(10), DefId(11)]
@@ -153,7 +156,9 @@ fn c11a_object_plan_carries_function_and_global_symbols_together() {
 #[test]
 fn c11a_object_emission_refuses_to_silently_drop_planned_globals() {
     let backend = CraneliftBackend::aarch64().expect("backend");
-    let prepared = backend.prepare_module(&integrated_module()).expect("prepared");
+    let prepared = backend
+        .prepare_module(&integrated_module())
+        .expect("prepared");
     let plan = backend.plan_object_module(&prepared).expect("plan");
     let error = backend
         .emit_object(&prepared, &plan)
