@@ -582,7 +582,7 @@ fn elf_relocation_type(target: CraneliftTarget, kind: Reloc) -> Result<u32, Back
         (CraneliftTarget::Riscv64, Reloc::RiscvCallPlt) => Ok(19),
         (CraneliftTarget::Riscv64, Reloc::RiscvGotHi20) => Ok(20),
         (CraneliftTarget::Riscv64, Reloc::RiscvPCRelHi20) => Ok(23),
-        (CraneliftTarget::Riscv64, Reloc::RiscvPCRelLo12I) => Ok(24),
+        (CraneliftTarget::Riscv64, Reloc::RiscPCRelLo12I) => Ok(24),
         (target, kind) => Err(object_error(format!(
             "unsupported {target:?} object relocation kind {kind:?}"
         ))),
