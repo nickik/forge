@@ -4,6 +4,8 @@
 //! translate it to Cranelift IR, but it must not inspect or reconstruct source,
 //! HIR, type-checker, pattern, capture, default-argument, or safety semantics.
 
+mod types;
+
 use std::fmt;
 use std::str::FromStr;
 
@@ -12,6 +14,8 @@ use cranelift_codegen::isa::{self, CallConv, OwnedTargetIsa};
 use cranelift_codegen::{settings, Context};
 use forge_fir::{verify_fir_module, FirModule};
 use target_lexicon::Triple;
+
+pub use types::{TargetLayout, TypeLowering};
 
 /// The targets used to validate Forge's target-independent FIR -> CLIF lowering.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,38 +31,46 @@ impl CraneliftTarget {
             Self::Riscv64 => "riscv64gc-unknown-linux-gnu",
         }
     }
+
+    /// Forge ABI/layout properties that are target dependent but independent of
+    /// the concrete Cranelift IR encoding.
+    pub const fn layout(self) -> TargetLayout {
+        match self {
+            Self::Aarch64 | Self::Riscv64 => TargetLayout::new(64),
+        }
+    }
 }
 
 /// Backend failures are code-generation failures only. They must never be used
 /// to defer or re-run Forge semantic analysis below FIR.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BackendError {
-    InvalidFir {
-        diagnostic_count: usize,
-    },
-    UnsupportedFir {
-        component: &'static str,
-    },
-    InvalidTarget {
-        triple: &'static str,
-        message: String,
-    },
-    Cranelift {
-        message: String,
-    },
+    InvalidFir { diagnostic_count: usize },
+    UnsupportedFir { component: &'static str },
+    UnsupportedType { kind: &'static str },
+    SemanticTypeLeak { kind: &'static str },
+    UnsupportedTargetLayout { pointer_bits: u16 },
+    InvalidTarget { triple: &'static str, message: String },
+    Cranelift { message: String },
 }
 
 impl fmt::Display for BackendError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidFir { diagnostic_count } => {
-                write!(
-                    f,
-                    "FIR verification failed with {diagnostic_count} diagnostic(s)"
-                )
+                write!(f, "FIR verification failed with {diagnostic_count} diagnostic(s)")
             }
             Self::UnsupportedFir { component } => {
                 write!(f, "FIR component is not lowered to CLIF yet: {component}")
+            }
+            Self::UnsupportedType { kind } => {
+                write!(f, "FIR type is not lowered to a CLIF value yet: {kind}")
+            }
+            Self::SemanticTypeLeak { kind } => {
+                write!(f, "frontend-only semantic type leaked into FIR codegen: {kind}")
+            }
+            Self::UnsupportedTargetLayout { pointer_bits } => {
+                write!(f, "unsupported Forge target pointer width: {pointer_bits} bits")
             }
             Self::InvalidTarget { triple, message } => {
                 write!(f, "invalid Cranelift target {triple}: {message}")
@@ -74,16 +86,16 @@ impl std::error::Error for BackendError {}
 /// state other than the verified FIR passed to individual operations.
 pub struct CraneliftBackend {
     target: CraneliftTarget,
+    layout: TargetLayout,
     isa: OwnedTargetIsa,
 }
 
 impl CraneliftBackend {
     pub fn new(target: CraneliftTarget) -> Result<Self, BackendError> {
-        let triple =
-            Triple::from_str(target.triple()).map_err(|error| BackendError::InvalidTarget {
-                triple: target.triple(),
-                message: error.to_string(),
-            })?;
+        let triple = Triple::from_str(target.triple()).map_err(|error| BackendError::InvalidTarget {
+            triple: target.triple(),
+            message: error.to_string(),
+        })?;
         let flags = settings::Flags::new(settings::builder());
         let builder = isa::lookup(triple).map_err(|error| BackendError::InvalidTarget {
             triple: target.triple(),
@@ -95,7 +107,11 @@ impl CraneliftBackend {
                 message: error.to_string(),
             })?;
 
-        Ok(Self { target, isa })
+        Ok(Self {
+            target,
+            layout: target.layout(),
+            isa,
+        })
     }
 
     pub fn aarch64() -> Result<Self, BackendError> {
@@ -110,26 +126,34 @@ impl CraneliftBackend {
         self.target
     }
 
+    pub const fn target_layout(&self) -> &TargetLayout {
+        &self.layout
+    }
+
+    pub fn type_lowering(&self) -> TypeLowering<'_> {
+        TypeLowering::new(&self.layout)
+    }
+
     pub fn target_triple(&self) -> &Triple {
         self.isa.triple()
     }
 
     /// Create an empty Cranelift compilation context. Function population starts
-    /// in C2/C3 when FIR types and CFG operations receive mechanical lowering.
+    /// in C3 when FIR CFG operations receive mechanical lowering.
     pub fn new_context(&self) -> Context {
         Context::new()
     }
 
-    /// Create a target-ABI signature shell. Parameter/result population belongs
-    /// to the FIR type-lowering milestone rather than C1.
+    /// Create a target-ABI signature shell. Parameter/result population starts
+    /// in C3 using C2's mechanical FIR value-type lowering.
     pub fn new_signature(&self) -> Signature {
         Signature::new(CallConv::triple_default(self.isa.triple()))
     }
 
     /// Validate the FIR/CLIF boundary and prepare Cranelift state.
     ///
-    /// C1 intentionally accepts only an empty module. Every non-empty FIR
-    /// component is rejected explicitly until its lowering is implemented.
+    /// C2 still accepts only an empty module. Every non-empty FIR component is
+    /// rejected explicitly until its CFG/data lowering is implemented.
     pub fn prepare_module(&self, module: &FirModule) -> Result<PreparedModule, BackendError> {
         let diagnostics = verify_fir_module(module);
         if !diagnostics.is_empty() {
@@ -167,8 +191,8 @@ impl CraneliftBackend {
     }
 }
 
-/// C1's prepared, still-empty Cranelift state. This becomes the owner of
-/// generated CLIF functions as C2/C3 add type and CFG lowering.
+/// C2's prepared, still-empty Cranelift state. This becomes the owner of
+/// generated CLIF functions as C3 adds CFG lowering.
 pub struct PreparedModule {
     target: CraneliftTarget,
     context: Context,
