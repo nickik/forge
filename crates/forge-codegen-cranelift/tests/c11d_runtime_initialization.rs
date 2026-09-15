@@ -111,11 +111,7 @@ fn make_pair(owner: DefId) -> FirFunction {
             ],
             terminator: Some(FirTerminator::Return { value: Some(pair) }),
         }],
-        value_types: BTreeMap::from([
-            (first, u64_ty()),
-            (second, u64_ty()),
-            (pair, pair_ty()),
-        ]),
+        value_types: BTreeMap::from([(first, u64_ty()), (second, u64_ty()), (pair, pair_ty())]),
     }
 }
 
@@ -187,7 +183,9 @@ struct EmittedFixture {
 
 fn emit(target: CraneliftTarget) -> EmittedFixture {
     let backend = CraneliftBackend::new(target).expect("backend");
-    let prepared = backend.prepare_module(&runtime_module()).expect("prepare C11d module");
+    let prepared = backend
+        .prepare_module(&runtime_module())
+        .expect("prepare C11d module");
     assert_eq!(prepared.global_init_order(), &[FIRST, SECOND, PAIR]);
     assert_eq!(prepared.runtime_initializer_functions().len(), 3);
     assert_eq!(prepared.functions().len(), 4);
@@ -231,7 +229,9 @@ fn emit(target: CraneliftTarget) -> EmittedFixture {
         .expect("module initializer symbol")
         .name()
         .to_owned();
-    let object = backend.emit_object(&prepared, &plan).expect("emit C11d object");
+    let object = backend
+        .emit_object(&prepared, &plan)
+        .expect("emit C11d object");
     EmittedFixture {
         bytes: object.into_bytes(),
         module_initializer: module_initializer_name,
