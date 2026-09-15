@@ -53,10 +53,9 @@ jobs:
             echo "Integration artifacts already normalized"
             exit 0
           fi
-          git diff --check
           git status --short
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock packages/forge-collections-native/src/lib.fg crates/forge-build
+          git add -u
           git commit -m "Normalize merged build artifacts"
           git push
