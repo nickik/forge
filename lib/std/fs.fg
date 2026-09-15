@@ -5,6 +5,7 @@ import core;
 // Minimal hosted filesystem API needed by early integration programs. The
 // provider is target-selected (Unix, CForge host, Cosmic userspace, ...).
 nfn __forge_fs_read_text(path: str) -> str {
+    return "";
 }
 
 nfn __forge_fs_write_text(path: str, text: str) -> void {
@@ -14,13 +15,13 @@ nfn __forge_fs_append_text(path: str, text: str) -> void {
 }
 
 pub fn read_text(path: str) -> str {
-    return __forge_fs_read_text(path);
+    return __forge_fs_read_text(:path=path);
 }
 
 pub fn write_text(path: str, text: str) -> void {
-    __forge_fs_write_text(path, text);
+    __forge_fs_write_text(:path=path, :text=text);
 }
 
 pub fn append_text(path: str, text: str) -> void {
-    __forge_fs_append_text(path, text);
+    __forge_fs_append_text(:path=path, :text=text);
 }

@@ -5,9 +5,11 @@ import core;
 // Hosted process argument access. The runtime/provider supplies the actual
 // argument vector; applications see a target-independent API.
 nfn __forge_args_count() -> usize {
+    return 0;
 }
 
 nfn __forge_args_get(index: usize) -> str {
+    return "";
 }
 
 pub fn count() -> usize {
@@ -15,5 +17,5 @@ pub fn count() -> usize {
 }
 
 pub fn get(index: usize) -> str {
-    return __forge_args_get(index);
+    return __forge_args_get(:index=index);
 }

@@ -9,15 +9,16 @@ pub struct FileLock {
 }
 
 nfn __forge_lock_acquire_exclusive(path: str) -> FileLock {
+    return FileLock{handle: 0};
 }
 
 nfn __forge_lock_release(lock: FileLock) -> void {
 }
 
 pub fn acquire_exclusive(path: str) -> FileLock {
-    return __forge_lock_acquire_exclusive(path);
+    return __forge_lock_acquire_exclusive(:path=path);
 }
 
 pub fn release(lock: FileLock) -> void {
-    __forge_lock_release(lock);
+    __forge_lock_release(:lock=lock);
 }
