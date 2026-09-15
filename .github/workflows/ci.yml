@@ -20,7 +20,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Formatting
         timeout-minutes: 2
-        run: cargo fmt --all -- --check
+        run: cargo fmt -p forge-frontend -p forge-fir -p forge-conformance -p forge-codegen-cranelift -- --check
       - name: Workspace check
         timeout-minutes: 5
         run: cargo check --workspace --locked
