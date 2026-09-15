@@ -1,3 +1,5 @@
+mod module_linker;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -5,9 +7,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use forge_codegen_cranelift::CraneliftBackend;
 use forge_frontend::{
-    collect_type_definitions, lower_fir, lower_module, lower_resolved_bodies, parse_source,
-    type_check_module, DefId, IntWidth, Ty,
+    ast::SourceFile, collect_type_definitions, lower_fir, lower_module, lower_resolved_bodies,
+    parse_source, type_check_module, DefId, IntWidth, Ty,
 };
+use module_linker::{link_modules, ParsedLibrary};
 
 #[derive(Debug)]
 pub struct CompilerError(String);
@@ -38,6 +41,41 @@ impl From<forge_codegen_cranelift::BackendError> for CompilerError {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LibraryInput {
+    name: String,
+    path: PathBuf,
+}
+
+impl LibraryInput {
+    pub fn new(name: impl Into<String>, path: impl Into<PathBuf>) -> Self {
+        Self {
+            name: name.into(),
+            path: path.into(),
+        }
+    }
+
+    pub fn parse(spec: &str) -> Result<Self, CompilerError> {
+        let (name, path) = spec.split_once('=').ok_or_else(|| {
+            CompilerError::message(format!("invalid --library `{spec}`; expected NAME=PATH"))
+        })?;
+        if name.is_empty() || path.is_empty() {
+            return Err(CompilerError::message(format!(
+                "invalid --library `{spec}`; expected non-empty NAME=PATH"
+            )));
+        }
+        Ok(Self::new(name, path))
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CompiledProgram {
     object: Vec<u8>,
@@ -65,15 +103,38 @@ impl CompiledProgram {
 }
 
 pub fn compile_source(source: &str) -> Result<CompiledProgram, CompilerError> {
+    compile_source_with_library_sources(source, &[])
+}
+
+pub fn compile_source_with_library_sources(
+    source: &str,
+    libraries: &[(String, String)],
+) -> Result<CompiledProgram, CompilerError> {
+    let root = parse_ast("root source", source)?;
+    let mut parsed_libraries = Vec::with_capacity(libraries.len());
+    for (name, source) in libraries {
+        parsed_libraries.push(ParsedLibrary {
+            name: name.clone(),
+            ast: parse_ast(&format!("library `{name}`"), source)?,
+        });
+    }
+    let ast = link_modules(root, parsed_libraries)
+        .map_err(|error| CompilerError::message(format!("module linking failed: {error}")))?;
+    compile_ast(ast)
+}
+
+fn parse_ast(label: &str, source: &str) -> Result<SourceFile, CompilerError> {
     let parsed = parse_source(source);
     if parsed.ast.is_none() || !parsed.diagnostics.is_empty() {
         return Err(CompilerError::message(format!(
-            "parse failed: {:?}",
+            "parse failed for {label}: {:?}",
             parsed.diagnostics
         )));
     }
-    let ast = parsed.ast.expect("checked above");
+    Ok(parsed.ast.expect("checked above"))
+}
 
+fn compile_ast(ast: SourceFile) -> Result<CompiledProgram, CompilerError> {
     let hir = lower_module(&ast);
     if !hir.diagnostics.is_empty() {
         return Err(CompilerError::message(format!(
@@ -81,11 +142,10 @@ pub fn compile_source(source: &str) -> Result<CompiledProgram, CompilerError> {
             hir.diagnostics
         )));
     }
-    if !hir.module.imports.is_empty() {
-        return Err(CompilerError::message(
-            "C12a native compiler supports one source module only; imported libraries require C12c",
-        ));
-    }
+    debug_assert!(
+        hir.module.imports.is_empty(),
+        "C12c module linker must consume all imports"
+    );
 
     let bodies = lower_resolved_bodies(&ast, &hir.module);
     if !bodies.diagnostics.is_empty() {
@@ -166,35 +226,84 @@ pub fn compile_source(source: &str) -> Result<CompiledProgram, CompilerError> {
 }
 
 pub fn compile_file(path: &Path) -> Result<CompiledProgram, CompilerError> {
+    compile_file_with_libraries(path, &[])
+}
+
+pub fn compile_file_with_libraries(
+    path: &Path,
+    libraries: &[LibraryInput],
+) -> Result<CompiledProgram, CompilerError> {
     let source = fs::read_to_string(path).map_err(|error| {
         CompilerError::message(format!("cannot read {}: {error}", path.display()))
     })?;
-    compile_source(&source)
+    let mut sources = Vec::with_capacity(libraries.len());
+    for library in libraries {
+        let library_source = fs::read_to_string(library.path()).map_err(|error| {
+            CompilerError::message(format!(
+                "cannot read library {} from {}: {error}",
+                library.name(),
+                library.path().display()
+            ))
+        })?;
+        sources.push((library.name().to_owned(), library_source));
+    }
+    compile_source_with_library_sources(&source, &sources)
 }
 
 pub fn check_file(path: &Path) -> Result<(), CompilerError> {
-    compile_file(path).map(|_| ())
+    check_file_with_libraries(path, &[])
+}
+
+pub fn check_file_with_libraries(
+    path: &Path,
+    libraries: &[LibraryInput],
+) -> Result<(), CompilerError> {
+    compile_file_with_libraries(path, libraries).map(|_| ())
 }
 
 pub fn emit_object_file(path: &Path, output: &Path) -> Result<(), CompilerError> {
-    let compiled = compile_file(path)?;
+    emit_object_file_with_libraries(path, output, &[])
+}
+
+pub fn emit_object_file_with_libraries(
+    path: &Path,
+    output: &Path,
+    libraries: &[LibraryInput],
+) -> Result<(), CompilerError> {
+    let compiled = compile_file_with_libraries(path, libraries)?;
     fs::write(output, compiled.object()).map_err(|error| {
         CompilerError::message(format!("cannot write {}: {error}", output.display()))
     })
 }
 
 pub fn build_executable(path: &Path, output: &Path) -> Result<(), CompilerError> {
+    build_executable_with_libraries(path, output, &[])
+}
+
+pub fn build_executable_with_libraries(
+    path: &Path,
+    output: &Path,
+    libraries: &[LibraryInput],
+) -> Result<(), CompilerError> {
     require_native_aarch64_linux()?;
-    let compiled = compile_file(path)?;
+    let compiled = compile_file_with_libraries(path, libraries)?;
     link_hosted(&compiled, output)
 }
 
 pub fn run_file(path: &Path, args: &[String]) -> Result<Output, CompilerError> {
+    run_file_with_libraries(path, args, &[])
+}
+
+pub fn run_file_with_libraries(
+    path: &Path,
+    args: &[String],
+    libraries: &[LibraryInput],
+) -> Result<Output, CompilerError> {
     require_native_aarch64_linux()?;
     let dir = temporary_directory("run")?;
     let executable = dir.join("program");
     let result = (|| {
-        let compiled = compile_file(path)?;
+        let compiled = compile_file_with_libraries(path, libraries)?;
         link_hosted(&compiled, &executable)?;
         Command::new(&executable)
             .args(args)
@@ -267,7 +376,7 @@ fn require_native_aarch64_linux() -> Result<(), CompilerError> {
         Ok(())
     } else {
         Err(CompilerError::message(
-            "C12b hosted linking/execution currently requires native AArch64 Linux",
+            "C12 hosted linking/execution currently requires native AArch64 Linux",
         ))
     }
 }
@@ -297,12 +406,54 @@ fn main() -> i32 {
 }
 "#;
 
+    const LIBRARY: &str = r#"
+module math;
+pub type Count = i32;
+pub fn add_two(value: Count) -> Count { return value + 2; }
+pub fn forty() -> Count { return 40; }
+"#;
+
+    const WITH_LIBRARY: &str = r#"
+module test.library;
+import math;
+fn main() -> i32 {
+    val answer: math.Count = math.add_two(math.forty());
+    if (answer == 42) { return 0; }
+    return 1;
+}
+"#;
+
     #[test]
     fn source_pipeline_emits_aarch64_elf_and_exports_main() {
         let compiled = compile_source(SIMPLE).expect("compile source");
         assert_eq!(&compiled.object()[..4], b"\x7fELF");
         assert!(compiled.main_symbol().starts_with("__forge_fn_"));
         assert!(compiled.initializer_symbol().is_none());
+    }
+
+    #[test]
+    fn c12c_compiles_public_function_and_type_imports_semantically() {
+        let compiled =
+            compile_source_with_library_sources(WITH_LIBRARY, &[("math".into(), LIBRARY.into())])
+                .expect("compile linked modules");
+        assert_eq!(&compiled.object()[..4], b"\x7fELF");
+    }
+
+    #[test]
+    fn c12c_rejects_private_imports() {
+        let main = r#"
+module test.private;
+import secret;
+fn main() -> i32 { return secret.hidden(); }
+"#;
+        let library = r#"
+module secret;
+fn hidden() -> i32 { return 0; }
+"#;
+        let error = compile_source_with_library_sources(main, &[("secret".into(), library.into())])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("private value `secret.hidden`"), "{error}");
     }
 
     #[test]
@@ -326,6 +477,26 @@ fn main() -> i32 {
         let source = dir.join("main.fg");
         fs::write(&source, SIMPLE).expect("write source");
         let output = run_file(&source, &[]).expect("run source");
+        assert!(
+            output.status.success(),
+            "status={} stdout={} stderr={}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
+    fn c12c_links_and_executes_imported_library_natively() {
+        let dir = temporary_directory("library-test").expect("temp directory");
+        let source = dir.join("main.fg");
+        let library = dir.join("math.fg");
+        fs::write(&source, WITH_LIBRARY).expect("write source");
+        fs::write(&library, LIBRARY).expect("write library");
+        let libraries = vec![LibraryInput::new("math", &library)];
+        let output = run_file_with_libraries(&source, &[], &libraries).expect("run source");
         assert!(
             output.status.success(),
             "status={} stdout={} stderr={}",
