@@ -3,7 +3,9 @@ name: C13b stage hosted console
 on:
   push:
     branches: [agent/cranelift-c13-native-existing-code]
-    paths: [.github/workflows/c13b-stage-console.yml]
+    paths:
+      - .github/workflows/c13b-stage-console.yml
+      - lib/std/console.fg
 
 permissions:
   contents: write
