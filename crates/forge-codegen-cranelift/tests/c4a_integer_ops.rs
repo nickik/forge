@@ -88,11 +88,7 @@ fn binary_function(
                 value: Some(result),
             }),
         }],
-        value_types: BTreeMap::from([
-            (left, ty.clone()),
-            (right, ty),
-            (result, result_ty),
-        ]),
+        value_types: BTreeMap::from([(left, ty.clone()), (right, ty), (result, result_ty)]),
     }
 }
 
@@ -183,7 +179,10 @@ fn signed_and_unsigned_ordered_comparisons_select_distinct_clif_conditions() {
         )
         .expect("unsigned comparison");
 
-        assert!(signed_clif.contains(&format!("icmp {signed_cc}")), "{signed_clif}");
+        assert!(
+            signed_clif.contains(&format!("icmp {signed_cc}")),
+            "{signed_clif}"
+        );
         assert!(
             unsigned_clif.contains(&format!("icmp {unsigned_cc}")),
             "{unsigned_clif}"
@@ -195,19 +194,18 @@ fn signed_and_unsigned_ordered_comparisons_select_distinct_clif_conditions() {
 fn equality_comparisons_are_signedness_independent() {
     for op in [BinaryOp::Eq, BinaryOp::NotEq] {
         for signed in [false, true] {
-            let function = binary_function(
-                DefId(0),
-                int_ty(signed, IntWidth::W32),
-                op,
-                None,
-                Ty::Bool,
-            );
+            let function =
+                binary_function(DefId(0), int_ty(signed, IntWidth::W32), op, None, Ty::Bool);
             let clif = lower_single(
                 function,
                 CraneliftBackend::riscv64().expect("RISC-V64 backend"),
             )
             .expect("equality comparison");
-            let expected = if op == BinaryOp::Eq { "icmp eq" } else { "icmp ne" };
+            let expected = if op == BinaryOp::Eq {
+                "icmp eq"
+            } else {
+                "icmp ne"
+            };
             assert!(clif.contains(expected), "{clif}");
         }
     }
@@ -230,7 +228,10 @@ fn checked_add_lowers_to_overflow_test_and_trap() {
     .expect("checked overflow should lower mechanically");
 
     assert!(clif.contains("uadd_overflow"), "{clif}");
-    assert!(clif.contains("trapnz") && clif.contains("int_ovf"), "{clif}");
+    assert!(
+        clif.contains("trapnz") && clif.contains("int_ovf"),
+        "{clif}"
+    );
 }
 
 // Backends are cheap to reconstruct; this helper keeps the nested test loop readable.
