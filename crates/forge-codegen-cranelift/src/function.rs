@@ -89,7 +89,10 @@ pub(crate) fn lower_function(
     }
 
     verify_function(&function, isa).map_err(|errors| BackendError::Cranelift {
-        message: format!("CLIF verifier rejected FIR function {:?}: {errors}", fir.owner),
+        message: format!(
+            "CLIF verifier rejected FIR function {:?}: {errors}",
+            fir.owner
+        ),
     })?;
 
     Ok(function)
@@ -296,7 +299,10 @@ fn lower_integer_binary(
                 )));
             }
             let bits = cursor.func.dfg.value_type(left_value).bits();
-            let out_of_range = cursor.ins().icmp_imm(IntCC::UnsignedGreaterThanOrEqual, right_value, bits as i64);
+            let out_of_range =
+                cursor
+                    .ins()
+                    .icmp_imm(IntCC::UnsignedGreaterThanOrEqual, right_value, bits as i64);
             cursor
                 .ins()
                 .trapnz(out_of_range, TrapCode::INTEGER_OVERFLOW);
@@ -469,9 +475,7 @@ fn lower_terminator(
             else_block,
         } => {
             if fir.value_types.get(condition) != Some(&Ty::Bool) {
-                return Err(shape(format!(
-                    "branch condition {condition:?} is not bool"
-                )));
+                return Err(shape(format!("branch condition {condition:?} is not bool")));
             }
             cursor.ins().brif(
                 lookup_value(values, *condition)?,
