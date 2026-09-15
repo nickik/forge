@@ -101,7 +101,8 @@ fn run(function: &[u8], argument: u16) -> i32 {
         std::process::id()
     ));
     let mut file = fs::File::create(&path).expect("create RV64 ELF");
-    file.write_all(&elf(function, argument)).expect("write RV64 ELF");
+    file.write_all(&elf(function, argument))
+        .expect("write RV64 ELF");
     drop(file);
     let status = Command::new("qemu-riscv64")
         .arg(&path)
@@ -161,6 +162,12 @@ fn jal(rd: u32, offset: i32) -> u32 {
         | 0x6f
 }
 
-fn u16_at(b: &mut [u8], o: usize, v: u16) { b[o..o + 2].copy_from_slice(&v.to_le_bytes()); }
-fn u32_at(b: &mut [u8], o: usize, v: u32) { b[o..o + 4].copy_from_slice(&v.to_le_bytes()); }
-fn u64_at(b: &mut [u8], o: usize, v: u64) { b[o..o + 8].copy_from_slice(&v.to_le_bytes()); }
+fn u16_at(b: &mut [u8], o: usize, v: u16) {
+    b[o..o + 2].copy_from_slice(&v.to_le_bytes());
+}
+fn u32_at(b: &mut [u8], o: usize, v: u32) {
+    b[o..o + 4].copy_from_slice(&v.to_le_bytes());
+}
+fn u64_at(b: &mut [u8], o: usize, v: u64) {
+    b[o..o + 8].copy_from_slice(&v.to_le_bytes());
+}
