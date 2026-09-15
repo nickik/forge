@@ -110,11 +110,47 @@ Forge pins the reduced `nickik/crainlift` fork at commit `fcd03035697e5f9b68bf67
 - [x] Do not use C-struct ABI classification for Forge native aggregates.
 - [x] Record aggregate ABI/layout design direction without freezing C9.
 
-### C9 — aggregate representation and Forge ABI/layout
+### C9 — aggregate representation and native Forge ABI — complete
 
-- [ ] Define deterministic Forge aggregate memory layout.
-- [ ] Define aggregate call decomposition independently from memory field layout.
-- [ ] Decide direct-register versus indirect thresholds from AArch64/RV64/SIA evidence.
-- [ ] Define explicit C-FFI representation/calling-convention escape hatch separately from native Forge ABI.
+#### C9a — Forge layout engine — complete
+
+- [x] Make `forge-fir` own the single authoritative Forge memory-layout engine.
+- [x] Preserve nominal field/variant declaration indices across the FIR boundary.
+- [x] Define deterministic default struct field reordering and zero-sized-field placement.
+- [x] Define nested structs, arrays, field offsets, ZSTs and recursive-by-value cycle rejection.
+- [x] Define stable initial niches, `Option<T>`, enums, tagged unions and `Result` layouts.
+- [x] Select the smallest explicit discriminant width when a niche cannot represent the sum.
+- [x] Make the older C7 scalar layout helper delegate to the authoritative layout engine.
+
+#### C9b — ABI decomposition — complete
+
+- [x] Keep Forge ABI decomposition independent from both memory field ordering and Cranelift ABI classification.
+- [x] Recursively flatten aggregate values into Forge ABI fragments and pieces.
+- [x] Coalesce compatible sub-word integer/bool fragments into ABI words.
+- [x] Keep pointers/references/function pointers as independently classified pieces.
+- [x] Exclude memory padding from ABI pieces.
+- [x] Freeze the initial direct-value threshold at four target ABI words; larger values are indirect.
+- [x] Define ordinary consecutive-word decomposition for multiword integers with no artificial pair alignment.
+
+#### C9c — FIR aggregate operations — complete
+
+- [x] Lower aggregate construction and aggregate local storage/copies.
+- [x] Lower field extraction and field-address places from authoritative Forge layout offsets.
+- [x] Lower array construction, indexing, length and bounds checks.
+- [x] Lower aggregate pointer arithmetic using authoritative aggregate stride.
+- [x] Lower initial niche/tag encode, test and payload operations for `Option`, `Result` and tagged values.
+- [x] Keep aggregate values internal to codegen as compiler-owned memory temporaries rather than inventing CLIF aggregate types.
+
+#### C9d — aggregate calls and returns — complete
+
+- [x] Derive CLIF signatures mechanically from Forge `AbiDecomposition`.
+- [x] Pack/unpack direct aggregate parameters into their scalar ABI pieces.
+- [x] Support direct multi-piece aggregate returns.
+- [x] Pass values larger than four ABI words indirectly while preserving Forge value semantics in the callee.
+- [x] Use a hidden first pointer argument for large aggregate return storage without adopting Cranelift's C-struct ABI classification.
+- [x] Apply the same Forge ABI to direct calls, indirect calls and first-class function references.
+- [x] Add cross-target aggregate call round-trip lowering tests for direct, indirect and function-pointer cases.
+
+C interop, packed/source-ordered representations, broader niche use, floating-point aggregate classes, tail-padding reuse and private/LTO ABI rewriting remain explicitly deferred to future ABI versions; see `docs/forge-abi-future.md`.
 
 Later milestones add globals, closures, runtime operations, AOT objects, optimization policy and full differential conformance. Only after those paths are mature does the SIA Cranelift backend begin.

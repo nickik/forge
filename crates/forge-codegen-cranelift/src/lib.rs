@@ -9,7 +9,7 @@ mod backend;
 mod c9_memory_checks;
 mod diagnostic;
 #[allow(clippy::too_many_arguments)]
-#[path = "function_c9c_impl.rs"]
+#[path = "function_c9d_impl.rs"]
 mod function;
 mod machine;
 mod target;
