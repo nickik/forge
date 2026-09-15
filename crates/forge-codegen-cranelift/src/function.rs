@@ -7,7 +7,7 @@ use cranelift_codegen::isa::{CallConv, TargetIsa};
 use cranelift_codegen::verifier::verify_function;
 use forge_fir::{
     BinaryOp, FirBlockId, FirConst, FirFunction, FirInstruction, FirInstructionKind, FirLocalId,
-    FirPlace, FirTerminator, FirValueId, IntWidth, Ty,
+    FirPlace, FirTerminator, FirValueId, IntWidth, OverflowMode, Ty,
 };
 
 use crate::{BackendError, TypeLowering};
@@ -45,7 +45,9 @@ pub(crate) fn lower_function(
             .get(local_id)
             .ok_or_else(|| shape(format!("missing FIR parameter local {local_id:?}")))?;
         if !local.parameter {
-            return Err(shape(format!("FIR parameter local {local_id:?} is not marked parameter")));
+            return Err(shape(format!(
+                "FIR parameter local {local_id:?} is not marked parameter"
+            )));
         }
         let value = function
             .dfg
@@ -102,7 +104,9 @@ fn lower_signature(
             .locals
             .get(local_id)
             .ok_or_else(|| shape(format!("missing FIR parameter local {local_id:?}")))?;
-        signature.params.push(AbiParam::new(types.value_type(&local.ty)?));
+        signature
+            .params
+            .push(AbiParam::new(types.value_type(&local.ty)?));
     }
     if fir.return_type != Ty::Void {
         signature
@@ -137,7 +141,14 @@ fn lower_one_block(
     let mut cursor = FuncCursor::new(function);
     cursor.goto_bottom(clif_block);
     for instruction in &fir_block.instructions {
-        lower_instruction(fir, instruction, parameter_values, values, types, &mut cursor)?;
+        lower_instruction(
+            fir,
+            instruction,
+            parameter_values,
+            values,
+            types,
+            &mut cursor,
+        )?;
     }
 
     let terminator = fir_block
@@ -157,7 +168,9 @@ fn lower_instruction(
 ) -> Result<(), BackendError> {
     let result_id = instruction
         .result
-        .ok_or(BackendError::UnsupportedInstruction { kind: "void instruction" })?;
+        .ok_or(BackendError::UnsupportedInstruction {
+            kind: "void instruction",
+        })?;
     let result_ty = fir
         .value_types
         .get(&result_id)
@@ -167,30 +180,37 @@ fn lower_instruction(
         FirInstructionKind::Const { value } => lower_const(value, result_ty, types, cursor)?,
         FirInstructionKind::Load {
             place: FirPlace::Local { local },
-        } => *parameter_values.get(local).ok_or(BackendError::UnsupportedInstruction {
-            kind: "load of non-parameter local",
-        })?,
+        } => *parameter_values
+            .get(local)
+            .ok_or(BackendError::UnsupportedInstruction {
+                kind: "load of non-parameter local",
+            })?,
         FirInstructionKind::Binary {
             op,
             left,
             right,
             overflow: _,
-        } if is_comparison(*op) => {
-            let left_value = lookup_value(values, *left)?;
-            let right_value = lookup_value(values, *right)?;
-            let operand_ty = fir
-                .value_types
-                .get(left)
-                .ok_or_else(|| shape(format!("missing type for comparison operand {left:?}")))?;
-            let cc = comparison_condition(*op, operand_ty)?;
-            cursor.ins().icmp(cc, left_value, right_value)
-        }
+        } if is_comparison(*op) => lower_comparison(fir, *op, *left, *right, values, cursor)?,
+        FirInstructionKind::Binary {
+            op,
+            left,
+            right,
+            overflow,
+        } if is_c4a_arithmetic(*op) => lower_integer_arithmetic(
+            fir,
+            *op,
+            *left,
+            *right,
+            *overflow,
+            values,
+            cursor,
+        )?,
         FirInstructionKind::Load { .. } => {
             return Err(BackendError::UnsupportedInstruction { kind: "place load" });
         }
         FirInstructionKind::Binary { .. } => {
             return Err(BackendError::UnsupportedInstruction {
-                kind: "non-comparison binary operation",
+                kind: "binary operation outside C4a",
             });
         }
         _ => {
@@ -211,6 +231,91 @@ fn lower_instruction(
     Ok(())
 }
 
+fn lower_comparison(
+    fir: &FirFunction,
+    op: BinaryOp,
+    left: FirValueId,
+    right: FirValueId,
+    values: &BTreeMap<FirValueId, Value>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    let left_value = lookup_value(values, left)?;
+    let right_value = lookup_value(values, right)?;
+    let operand_ty = matching_integer_operands(fir, left, right, "comparison")?;
+    let cc = comparison_condition(op, operand_ty)?;
+    Ok(cursor.ins().icmp(cc, left_value, right_value))
+}
+
+fn lower_integer_arithmetic(
+    fir: &FirFunction,
+    op: BinaryOp,
+    left: FirValueId,
+    right: FirValueId,
+    overflow: Option<OverflowMode>,
+    values: &BTreeMap<FirValueId, Value>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    matching_integer_operands(fir, left, right, "arithmetic")?;
+
+    match overflow {
+        Some(OverflowMode::Wrapping) => {}
+        Some(OverflowMode::Checked) => {
+            return Err(BackendError::UnsupportedInstruction {
+                kind: "checked integer arithmetic overflow path",
+            });
+        }
+        None => {
+            return Err(shape(format!(
+                "C4a arithmetic operation {op:?} has no FIR overflow mode"
+            )));
+        }
+    }
+
+    let left_value = lookup_value(values, left)?;
+    let right_value = lookup_value(values, right)?;
+    Ok(match op {
+        BinaryOp::Add => cursor.ins().iadd(left_value, right_value),
+        BinaryOp::Sub => cursor.ins().isub(left_value, right_value),
+        BinaryOp::Mul => cursor.ins().imul(left_value, right_value),
+        _ => {
+            return Err(BackendError::UnsupportedInstruction {
+                kind: "integer arithmetic operation outside C4a",
+            });
+        }
+    })
+}
+
+fn matching_integer_operands<'a>(
+    fir: &'a FirFunction,
+    left: FirValueId,
+    right: FirValueId,
+    operation: &str,
+) -> Result<&'a Ty, BackendError> {
+    let left_ty = fir
+        .value_types
+        .get(&left)
+        .ok_or_else(|| shape(format!("missing type for {operation} operand {left:?}")))?;
+    let right_ty = fir
+        .value_types
+        .get(&right)
+        .ok_or_else(|| shape(format!("missing type for {operation} operand {right:?}")))?;
+    if left_ty != right_ty {
+        return Err(shape(format!(
+            "{operation} operands have different FIR types: {left_ty:?} and {right_ty:?}"
+        )));
+    }
+    if !is_integer_type(left_ty) {
+        return Err(BackendError::UnsupportedInstruction {
+            kind: "integer operation on non-integer FIR values",
+        });
+    }
+    Ok(left_ty)
+}
+
+fn is_integer_type(ty: &Ty) -> bool {
+    matches!(ty, Ty::Byte | Ty::Int { .. })
+}
+
 fn lower_terminator(
     fir: &FirFunction,
     terminator: &FirTerminator,
@@ -228,7 +333,9 @@ fn lower_terminator(
             else_block,
         } => {
             if fir.value_types.get(condition) != Some(&Ty::Bool) {
-                return Err(shape(format!("branch condition {condition:?} is not bool")));
+                return Err(shape(format!(
+                    "branch condition {condition:?} is not bool"
+                )));
             }
             cursor.ins().brif(
                 lookup_value(values, *condition)?,
@@ -248,10 +355,14 @@ fn lower_terminator(
             return Err(shape("non-void FIR function returns no value"));
         }
         FirTerminator::Select { .. } => {
-            return Err(BackendError::UnsupportedInstruction { kind: "select terminator" });
+            return Err(BackendError::UnsupportedInstruction {
+                kind: "select terminator",
+            });
         }
         FirTerminator::Unreachable => {
-            return Err(BackendError::UnsupportedInstruction { kind: "unreachable terminator" });
+            return Err(BackendError::UnsupportedInstruction {
+                kind: "unreachable terminator",
+            });
         }
     }
     Ok(())
@@ -295,7 +406,11 @@ fn integer_immediate(text: &str, ty: &Ty, types: &TypeLowering<'_>) -> Result<i6
             };
             (*signed, bits)
         }
-        _ => return Err(shape(format!("integer constant has non-integer FIR type {ty:?}"))),
+        _ => {
+            return Err(shape(format!(
+                "integer constant has non-integer FIR type {ty:?}"
+            )));
+        }
     };
 
     let fits = if signed {
@@ -354,6 +469,10 @@ fn is_comparison(op: BinaryOp) -> bool {
             | BinaryOp::Eq
             | BinaryOp::NotEq
     )
+}
+
+fn is_c4a_arithmetic(op: BinaryOp) -> bool {
+    matches!(op, BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul)
 }
 
 fn lookup_value(
