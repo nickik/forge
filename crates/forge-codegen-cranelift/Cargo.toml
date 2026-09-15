@@ -1,0 +1,10 @@
+[package]
+name = "forge-codegen-cranelift"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+forge-fir = { path = "../forge-fir" }
+cranelift-codegen = { git = "https://github.com/nickik/crainlift", rev = "fcd03035697e5f9b68bf674698ae0da128f4f5c7", default-features = false, features = ["std", "arm64", "riscv64"] }
+target-lexicon = "0.13.5"
