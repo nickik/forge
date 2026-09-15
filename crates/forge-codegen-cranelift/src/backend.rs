@@ -1,9 +1,12 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cranelift_codegen::ir::{Function, Signature};
 use cranelift_codegen::isa::{CallConv, OwnedTargetIsa};
 use cranelift_codegen::Context;
-use forge_fir::{verify_fir_module, DefId, FirModule};
+use forge_fir::{
+    verify_fir_module, BinaryOp, DefId, FirBasicBlock, FirFunction, FirInstructionKind, FirModule,
+    FirPlace, FirTerminator, FirValueId, IntWidth, Ty,
+};
 use target_lexicon::Triple;
 
 use crate::function::lower_function;
@@ -88,7 +91,9 @@ impl CraneliftBackend {
         let lowering = self.type_lowering();
         let mut functions = BTreeMap::new();
         for (owner, fir) in &module.functions {
-            let function = lower_function(fir, &lowering, &*self.isa)?;
+            validate_c4_scalar_contract(fir, &self.layout)?;
+            let scheduled = schedule_c4_blocks(fir)?;
+            let function = lower_function(&scheduled, &lowering, &*self.isa)?;
             functions.insert(*owner, function);
         }
 
@@ -96,6 +101,254 @@ impl CraneliftBackend {
             target: self.target,
             functions,
         })
+    }
+}
+
+fn validate_c4_scalar_contract(
+    fir: &FirFunction,
+    layout: &TargetLayout,
+) -> Result<(), BackendError> {
+    for block in &fir.blocks {
+        for instruction in &block.instructions {
+            let Some(result) = instruction.result else {
+                continue;
+            };
+            let result_ty = fir
+                .value_types
+                .get(&result)
+                .ok_or_else(|| shape(format!("missing type for FIR value {result:?}")))?;
+
+            match &instruction.kind {
+                FirInstructionKind::Load {
+                    place: FirPlace::Local { local },
+                } => {
+                    let local_ty = &fir
+                        .locals
+                        .get(local)
+                        .ok_or_else(|| shape(format!("missing FIR local {local:?}")))?
+                        .ty;
+                    if local_ty != result_ty {
+                        return Err(shape(format!(
+                            "load of {local:?} has FIR type {result_ty:?}, local is {local_ty:?}"
+                        )));
+                    }
+                }
+                FirInstructionKind::Unary {
+                    op: forge_fir::FirUnaryOp::Neg,
+                    ..
+                } => {
+                    return Err(BackendError::UnsupportedInstruction {
+                        kind: "integer negation requires explicit FIR overflow semantics",
+                    });
+                }
+                FirInstructionKind::Unary { op, value } => {
+                    let input_ty = value_type(fir, *value, "unary operand")?;
+                    if matches!(op, forge_fir::FirUnaryOp::BitNot) && input_ty != result_ty {
+                        return Err(shape(format!(
+                            "integer unary result has FIR type {result_ty:?}, operand is {input_ty:?}"
+                        )));
+                    }
+                }
+                FirInstructionKind::Binary {
+                    op, left, right, ..
+                } => {
+                    let left_ty = value_type(fir, *left, "binary operand")?;
+                    let right_ty = value_type(fir, *right, "binary operand")?;
+                    if left_ty != right_ty {
+                        return Err(shape(format!(
+                            "binary operands have different FIR types: {left_ty:?} and {right_ty:?}"
+                        )));
+                    }
+                    if is_comparison(*op) {
+                        if *result_ty != Ty::Bool {
+                            return Err(shape(format!(
+                                "comparison result {result:?} has non-bool FIR type {result_ty:?}"
+                            )));
+                        }
+                    } else if is_c4_integer_binary(*op) && left_ty != result_ty {
+                        return Err(shape(format!(
+                            "integer binary result has FIR type {result_ty:?}, operands are {left_ty:?}"
+                        )));
+                    }
+                }
+                FirInstructionKind::Convert { value, target } => {
+                    if target != result_ty {
+                        return Err(shape(format!(
+                            "FIR convert target {target:?} does not match result type {result_ty:?}"
+                        )));
+                    }
+                    let source = value_type(fir, *value, "conversion input")?;
+                    if !lossless_integer_conversion(source, target, layout)? {
+                        return Err(BackendError::UnsupportedInstruction {
+                            kind: "lossy integer conversion requires explicit FIR conversion semantics",
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+fn lossless_integer_conversion(
+    source: &Ty,
+    target: &Ty,
+    layout: &TargetLayout,
+) -> Result<bool, BackendError> {
+    if source == target {
+        return Ok(true);
+    }
+    let Some((source_signed, source_bits)) = integer_shape(source, layout) else {
+        return Ok(false);
+    };
+    let Some((target_signed, target_bits)) = integer_shape(target, layout) else {
+        return Ok(false);
+    };
+
+    if target_bits <= source_bits {
+        return Ok(false);
+    }
+
+    Ok(match (source_signed, target_signed) {
+        (true, true) | (false, false) | (false, true) => true,
+        (true, false) => false,
+    })
+}
+
+fn integer_shape(ty: &Ty, layout: &TargetLayout) -> Option<(bool, u16)> {
+    match ty {
+        Ty::Byte => Some((false, 8)),
+        Ty::Int { signed, width } => Some((
+            *signed,
+            match width {
+                IntWidth::W8 => 8,
+                IntWidth::W16 => 16,
+                IntWidth::W32 => 32,
+                IntWidth::W64 => 64,
+                IntWidth::Pointer => layout.pointer_bits,
+            },
+        )),
+        _ => None,
+    }
+}
+
+fn schedule_c4_blocks(fir: &FirFunction) -> Result<FirFunction, BackendError> {
+    let mut scheduled = fir.clone();
+    let entry = fir
+        .blocks
+        .iter()
+        .find(|block| block.id == fir.entry)
+        .ok_or_else(|| shape(format!("missing FIR entry block {:?}", fir.entry)))?;
+
+    let mut output = vec![entry.clone()];
+    let mut available = BTreeSet::new();
+    record_results(entry, &mut available);
+    let mut pending: Vec<&FirBasicBlock> = fir
+        .blocks
+        .iter()
+        .filter(|block| block.id != fir.entry)
+        .collect();
+
+    while !pending.is_empty() {
+        let mut next = Vec::new();
+        let mut progressed = false;
+        for block in pending {
+            if block_ready(block, &available) {
+                record_results(block, &mut available);
+                output.push(block.clone());
+                progressed = true;
+            } else {
+                next.push(block);
+            }
+        }
+        if !progressed {
+            return Err(BackendError::UnsupportedControlFlow {
+                feature: "cyclic or merge value dependencies requiring block arguments",
+            });
+        }
+        pending = next;
+    }
+
+    scheduled.blocks = output;
+    Ok(scheduled)
+}
+
+fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
+    let mut available = outer.clone();
+    for instruction in &block.instructions {
+        let ready = match &instruction.kind {
+            FirInstructionKind::Unary { value, .. } | FirInstructionKind::Convert { value, .. } => {
+                available.contains(value)
+            }
+            FirInstructionKind::Binary { left, right, .. } => {
+                available.contains(left) && available.contains(right)
+            }
+            _ => true,
+        };
+        if !ready {
+            return false;
+        }
+        if let Some(result) = instruction.result {
+            available.insert(result);
+        }
+    }
+    match block.terminator.as_ref() {
+        Some(FirTerminator::Branch { condition, .. }) => available.contains(condition),
+        Some(FirTerminator::Return { value: Some(value) }) => available.contains(value),
+        _ => true,
+    }
+}
+
+fn record_results(block: &FirBasicBlock, available: &mut BTreeSet<FirValueId>) {
+    for instruction in &block.instructions {
+        if let Some(result) = instruction.result {
+            available.insert(result);
+        }
+    }
+}
+
+fn value_type<'a>(
+    fir: &'a FirFunction,
+    value: FirValueId,
+    role: &str,
+) -> Result<&'a Ty, BackendError> {
+    fir.value_types
+        .get(&value)
+        .ok_or_else(|| shape(format!("missing type for {role} {value:?}")))
+}
+
+fn is_comparison(op: BinaryOp) -> bool {
+    matches!(
+        op,
+        BinaryOp::Eq
+            | BinaryOp::NotEq
+            | BinaryOp::Less
+            | BinaryOp::LessEq
+            | BinaryOp::Greater
+            | BinaryOp::GreaterEq
+    )
+}
+
+fn is_c4_integer_binary(op: BinaryOp) -> bool {
+    matches!(
+        op,
+        BinaryOp::Add
+            | BinaryOp::Sub
+            | BinaryOp::Mul
+            | BinaryOp::Div
+            | BinaryOp::Rem
+            | BinaryOp::BitAnd
+            | BinaryOp::BitXor
+            | BinaryOp::BitOr
+            | BinaryOp::ShiftLeft
+            | BinaryOp::ShiftRight
+    )
+}
+
+fn shape(message: impl Into<String>) -> BackendError {
+    BackendError::InvalidFirShape {
+        message: message.into(),
     }
 }
 
