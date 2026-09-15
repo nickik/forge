@@ -84,17 +84,45 @@ fn pointer_sized_values_are_target_layout_driven() {
     let layout32 = TargetLayout::new(32);
     let lowering32 = TypeLowering::new(&layout32);
 
-    assert_eq!(
-        lowering32.value_type(&int(false, IntWidth::Pointer)),
-        Ok(types::I32)
-    );
-    assert_eq!(
-        lowering32.value_type(&Ty::Pointer {
+    let pointer_like = [
+        int(false, IntWidth::Pointer),
+        int(true, IntWidth::Pointer),
+        Ty::Pointer {
             volatile: false,
             inner: Box::new(Ty::Bool),
-        }),
-        Ok(types::I32)
-    );
+        },
+        Ty::Pointer {
+            volatile: true,
+            inner: Box::new(Ty::Array {
+                element: Box::new(Ty::Byte),
+                length: Some(8),
+            }),
+        },
+        Ty::Reference {
+            mutable: false,
+            inner: Box::new(Ty::Bool),
+        },
+        Ty::Reference {
+            mutable: true,
+            inner: Box::new(Ty::Array {
+                element: Box::new(Ty::Byte),
+                length: Some(8),
+            }),
+        },
+        Ty::Function {
+            params: vec![Ty::Bool, int(false, IntWidth::W64)],
+            result: Box::new(Ty::Bool),
+            named_arguments: true,
+        },
+    ];
+
+    for ty in pointer_like {
+        assert_eq!(
+            lowering32.value_type(&ty),
+            Ok(types::I32),
+            "32-bit pointer representation for {ty:?}"
+        );
+    }
 
     let invalid = TargetLayout::new(24);
     assert_eq!(
@@ -104,33 +132,78 @@ fn pointer_sized_values_are_target_layout_driven() {
 }
 
 #[test]
-fn aggregates_are_rejected_instead_of_flattened() {
+fn pointer_representation_does_not_depend_on_pointee_or_signature() {
     let layout = TargetLayout::new(64);
     let lowering = TypeLowering::new(&layout);
-    let array = Ty::Array {
-        element: Box::new(int(false, IntWidth::W8)),
+    let aggregate = Ty::Array {
+        element: Box::new(Ty::Byte),
         length: Some(4),
     };
 
-    assert_eq!(
-        lowering.value_type(&array),
-        Err(BackendError::UnsupportedType { kind: "array" })
-    );
+    for ty in [
+        Ty::Pointer {
+            volatile: false,
+            inner: Box::new(aggregate.clone()),
+        },
+        Ty::Reference {
+            mutable: true,
+            inner: Box::new(aggregate.clone()),
+        },
+        Ty::Function {
+            params: vec![aggregate.clone()],
+            result: Box::new(aggregate),
+            named_arguments: true,
+        },
+    ] {
+        assert_eq!(lowering.value_type(&ty), Ok(types::I64));
+    }
 }
 
 #[test]
-fn frontend_semantic_sentinels_are_hard_backend_errors() {
+fn aggregates_and_non_c2_values_are_rejected_instead_of_flattened() {
     let layout = TargetLayout::new(64);
     let lowering = TypeLowering::new(&layout);
+    let cases = [
+        (Ty::Never, "never"),
+        (Ty::Void, "void"),
+        (Ty::Char, "char"),
+        (Ty::Str, "str"),
+        (Ty::Duration, "duration"),
+        (
+            Ty::Array {
+                element: Box::new(int(false, IntWidth::W8)),
+                length: Some(4),
+            },
+            "array",
+        ),
+    ];
 
-    assert_eq!(
-        lowering.value_type(&Ty::Unknown),
-        Err(BackendError::SemanticTypeLeak { kind: "unknown" })
-    );
-    assert_eq!(
-        lowering.value_type(&Ty::IntLiteral),
-        Err(BackendError::SemanticTypeLeak {
-            kind: "integer literal"
-        })
-    );
+    for (ty, kind) in cases {
+        assert_eq!(
+            lowering.value_type(&ty),
+            Err(BackendError::UnsupportedType { kind }),
+            "C2 must not invent a representation for {ty:?}"
+        );
+    }
+}
+
+#[test]
+fn every_fieldless_frontend_semantic_sentinel_is_a_hard_backend_error() {
+    let layout = TargetLayout::new(64);
+    let lowering = TypeLowering::new(&layout);
+    let cases = [
+        (Ty::Error, "error"),
+        (Ty::Unknown, "unknown"),
+        (Ty::IntLiteral, "integer literal"),
+        (Ty::FloatLiteral, "float literal"),
+        (Ty::NoneLiteral, "none literal"),
+    ];
+
+    for (ty, kind) in cases {
+        assert_eq!(
+            lowering.value_type(&ty),
+            Err(BackendError::SemanticTypeLeak { kind }),
+            "semantic sentinel {ty:?} must never reach code generation"
+        );
+    }
 }
