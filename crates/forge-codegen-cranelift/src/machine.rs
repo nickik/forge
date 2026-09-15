@@ -45,7 +45,8 @@ impl CraneliftBackend {
             return Err(BackendError::InvalidFirShape {
                 message: format!(
                     "prepared module target {:?} does not match backend target {:?}",
-                    prepared.target(), target
+                    prepared.target(),
+                    target
                 ),
             });
         }

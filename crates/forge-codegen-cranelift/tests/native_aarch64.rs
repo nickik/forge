@@ -124,7 +124,11 @@ impl ExecutableMemory {
         unsafe {
             ptr::copy_nonoverlapping(code.as_ptr(), ptr.cast::<u8>(), code.len());
             flush_icache(ptr.cast::<u8>(), code.len());
-            assert_eq!(mprotect(ptr, len, PROT_READ | PROT_EXEC), 0, "mprotect failed");
+            assert_eq!(
+                mprotect(ptr, len, PROT_READ | PROT_EXEC),
+                0,
+                "mprotect failed"
+            );
         }
         Self { ptr, len }
     }
