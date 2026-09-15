@@ -1,0 +1,16 @@
+module std.console;
+
+import core;
+
+// Hosted console convenience API.
+//
+// The public API is portable. Its provider is selected by the hosted runtime:
+// Unix/POSIX, CForge, Cosmic userspace, or another target implementation.
+// Freestanding kernels and firmware normally use core.io.Writer instead.
+
+nfn __forge_console_write(text: str) -> void {
+}
+
+pub fn write(text: str) -> void {
+    __forge_console_write(text);
+}

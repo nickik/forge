@@ -66,6 +66,9 @@ statement       = value_decl, ";"
 assignment_stmt = assignable, "=", expression, ";" ;
 assignable      = identifier | postfix_expression ;
 
+(* Forge v1 deliberately has only plain assignment. There are no +=, -=, *=, /= or %= operators. *)
+assignment_stmt = assignable, "=", expression, ";" ;
+
 block           = "{", { statement }, "}" ;
 if_stmt         = "if", "(", expression, ")", block, [ "else", (block | if_stmt) ] ;
 while_stmt      = "while", "(", expression, ")", block ;

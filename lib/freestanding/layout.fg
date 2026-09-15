@@ -1,0 +1,28 @@
+module core.layout;
+
+import core;
+
+// Portable layout arithmetic plus compiler-backed target layout queries.
+
+pub fn align_up(value: usize, align: usize) -> usize {
+    return (value + (align - 1)) & ~(align - 1);
+}
+
+pub fn align_down(value: usize, align: usize) -> usize {
+    return value & ~(align - 1);
+}
+
+pub fn is_aligned(value: usize, align: usize) -> bool {
+    return (value & (align - 1)) == 0;
+}
+
+pub nfn size_of_type(type_id: usize) -> usize;
+pub nfn align_of_type(type_id: usize) -> usize;
+pub nfn offset_of_field(type_id: usize, field_id: usize) -> usize;
+pub nfn static_assert(condition: bool, message: str) -> void;
+
+// TODO
+// [ ] replace temporary type_id/field_id bootstrap ABI with compile-time type operands
+// [ ] freeze repr(c), repr(packed), explicit alignment interaction
+// [ ] add layout golden tests per target ABI
+// [ ] add compile-fail tests for invalid packed/reference access

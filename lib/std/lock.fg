@@ -1,0 +1,23 @@
+module std.lock;
+
+import core;
+
+// Opaque hosted file-lock token. User code can hold and release it, but the
+// provider owns the underlying representation.
+pub struct FileLock {
+    handle: usize;
+}
+
+nfn __forge_lock_acquire_exclusive(path: str) -> FileLock {
+}
+
+nfn __forge_lock_release(lock: FileLock) -> void {
+}
+
+pub fn acquire_exclusive(path: str) -> FileLock {
+    return __forge_lock_acquire_exclusive(path);
+}
+
+pub fn release(lock: FileLock) -> void {
+    __forge_lock_release(lock);
+}

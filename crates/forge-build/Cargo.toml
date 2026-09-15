@@ -1,0 +1,11 @@
+[package]
+name = "forge-build"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+
+[[bin]]
+name = "forge"
+path = "src/main2.rs"

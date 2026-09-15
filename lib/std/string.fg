@@ -1,0 +1,65 @@
+module std.string;
+
+import core;
+
+// Small hosted/string bootstrap surface used by integration programs.
+//
+// IMPORTANT: these functions operate on bootstrap `str` values supplied by the
+// current host/runtime and are not the final owning dynamic-String API. They do
+// not establish hidden durable-allocation semantics.
+//
+// The final owning String representation stores only its owned storage plus
+// length/capacity metadata. It NEVER retains an Allocator capability. Every
+// operation that allocates, grows, clones, or frees owning String storage takes
+// an explicit `&mut core.Allocator` argument at that call site.
+//
+// Portable string algorithms should move into ordinary Forge source as the
+// byte-buffer and allocator-backed collection substrate matures.
+nfn __forge_string_concat(a: str, b: str) -> str {
+}
+
+nfn __forge_string_line_count(text: str) -> usize {
+}
+
+nfn __forge_string_line_at(text: str, index: usize) -> str {
+}
+
+nfn __forge_string_has_tab(text: str) -> bool {
+}
+
+nfn __forge_string_before_tab(text: str) -> str {
+}
+
+nfn __forge_string_after_tab(text: str) -> str {
+}
+
+nfn __forge_string_from_u64(value: u64) -> str {
+}
+
+pub fn concat(a: str, b: str) -> str {
+    return __forge_string_concat(a, b);
+}
+
+pub fn line_count(text: str) -> usize {
+    return __forge_string_line_count(text);
+}
+
+pub fn line_at(text: str, index: usize) -> str {
+    return __forge_string_line_at(text, index);
+}
+
+pub fn has_tab(text: str) -> bool {
+    return __forge_string_has_tab(text);
+}
+
+pub fn before_tab(text: str) -> str {
+    return __forge_string_before_tab(text);
+}
+
+pub fn after_tab(text: str) -> str {
+    return __forge_string_after_tab(text);
+}
+
+pub fn from_u64(value: u64) -> str {
+    return __forge_string_from_u64(value);
+}

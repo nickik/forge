@@ -1,0 +1,47 @@
+module core.hash;
+
+// Stable, non-cryptographic hashing primitives for in-memory tables.
+// Hash values are deliberately not a persistent/on-disk ABI.
+//
+// Forge arithmetic is checked by default, so the default table mixer avoids
+// overflow-dependent multiplication. Rotation/xor is defined in terms of
+// fixed-width bit operations and therefore behaves identically in debug and
+// optimized builds without @overflow(wrap).
+
+pub const TABLE_HASH_SEED: u64 = 7640891576956012809;
+
+pub fn hash_init_u64() -> u64 {
+    return TABLE_HASH_SEED;
+}
+
+pub fn hash_octet_u64(state: u64, value: u64) -> u64 {
+    val rotated: u64 = (state << 5) | (state >> 59);
+    return rotated ^ (value & 255);
+}
+
+pub fn hash_u64(value: u64) -> u64 {
+    var state: u64 = hash_init_u64();
+    var remaining: u64 = value;
+    var count: usize = 0;
+    while (count < 8) {
+        state = hash_octet_u64(state, remaining & 255);
+        remaining = remaining >> 8;
+        count = count + 1;
+    }
+    return state;
+}
+
+pub fn hash_usize(value: usize) -> u64 {
+    return hash_u64(u64(value));
+}
+
+// Fold a 64-bit hash into a value guaranteed to fit every supported 32-bit or
+// wider usize target. Tables use this only for bucket selection; it is not the
+// full hash identity.
+pub fn hash_to_usize(value: u64) -> usize {
+    return usize(value & 4294967295);
+}
+
+pub fn hash_finish_u64(state: u64) -> u64 {
+    return state;
+}

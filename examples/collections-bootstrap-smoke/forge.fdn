@@ -1,0 +1,17 @@
+#forge/package {
+  :name "collections-bootstrap-smoke"
+  :version "0.1.0"
+
+  :targets {
+    :main {
+      :kind :executable
+      :root "src/main.fg"
+    }
+  }
+
+  :dependencies {
+    :forge-collections-bootstrap {
+      :path "../../packages/forge-collections-bootstrap"
+    }
+  }
+}

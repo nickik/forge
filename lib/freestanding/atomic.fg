@@ -1,0 +1,43 @@
+module core.atomic;
+
+import core;
+
+// Freestanding atomic operations. These are compiler/runtime primitives with
+// explicit memory ordering and no scheduler dependency.
+
+pub enum MemoryOrder {
+    Relaxed,
+    Acquire,
+    Release,
+    AcqRel,
+    SeqCst,
+}
+
+pub struct AtomicU32 {
+    storage: u32;
+}
+
+pub struct AtomicUsize {
+    storage: usize;
+}
+
+pub struct CompareExchangeU32 {
+    old: u32;
+    exchanged: bool;
+}
+
+pub nfn atomic_u32_load(value: &AtomicU32, order: MemoryOrder) -> u32;
+pub nfn atomic_u32_store(value: &mut AtomicU32, next: u32, order: MemoryOrder) -> void;
+pub nfn atomic_u32_fetch_add(value: &mut AtomicU32, delta: u32, order: MemoryOrder) -> u32;
+pub nfn atomic_u32_fetch_sub(value: &mut AtomicU32, delta: u32, order: MemoryOrder) -> u32;
+pub nfn atomic_u32_fetch_or(value: &mut AtomicU32, bits: u32, order: MemoryOrder) -> u32;
+pub nfn atomic_u32_fetch_and(value: &mut AtomicU32, bits: u32, order: MemoryOrder) -> u32;
+pub nfn atomic_u32_compare_exchange(value: &mut AtomicU32, expected: u32, desired: u32, success: MemoryOrder, failure: MemoryOrder) -> CompareExchangeU32;
+pub nfn compiler_fence(order: MemoryOrder) -> void;
+pub nfn memory_fence(order: MemoryOrder) -> void;
+
+// TODO
+// [ ] complete AtomicUsize operations
+// [ ] add u64 where target guarantees or emulation policy are defined
+// [ ] freeze legal success/failure ordering combinations
+// [ ] add architecture litmus tests and backend codegen tests

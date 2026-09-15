@@ -1,0 +1,68 @@
+module ckv;
+
+import std.args;
+import std.console;
+import std.string;
+import std.time;
+import ckv_core;
+
+fn print_usage() -> void {
+    console.write("usage: ckv --database-file FILE set KEY VALUE\n");
+    console.write("       ckv --database-file FILE get KEY\n");
+}
+
+fn print_elapsed(started: u64) -> void {
+    val finished: u64 = time.monotonic_us();
+    val elapsed: u64 = finished - started;
+    console.write("access: ");
+    console.write(string.from_u64(elapsed));
+    console.write(" us\n");
+}
+
+fn main() -> i32 {
+    val count: usize = args.count();
+    if (count < 4) {
+        print_usage();
+        return 64;
+    }
+
+    if (args.get(0) != "--database-file") {
+        print_usage();
+        return 64;
+    }
+
+    val database_file: str = args.get(1);
+    val command: str = args.get(2);
+
+    if (command == "get") {
+        if (count != 4) {
+            print_usage();
+            return 64;
+        }
+
+        val key: str = args.get(3);
+        val started: u64 = time.monotonic_us();
+        val value: str = ckv_core.get(database_file, key);
+        console.write(value);
+        console.write("\n");
+        print_elapsed(started);
+        return 0;
+    }
+
+    if (command == "set") {
+        if (count != 5) {
+            print_usage();
+            return 64;
+        }
+
+        val key: str = args.get(3);
+        val value: str = args.get(4);
+        val started: u64 = time.monotonic_us();
+        ckv_core.set(database_file, key, value);
+        print_elapsed(started);
+        return 0;
+    }
+
+    print_usage();
+    return 64;
+}

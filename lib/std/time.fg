@@ -1,0 +1,12 @@
+module std.time;
+
+import core;
+
+// Monotonic microsecond clock for measuring elapsed time. This is not wall
+// clock time and must not move backwards within a process/runtime instance.
+nfn __forge_time_monotonic_us() -> u64 {
+}
+
+pub fn monotonic_us() -> u64 {
+    return __forge_time_monotonic_us();
+}

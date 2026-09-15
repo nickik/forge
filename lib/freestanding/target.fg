@@ -1,0 +1,37 @@
+module core.target;
+
+import core;
+
+// Compile-time target facts. No OS/platform policy lives here.
+
+pub enum Endian {
+    Little,
+    Big,
+}
+
+pub enum Architecture {
+    X86_64,
+    AArch64,
+    RiscV64,
+    Rax64,
+    Other,
+}
+
+pub struct TargetInfo {
+    pointer_bits: u32;
+    endian: Endian;
+    architecture: Architecture;
+    page_size_hint: usize;
+}
+
+pub nfn target_info() -> TargetInfo;
+
+pub fn pointer_bytes(info: &TargetInfo) -> usize {
+    return info.pointer_bits / 8;
+}
+
+// TODO
+// [ ] decide whether page_size_hint belongs here or platform code
+// [ ] add cache-line hint only if sufficiently meaningful cross-target
+// [ ] compile-time predicates for target selection without textual preprocessing
+// [ ] target-info conformance tests for every supported backend

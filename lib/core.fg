@@ -1,0 +1,249 @@
+module core;
+
+// Forge freestanding standard library bootstrap.
+//
+// core is usable without an OS, libc, process heap, filesystem, scheduler,
+// conventional main(), or hosted panic implementation.
+
+pub enum PanicKind {
+    Explicit,
+    Assertion,
+    Bounds,
+    IntegerOverflow,
+    DivideByZero,
+    InvalidShift,
+    Unreachable,
+    AllocationFailure,
+}
+
+pub struct PanicLocation {
+    file: str;
+    line: u32;
+    column: u32;
+}
+
+pub struct PanicInfo {
+    kind: PanicKind;
+    message: str;
+    location: PanicLocation?;
+}
+
+// Panic dispatch is provided by the final environment through the runtime ABI:
+//
+//   __forge_panic(info: &PanicInfo) -> never
+//
+// core defines the information and may raise panic paths, but does not decide
+// whether a process exits, a kernel halts, firmware resets, or a debugger runs.
+
+pub enum AllocError {
+    OutOfMemory,
+    InvalidSize,
+    InvalidAlignment,
+    ResourceLimit,
+    ForeignAllocation,
+    CorruptState,
+}
+
+pub enum AllocWait {
+    MayWait,
+    NoWait,
+}
+
+pub struct AllocRequest {
+    size: usize;
+    align: usize;
+    wait: AllocWait;
+}
+
+// Arbitrary-size allocation result. This is the malloc-like path: callers may
+// request any supported size/alignment. Forge does not require hidden boundary
+// tags or a process-global allocator.
+pub struct MemoryBlock {
+    data: *byte;
+    size: usize;
+    align: usize;
+}
+
+// Arena is an explicit capability object, not a language trait/interface.
+// `context` is provider-specific state and `ops` is a static operations table.
+// The same core algorithms can therefore use a Cosmic kernel provider, hosted
+// VM provider, firmware/static-RAM provider, or deterministic test provider.
+pub struct ArenaOps {
+    alloc: fn(*void, AllocRequest) -> Result[MemoryBlock, AllocError];
+    free: fn(*void, MemoryBlock) -> void;
+    reclaim: fn(*void, usize) -> usize;
+}
+
+pub struct Arena {
+    context: *void;
+    ops: &ArenaOps;
+}
+
+pub fn arena_alloc(
+    arena: &mut Arena,
+    request: AllocRequest
+) -> Result[MemoryBlock, AllocError] {
+    return arena.ops.alloc(arena.context, request);
+}
+
+pub fn arena_free(arena: &mut Arena, block: MemoryBlock) -> void {
+    arena.ops.free(arena.context, block);
+}
+
+// Ask the provider to release up to `target_bytes` of unused backing resource.
+// The return value is the number of bytes actually released.
+pub fn arena_reclaim(arena: &mut Arena, target_bytes: usize) -> usize {
+    return arena.ops.reclaim(arena.context, target_bytes);
+}
+
+// General allocator capability for arbitrary-size allocations. This is kept
+// separate from Arena because an allocator may implement size classes,
+// metadata, quarantine, debugging, or other policy above one or more arenas.
+//
+// `validate` checks whether a live block belongs to this allocator domain. This
+// lets containers that intentionally do not store allocator identity validate
+// provenance before allocating nested owned values even when their own backing
+// storage does not need to grow. Providers that can prove compatibility cheaply
+// should do so; checked/debug providers must return ForeignAllocation for a
+// block owned by an incompatible domain.
+pub struct AllocatorOps {
+    alloc: fn(*void, AllocRequest) -> Result[MemoryBlock, AllocError];
+    free: fn(*void, MemoryBlock) -> Result[void, AllocError];
+    resize: fn(*void, MemoryBlock, usize) -> Result[MemoryBlock, AllocError];
+    validate: fn(*void, MemoryBlock) -> Result[void, AllocError];
+}
+
+pub struct Allocator {
+    context: *void;
+    ops: &AllocatorOps;
+}
+
+pub fn allocator_alloc(
+    allocator: &mut Allocator,
+    request: AllocRequest
+) -> Result[MemoryBlock, AllocError] {
+    return allocator.ops.alloc(allocator.context, request);
+}
+
+pub fn allocator_free(
+    allocator: &mut Allocator,
+    block: MemoryBlock
+) -> Result[void, AllocError] {
+    return allocator.ops.free(allocator.context, block);
+}
+
+pub fn allocator_resize(
+    allocator: &mut Allocator,
+    block: MemoryBlock,
+    new_size: usize
+) -> Result[MemoryBlock, AllocError] {
+    return allocator.ops.resize(allocator.context, block, new_size);
+}
+
+pub fn allocator_validate(
+    allocator: &mut Allocator,
+    block: MemoryBlock
+) -> Result[void, AllocError] {
+    return allocator.ops.validate(allocator.context, block);
+}
+
+// Fixed-size object-cache configuration. Object caches are optimized for
+// repeated allocation of one object shape and are intentionally separate from
+// the arbitrary-size Allocator interface.
+pub struct ObjectCacheSpec {
+    object_size: usize;
+    object_align: usize;
+    slab_size: usize;
+}
+
+pub struct ObjectCacheStats {
+    allocations: u64;
+    frees: u64;
+    allocation_failures: u64;
+    objects_in_use: usize;
+    objects_free: usize;
+    slabs_total: usize;
+    slabs_empty: usize;
+    bytes_backing: usize;
+    reclaims: u64;
+}
+
+// The bootstrap public shape records the backing capability and geometry.
+// Internal slab/free-list state becomes module-private as implementation
+// support for private/opaque representation matures.
+pub struct ObjectCache {
+    arena: &mut Arena;
+    spec: ObjectCacheSpec;
+}
+
+pub fn min_i32(a: i32, b: i32) -> i32 {
+    if (a < b) { return a; }
+    return b;
+}
+
+pub fn max_i32(a: i32, b: i32) -> i32 {
+    if (a > b) { return a; }
+    return b;
+}
+
+pub fn min_u32(a: u32, b: u32) -> u32 {
+    if (a < b) { return a; }
+    return b;
+}
+
+pub fn max_u32(a: u32, b: u32) -> u32 {
+    if (a > b) { return a; }
+    return b;
+}
+
+pub fn is_power_of_two_usize(value: usize) -> bool {
+    if (value == 0) { return false; }
+    return (value & (value - 1)) == 0;
+}
+
+pub fn valid_alignment(align: usize) -> bool {
+    return is_power_of_two_usize(align);
+}
+
+pub fn align_up_usize(value: usize, align: usize) -> usize {
+    // Invalid alignment is a caller contract violation; checked arithmetic
+    // retains Forge overflow semantics.
+    return (value + (align - 1)) & ~(align - 1);
+}
+
+pub fn valid_alloc_request(request: &AllocRequest) -> bool {
+    if (request.size == 0) { return false; }
+    return valid_alignment(request.align);
+}
+
+pub fn valid_object_cache_spec(spec: &ObjectCacheSpec) -> bool {
+    if (spec.object_size == 0) { return false; }
+    if (!valid_alignment(spec.object_align)) { return false; }
+    if (!valid_alignment(spec.slab_size)) { return false; }
+    if (spec.slab_size < spec.object_size) { return false; }
+
+    val stride: usize = align_up_usize(spec.object_size, spec.object_align);
+    return stride <= spec.slab_size;
+}
+
+pub fn object_stride(spec: &ObjectCacheSpec) -> usize {
+    return align_up_usize(spec.object_size, spec.object_align);
+}
+
+pub fn objects_per_slab(spec: &ObjectCacheSpec) -> usize {
+    return spec.slab_size / object_stride(spec);
+}
+
+// Object-cache implementation surface:
+//   object_cache_create(arena, spec) -> Result[ObjectCache, AllocError]
+//   object_cache_alloc(cache, wait) -> Result[*byte, AllocError]
+//   object_cache_free(cache, object) -> void
+//   object_cache_reclaim(cache) -> usize
+//   object_cache_stats(cache) -> ObjectCacheStats
+//
+// The provider dispatch above is real Forge code. The slab/free-list bodies are
+// deliberately not faked before raw-pointer mutation and private-state support
+// are executable in both Forge implementations.
+//
+// Primitive allocation never implicitly panics on OutOfMemory. A caller may
+// deliberately convert AllocError into PanicKind::AllocationFailure.

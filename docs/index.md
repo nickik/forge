@@ -3,8 +3,24 @@
 ## Normative
 
 - [Forge v1 Language Specification](forge-v1-spec.md) — source syntax and semantics.
+- [Forge v1 Library and Execution Environment Specification](forge-v1-library-spec.md) — `core`, `std`, freestanding/hosted builds, runtime ABI boundary, and compilation-unit model.
+- [Forge Runtime ABI](runtime-abi.md) — canonical panic/trap provider contract for hosted and freestanding final artifacts.
 - [FDN v1 Specification](fdn-v1-spec.md) — universal structured-data notation.
 - [Compatibility Contract](compatibility.md) — what v1 promises long-term.
+
+## Standard library design
+
+- [Standard Library TODO](standard-library-todo.md) — staged roadmap from `core` through freestanding companions, hosted `std`, platform providers, and Cosmic integration gates.
+- [Library Model](library-model.md) — design rationale and bootstrap module/library graph.
+- [Core Library](core-library.md) — freestanding facilities shared by kernel and user mode.
+- [Core Allocation Architecture](core-allocation.md) — explicit provider capabilities, variable-sized allocators, fixed-size object caches, reclaim, and kernel/user reuse.
+- [OS Foundation Profile](os-foundation.md) — the minimal `core` facilities to stabilize before a production kernel depends on Forge.
+- [Freestanding Library Roadmap](freestanding-libraries.md) — `--no-std` libraries for memory, bits, MMIO, atomics, bounded containers, intrusive collections, layout, output, and target facts, with per-library TODOs and the pre-Cosmic integration gate.
+- [Hosted Console Library](hosted-console.md) — portable `std.console` API with Unix/CForge/Cosmic provider backends and its relationship to freestanding `core.io.Writer`.
+
+## Build system
+
+- [Forge Build System](build-system.md) — `forge.fdn`, local path dependencies, targets, deterministic graph resolution, compiler-driver protocol, and CForge bootstrap integration.
 
 ## Implementation
 

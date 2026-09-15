@@ -1,0 +1,17 @@
+#forge/package {
+  :name "ckv"
+  :version "0.1.0"
+
+  :targets {
+    :ckv {
+      :kind :executable
+      :root "src/main.fg"
+    }
+  }
+
+  :dependencies {
+    :ckv-core {
+      :path "packages/ckv-core"
+    }
+  }
+}

@@ -1,0 +1,37 @@
+module core.bits;
+
+import core;
+
+// Freestanding bit and endian helpers.
+
+pub fn bswap_u16(value: u16) -> u16 {
+    return ((value & 0x00ffu16) << 8) | ((value & 0xff00u16) >> 8);
+}
+
+pub fn bswap_u32(value: u32) -> u32 {
+    return ((value & 0x000000ffu32) << 24)
+         | ((value & 0x0000ff00u32) << 8)
+         | ((value & 0x00ff0000u32) >> 8)
+         | ((value & 0xff000000u32) >> 24);
+}
+
+pub fn low_mask_u32(width: u32) -> u32 {
+    if (width == 0) { return 0u32; }
+    if (width >= 32) { return 0xffffffffu32; }
+    return (1u32 << width) - 1u32;
+}
+
+pub fn extract_u32(value: u32, lsb: u32, width: u32) -> u32 {
+    return (value >> lsb) & low_mask_u32(width);
+}
+
+pub fn insert_u32(base: u32, field: u32, lsb: u32, width: u32) -> u32 {
+    val mask: u32 = low_mask_u32(width) << lsb;
+    return (base & ~mask) | ((field << lsb) & mask);
+}
+
+// TODO
+// [ ] u64 variants
+// [ ] rotate/count-leading-zero/count-trailing-zero/popcount intrinsics
+// [ ] load/store little-endian and big-endian from byte slices
+// [ ] checked field-range validation helpers

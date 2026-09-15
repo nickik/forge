@@ -1,0 +1,112 @@
+module core.string;
+
+import core;
+
+// Freestanding owned UTF-8 byte string.
+//
+// `str` remains the immutable borrowed text view. `String` owns its backing
+// MemoryBlock but never retains an Allocator capability. Every operation that
+// allocates, grows, clones, or frees storage receives the allocator explicitly.
+//
+// The compiler/backend primitives below are intentionally limited to
+// compiler-defined Option/Result construction and raw text/block copying. They
+// do not contain allocation policy.
+
+nfn memory_block_none() -> core.MemoryBlock? { }
+nfn memory_block_some(block: core.MemoryBlock) -> core.MemoryBlock? { }
+nfn memory_block_value(block: core.MemoryBlock?) -> core.MemoryBlock { }
+nfn result_string_ok(value: String) -> Result[String, core.AllocError] { }
+nfn result_void_ok() -> Result[void, core.AllocError] { }
+nfn str_byte_len(text: str) -> usize { }
+nfn str_copy_to_block(text: str, block: core.MemoryBlock) -> void { }
+nfn block_as_str(block: core.MemoryBlock, byte_len: usize) -> str { }
+
+pub struct String {
+    block: core.MemoryBlock?;
+    len: usize;
+    capacity: usize;
+}
+
+pub fn string_create() -> String {
+    return String{block: memory_block_none(), len: 0, capacity: 0};
+}
+
+pub fn string_from_str(
+    allocator: &mut core.Allocator,
+    text: str
+) -> Result[String, core.AllocError] {
+    val byte_len: usize = str_byte_len(text);
+    if (byte_len == 0) {
+        return result_string_ok(string_create());
+    }
+
+    val request: core.AllocRequest = core.AllocRequest{
+        size: byte_len,
+        align: 1,
+        wait: core.AllocWait.MayWait
+    };
+    val block: core.MemoryBlock = core.allocator_alloc(allocator, request)?;
+    str_copy_to_block(text, block);
+    val value: String = String{
+        block: memory_block_some(block),
+        len: byte_len,
+        capacity: byte_len
+    };
+    return result_string_ok(value);
+}
+
+pub fn string_len(value: &String) -> usize {
+    return value.len;
+}
+
+pub fn string_capacity(value: &String) -> usize {
+    return value.capacity;
+}
+
+pub fn string_is_empty(value: &String) -> bool {
+    return value.len == 0;
+}
+
+pub fn string_as_str(value: &String) -> str {
+    if (value.len == 0) {
+        return "";
+    }
+    val block: core.MemoryBlock = memory_block_value(value.block);
+    return block_as_str(block, value.len);
+}
+
+pub fn string_validate(
+    value: &String,
+    allocator: &mut core.Allocator
+) -> Result[void, core.AllocError] {
+    if (value.capacity != 0) {
+        val block: core.MemoryBlock = memory_block_value(value.block);
+        core.allocator_validate(allocator, block)?;
+    }
+    return result_void_ok();
+}
+
+// Release backing storage without rewriting the String value. This is useful
+// when an owning container is discarding a temporary copy of the element and
+// will immediately forget that slot. The caller must not use `value` again.
+pub fn string_release(
+    value: &String,
+    allocator: &mut core.Allocator
+) -> Result[void, core.AllocError] {
+    if (value.capacity != 0) {
+        val block: core.MemoryBlock = memory_block_value(value.block);
+        core.allocator_free(allocator, block)?;
+    }
+    return result_void_ok();
+}
+
+pub fn string_destroy(
+    value: &mut String,
+    allocator: &mut core.Allocator
+) -> Result[void, core.AllocError] {
+    string_release(value, allocator)?;
+    value.block = memory_block_none();
+    value.len = 0;
+    value.capacity = 0;
+    return result_void_ok();
+}

@@ -1,0 +1,28 @@
+module std;
+
+import core;
+
+// Forge hosted standard-library root.
+//
+// `std` is layered on `core`. Hosted startup, console I/O, filesystem,
+// networking, clocks, OS threads, entropy, and allocator/provider
+// implementations live behind platform/provider contracts rather than leaking
+// target APIs into portable application code.
+//
+// Hosted execution does NOT create an implicit/default allocator policy for
+// ordinary APIs. Any operation that allocates, grows, clones owning storage, or
+// frees durable storage receives an explicit allocator argument at that call.
+// Ordinary strings/collections/buffers never retain allocator capabilities.
+//
+// Bootstrap hosted modules currently include:
+//   std.console
+//   std.args
+//   std.fs
+//   std.lock
+//   std.time
+//   std.string
+//
+// The root does not implicitly re-export these modules. Applications import
+// only the hosted services they use. File/lock/time/argument operations end in
+// target platform providers; portable collection/string algorithms belong in
+// Forge source as the compiler/runtime substrate becomes capable enough.
