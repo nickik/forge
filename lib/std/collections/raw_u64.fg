@@ -1,0 +1,24 @@
+module std.collections.raw_u64;
+
+// Bootstrap raw storage provider. Collection policy remains in ordinary Forge.
+nfn __forge_raw_u64_create(slots: usize) -> usize { return 0; }
+nfn __forge_raw_u64_slots(handle: usize) -> usize { return 0; }
+nfn __forge_raw_u64_get(handle: usize, index: usize) -> u64 { return 0; }
+nfn __forge_raw_u64_set(handle: usize, index: usize, value: u64) -> void {}
+nfn __forge_raw_u64_resize(handle: usize, slots: usize) -> void {}
+nfn __forge_raw_u64_swap(left: usize, right: usize) -> void {}
+
+pub fn create(slots: usize) -> usize { return __forge_raw_u64_create(:slots=slots); }
+pub fn slots(handle: usize) -> usize { return __forge_raw_u64_slots(:handle=handle); }
+pub fn get(handle: usize, index: usize) -> u64 {
+    return __forge_raw_u64_get(:handle=handle, :index=index);
+}
+pub fn set(handle: usize, index: usize, value: u64) -> void {
+    __forge_raw_u64_set(:handle=handle, :index=index, :value=value);
+}
+pub fn resize(handle: usize, slots: usize) -> void {
+    __forge_raw_u64_resize(:handle=handle, :slots=slots);
+}
+pub fn swap(left: usize, right: usize) -> void {
+    __forge_raw_u64_swap(:left=left, :right=right);
+}

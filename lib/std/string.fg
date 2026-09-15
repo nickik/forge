@@ -1,65 +1,63 @@
 module std.string;
 
-import core;
-
 // Small hosted/string bootstrap surface used by integration programs.
 //
 // IMPORTANT: these functions operate on bootstrap `str` values supplied by the
 // current host/runtime and are not the final owning dynamic-String API. They do
 // not establish hidden durable-allocation semantics.
 //
-// The final owning String representation stores only its owned storage plus
-// length/capacity metadata. It NEVER retains an Allocator capability. Every
-// operation that allocates, grows, clones, or frees owning String storage takes
-// an explicit `&mut core.Allocator` argument at that call site.
-//
 // Portable string algorithms should move into ordinary Forge source as the
 // byte-buffer and allocator-backed collection substrate matures.
-nfn __forge_string_concat(a: str, b: str) -> str {
-}
+nfn __forge_string_concat(a: str, b: str) -> str { return ""; }
+nfn __forge_string_line_count(text: str) -> usize { return 0; }
+nfn __forge_string_line_at(text: str, index: usize) -> str { return ""; }
+nfn __forge_string_has_tab(text: str) -> bool { return false; }
+nfn __forge_string_before_tab(text: str) -> str { return ""; }
+nfn __forge_string_after_tab(text: str) -> str { return ""; }
+nfn __forge_string_from_u64(value: u64) -> str { return ""; }
+nfn __forge_string_from_usize(value: usize) -> str { return ""; }
+nfn __forge_string_parse_u64(text: str) -> u64 { return 0; }
+nfn __forge_string_parse_usize(text: str) -> usize { return 0; }
+nfn __forge_string_byte_len(text: str) -> usize { return 0; }
+nfn __forge_string_byte_at(text: str, index: usize) -> usize { return 0; }
 
-nfn __forge_string_line_count(text: str) -> usize {
-}
-
-nfn __forge_string_line_at(text: str, index: usize) -> str {
-}
-
-nfn __forge_string_has_tab(text: str) -> bool {
-}
-
-nfn __forge_string_before_tab(text: str) -> str {
-}
-
-nfn __forge_string_after_tab(text: str) -> str {
-}
-
-nfn __forge_string_from_u64(value: u64) -> str {
-}
+// Compiler-used hosted providers for ordinary Forge `str` equality.
+nfn __forge_string_equal(a: str, b: str) -> bool { return false; }
+nfn __forge_string_not_equal(a: str, b: str) -> bool { return false; }
 
 pub fn concat(a: str, b: str) -> str {
-    return __forge_string_concat(a, b);
+    return __forge_string_concat(:a=a, :b=b);
 }
-
 pub fn line_count(text: str) -> usize {
-    return __forge_string_line_count(text);
+    return __forge_string_line_count(:text=text);
 }
-
 pub fn line_at(text: str, index: usize) -> str {
-    return __forge_string_line_at(text, index);
+    return __forge_string_line_at(:text=text, :index=index);
 }
-
 pub fn has_tab(text: str) -> bool {
-    return __forge_string_has_tab(text);
+    return __forge_string_has_tab(:text=text);
 }
-
 pub fn before_tab(text: str) -> str {
-    return __forge_string_before_tab(text);
+    return __forge_string_before_tab(:text=text);
 }
-
 pub fn after_tab(text: str) -> str {
-    return __forge_string_after_tab(text);
+    return __forge_string_after_tab(:text=text);
 }
-
 pub fn from_u64(value: u64) -> str {
-    return __forge_string_from_u64(value);
+    return __forge_string_from_u64(:value=value);
+}
+pub fn from_usize(value: usize) -> str {
+    return __forge_string_from_usize(:value=value);
+}
+pub fn parse_u64(text: str) -> u64 {
+    return __forge_string_parse_u64(:text=text);
+}
+pub fn parse_usize(text: str) -> usize {
+    return __forge_string_parse_usize(:text=text);
+}
+pub fn byte_len(text: str) -> usize {
+    return __forge_string_byte_len(:text=text);
+}
+pub fn byte_at(text: str, index: usize) -> usize {
+    return __forge_string_byte_at(:text=text, :index=index);
 }

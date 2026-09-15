@@ -370,6 +370,10 @@ fn lower_instruction(
         } => lower_pointer_offset(
             fir, *pointer, *offset, *subtract, result_ty, values, types, cursor,
         )?,
+        FirInstructionKind::Unary {
+            op: FirUnaryOp::Not,
+            value,
+        } => lower_boolean_not(fir, *value, values, cursor)?,
         FirInstructionKind::Unary { op, value } => {
             lower_integer_unary(fir, *op, *value, values, cursor)?
         }
@@ -892,6 +896,26 @@ fn normalize_integer_to_type(
         }
         std::cmp::Ordering::Less => cursor.ins().uextend(target_clif, value),
     })
+}
+
+fn lower_boolean_not(
+    fir: &FirFunction,
+    input: FirValueId,
+    values: &BTreeMap<FirValueId, Value>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    let ty = fir
+        .value_types
+        .get(&input)
+        .ok_or_else(|| shape(format!("missing type for logical-not operand {input:?}")))?;
+    if *ty != Ty::Bool {
+        return Err(BackendError::UnsupportedInstruction {
+            kind: "logical not on non-boolean FIR value",
+        });
+    }
+    Ok(cursor
+        .ins()
+        .icmp_imm_u(IntCC::Equal, lookup_value(values, input)?, 0))
 }
 
 fn lower_integer_unary(

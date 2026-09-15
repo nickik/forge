@@ -1,0 +1,24 @@
+module std.collections.raw_u8;
+
+// Bootstrap raw storage provider. Collection policy remains in ordinary Forge.
+nfn __forge_raw_u8_create(slots: usize) -> usize { return 0; }
+nfn __forge_raw_u8_slots(handle: usize) -> usize { return 0; }
+nfn __forge_raw_u8_get(handle: usize, index: usize) -> u8 { return 0; }
+nfn __forge_raw_u8_set(handle: usize, index: usize, value: u8) -> void {}
+nfn __forge_raw_u8_resize(handle: usize, slots: usize) -> void {}
+nfn __forge_raw_u8_swap(left: usize, right: usize) -> void {}
+
+pub fn create(slots: usize) -> usize { return __forge_raw_u8_create(:slots=slots); }
+pub fn slots(handle: usize) -> usize { return __forge_raw_u8_slots(:handle=handle); }
+pub fn get(handle: usize, index: usize) -> u8 {
+    return __forge_raw_u8_get(:handle=handle, :index=index);
+}
+pub fn set(handle: usize, index: usize, value: u8) -> void {
+    __forge_raw_u8_set(:handle=handle, :index=index, :value=value);
+}
+pub fn resize(handle: usize, slots: usize) -> void {
+    __forge_raw_u8_resize(:handle=handle, :slots=slots);
+}
+pub fn swap(left: usize, right: usize) -> void {
+    __forge_raw_u8_swap(:left=left, :right=right);
+}

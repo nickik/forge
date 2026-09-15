@@ -15,7 +15,7 @@ Goal: make the production native Forge compiler run as much of the existing CFor
 
 - [ ] establish cross-repository native compatibility coverage: Forge CI owns public CForge probes; full Cosmic native coverage belongs in Cosmic CI because Forge's workflow token cannot read the private Cosmic repository
 - [x] compile and run the existing CForge arithmetic smoke case natively unchanged
-- [ ] compile the CForge Game of Life through its existing `bootstrap-support` package dependency
+- [x] compile the CForge Game of Life through its existing `bootstrap-support` package dependency
 - [ ] compile and run the simplest Cosmic semantic tests which need no hosted/provider operations, starting with `address_space_minimal_test.fg`
 - [ ] expand through capability, HandleSpace, mapping-table, AddressSpace-object, and other pure semantic tests
 - [ ] for every failure, classify it as parser/type/FIR/codegen/module/runtime/provider rather than adding test-specific exceptions
@@ -25,27 +25,28 @@ Initial compatibility probing found and fixed two source-compatibility assumptio
 
 ## C13b — hosted providers required by existing programs
 
-Implement only providers exercised by existing CForge/Forge applications, in this order unless the compatibility harness shows a better dependency order:
-
 - [x] make `std.console` usable natively so the existing CForge Game of Life runs unchanged and produces its expected console output
-- [ ] make native string literals/`str` representation usable across provider calls
-- [ ] implement the `std.string` operations currently supplied by CForge when an existing program requires them
+- [x] make native string literals/`str` representation usable across provider calls
+- [x] implement the `std.string` provider operations demanded so far by existing programs: numeric conversion/parsing, byte length/indexing, and value equality/inequality
 - [ ] implement `std.args` and pass the existing `forge run -- ...` arguments through the hosted provider
 - [ ] implement `std.time`
 - [ ] implement `std.fs`
 - [ ] implement `std.lock`
-- [ ] keep platform implementation details outside portable Forge `std` source
+- [x] keep platform implementation details outside portable Forge `std` source
 
-A general external/native ABI is not a standalone prerequisite. If provider calls need undefined symbols or a stable call boundary, implement the minimum correct mechanism as part of the provider path and generalize only once real callers require it.
+A general external/native ABI is not a standalone prerequisite. The native path now supports reachable hosted `__forge_*` provider imports over the existing C9 call ABI. Only providers reachable from the program are emitted as undefined object symbols and supplied by the hosted runtime; ordinary C12c namespaced Forge functions remain normal compiled functions.
 
 ## C13c — native collections and CForge applications
 
-- [ ] identify the generated/native collection modules already consumed by CForge tests
-- [ ] provide the raw typed-storage primitives currently modeled by CForge (`raw_u8`, `raw_u32`, `raw_u64`, `raw_usize`, and `raw_string`) using a native hosted implementation
-- [ ] run existing collection bootstrap/integration tests through `forgec`
-- [ ] compile and run the existing CForge application examples without changing their public Forge APIs
+- [x] identify the bootstrap collection modules already exercised by existing CForge/Forge tests
+- [x] provide the raw typed-storage primitives required by the existing bootstrap collection corpus (`raw_u8`, `raw_u64`, `raw_usize`, and `raw_string`) using a native hosted implementation
+- [x] run the existing `collections-bootstrap-smoke` unchanged through `forgec`
+- [x] keep the existing CForge application example (Game of Life) running natively without changing its public Forge API
+- [ ] add `raw_u32` when an existing corpus consumer requires it; there is no current CForge/Forge use of that bootstrap provider
 - [ ] bring CKV or the next largest existing hosted Forge application onto the native path once its required std/provider surface is available
-- [ ] keep allocation/storage policy explicit and compatible with Forge's existing allocator design
+- [x] keep bootstrap storage policy explicit: collection algorithms remain ordinary Forge while the temporary hosted raw-store boundary owns process-lifetime backing storage
+
+C13c's current acceptance case exercises list growth/get/set/remove/swap-remove/truncate, `ListU64`, hash-set duplicate insertion/contains/removal, string-to-`usize` and string-to-`u64` maps, `u64`-to-`u64` maps, growth/rehash/tombstones, values above 32 bits, native `str` equality, and boolean `!`. It passed unchanged in ARM verification run `35030648743`. The same existing smoke is also a permanent `forge-compiler` native integration test so ordinary CI retains the coverage after the temporary staging workflows are removed.
 
 ## C13d — Cosmic semantic suite on native host
 
@@ -71,14 +72,14 @@ The native-host lane validates Forge/Cosmic algorithms. It does not replace Ligh
 
 ## Initial acceptance ladder
 
-1. CForge arithmetic/package smoke
+1. CForge arithmetic/package smoke — native
 2. Cosmic `address_space_minimal_test.fg`
 3. other provider-free Cosmic semantic tests
-4. CForge Game of Life with real `std.console`
-5. native collections bootstrap
+4. CForge Game of Life with real `std.console` — native
+5. native collections bootstrap — native
 6. hosted std string/args/time/fs/lock as demanded by existing programs
 7. broader Cosmic page-table/SIA host-model suite
-8. CKV / larger CForge application coverage
+8. CKV / larger Forge application coverage
 
 ## Completion gate
 

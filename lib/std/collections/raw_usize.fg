@@ -1,0 +1,24 @@
+module std.collections.raw_usize;
+
+// Bootstrap raw storage provider. Collection policy remains in ordinary Forge.
+nfn __forge_raw_usize_create(slots: usize) -> usize { return 0; }
+nfn __forge_raw_usize_slots(handle: usize) -> usize { return 0; }
+nfn __forge_raw_usize_get(handle: usize, index: usize) -> usize { return 0; }
+nfn __forge_raw_usize_set(handle: usize, index: usize, value: usize) -> void {}
+nfn __forge_raw_usize_resize(handle: usize, slots: usize) -> void {}
+nfn __forge_raw_usize_swap(left: usize, right: usize) -> void {}
+
+pub fn create(slots: usize) -> usize { return __forge_raw_usize_create(:slots=slots); }
+pub fn slots(handle: usize) -> usize { return __forge_raw_usize_slots(:handle=handle); }
+pub fn get(handle: usize, index: usize) -> usize {
+    return __forge_raw_usize_get(:handle=handle, :index=index);
+}
+pub fn set(handle: usize, index: usize, value: usize) -> void {
+    __forge_raw_usize_set(:handle=handle, :index=index, :value=value);
+}
+pub fn resize(handle: usize, slots: usize) -> void {
+    __forge_raw_usize_resize(:handle=handle, :slots=slots);
+}
+pub fn swap(left: usize, right: usize) -> void {
+    __forge_raw_usize_swap(:left=left, :right=right);
+}

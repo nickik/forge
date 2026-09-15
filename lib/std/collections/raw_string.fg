@@ -1,0 +1,24 @@
+module std.collections.raw_string;
+
+// Bootstrap raw string-slot provider. Hashing/probing/growth stay in Forge.
+nfn __forge_raw_string_create(slots: usize) -> usize { return 0; }
+nfn __forge_raw_string_slots(handle: usize) -> usize { return 0; }
+nfn __forge_raw_string_get(handle: usize, index: usize) -> str { return ""; }
+nfn __forge_raw_string_set(handle: usize, index: usize, value: str) -> void {}
+nfn __forge_raw_string_resize(handle: usize, slots: usize) -> void {}
+nfn __forge_raw_string_swap(left: usize, right: usize) -> void {}
+
+pub fn create(slots: usize) -> usize { return __forge_raw_string_create(:slots=slots); }
+pub fn slots(handle: usize) -> usize { return __forge_raw_string_slots(:handle=handle); }
+pub fn get(handle: usize, index: usize) -> str {
+    return __forge_raw_string_get(:handle=handle, :index=index);
+}
+pub fn set(handle: usize, index: usize, value: str) -> void {
+    __forge_raw_string_set(:handle=handle, :index=index, :value=value);
+}
+pub fn resize(handle: usize, slots: usize) -> void {
+    __forge_raw_string_resize(:handle=handle, :slots=slots);
+}
+pub fn swap(left: usize, right: usize) -> void {
+    __forge_raw_string_swap(:left=left, :right=right);
+}
