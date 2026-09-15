@@ -99,11 +99,7 @@ fn panic_info_is_allocation_free_data() {
         })
         .expect("PanicInfo struct");
 
-    let names: Vec<_> = panic_info
-        .fields
-        .iter()
-        .map(|f| f.name.as_str())
-        .collect();
+    let names: Vec<_> = panic_info.fields.iter().map(|f| f.name.as_str()).collect();
     assert_eq!(names, ["kind", "message", "location"]);
 }
 
