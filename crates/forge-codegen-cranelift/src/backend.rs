@@ -5,7 +5,7 @@ use cranelift_codegen::isa::{CallConv, OwnedTargetIsa};
 use cranelift_codegen::Context;
 use forge_fir::{
     verify_fir_module, BinaryOp, DefId, FirBasicBlock, FirFunction, FirInstructionKind, FirModule,
-    FirPlace, FirTerminator, FirValueId, Ty,
+    FirPlace, FirTerminator, FirValueId, IntWidth, Ty,
 };
 use target_lexicon::Triple;
 
@@ -91,7 +91,7 @@ impl CraneliftBackend {
         let lowering = self.type_lowering();
         let mut functions = BTreeMap::new();
         for (owner, fir) in &module.functions {
-            validate_c4_scalar_contract(fir)?;
+            validate_c4_scalar_contract(fir, &self.layout)?;
             let scheduled = schedule_c4_blocks(fir)?;
             let function = lower_function(&scheduled, &lowering, &*self.isa)?;
             functions.insert(*owner, function);
@@ -104,7 +104,10 @@ impl CraneliftBackend {
     }
 }
 
-fn validate_c4_scalar_contract(fir: &FirFunction) -> Result<(), BackendError> {
+fn validate_c4_scalar_contract(
+    fir: &FirFunction,
+    layout: &TargetLayout,
+) -> Result<(), BackendError> {
     for block in &fir.blocks {
         for instruction in &block.instructions {
             let Some(result) = instruction.result else {
@@ -130,13 +133,17 @@ fn validate_c4_scalar_contract(fir: &FirFunction) -> Result<(), BackendError> {
                         )));
                     }
                 }
+                FirInstructionKind::Unary {
+                    op: forge_fir::FirUnaryOp::Neg,
+                    ..
+                } => {
+                    return Err(BackendError::UnsupportedInstruction {
+                        kind: "integer negation requires explicit FIR overflow semantics",
+                    });
+                }
                 FirInstructionKind::Unary { op, value } => {
                     let input_ty = value_type(fir, *value, "unary operand")?;
-                    if matches!(
-                        op,
-                        forge_fir::FirUnaryOp::Neg | forge_fir::FirUnaryOp::BitNot
-                    ) && input_ty != result_ty
-                    {
+                    if matches!(op, forge_fir::FirUnaryOp::BitNot) && input_ty != result_ty {
                         return Err(shape(format!(
                             "integer unary result has FIR type {result_ty:?}, operand is {input_ty:?}"
                         )));
@@ -164,16 +171,66 @@ fn validate_c4_scalar_contract(fir: &FirFunction) -> Result<(), BackendError> {
                         )));
                     }
                 }
-                FirInstructionKind::Convert { target, .. } if target != result_ty => {
-                    return Err(shape(format!(
-                        "FIR convert target {target:?} does not match result type {result_ty:?}"
-                    )));
+                FirInstructionKind::Convert { value, target } => {
+                    if target != result_ty {
+                        return Err(shape(format!(
+                            "FIR convert target {target:?} does not match result type {result_ty:?}"
+                        )));
+                    }
+                    let source = value_type(fir, *value, "conversion input")?;
+                    if !lossless_integer_conversion(source, target, layout)? {
+                        return Err(BackendError::UnsupportedInstruction {
+                            kind: "lossy integer conversion requires explicit FIR conversion semantics",
+                        });
+                    }
                 }
                 _ => {}
             }
         }
     }
     Ok(())
+}
+
+fn lossless_integer_conversion(
+    source: &Ty,
+    target: &Ty,
+    layout: &TargetLayout,
+) -> Result<bool, BackendError> {
+    if source == target {
+        return Ok(true);
+    }
+    let Some((source_signed, source_bits)) = integer_shape(source, layout) else {
+        return Ok(false);
+    };
+    let Some((target_signed, target_bits)) = integer_shape(target, layout) else {
+        return Ok(false);
+    };
+
+    if target_bits <= source_bits {
+        return Ok(false);
+    }
+
+    Ok(match (source_signed, target_signed) {
+        (true, true) | (false, false) | (false, true) => true,
+        (true, false) => false,
+    })
+}
+
+fn integer_shape(ty: &Ty, layout: &TargetLayout) -> Option<(bool, u16)> {
+    match ty {
+        Ty::Byte => Some((false, 8)),
+        Ty::Int { signed, width } => Some((
+            *signed,
+            match width {
+                IntWidth::W8 => 8,
+                IntWidth::W16 => 16,
+                IntWidth::W32 => 32,
+                IntWidth::W64 => 64,
+                IntWidth::Pointer => layout.pointer_bits,
+            },
+        )),
+        _ => None,
+    }
 }
 
 fn schedule_c4_blocks(fir: &FirFunction) -> Result<FirFunction, BackendError> {
