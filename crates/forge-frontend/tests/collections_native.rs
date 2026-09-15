@@ -23,7 +23,7 @@ fn list_u64_has_no_allocator_field() {
     let list = file
         .declarations
         .iter()
-        .find_map(|decl| match &decl.kind {
+        .find_map(|decl| match &decl.kind.kind {
             DeclKind::Struct(x) if x.name == "ListU64" => Some(x),
             _ => None,
         })
