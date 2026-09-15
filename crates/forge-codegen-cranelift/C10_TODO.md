@@ -4,12 +4,12 @@ Goal: turn the C9-complete FIR -> CLIF backend into a real relocatable native-co
 
 ## C10a — module/object model
 
-- [ ] define deterministic object symbol identity for every FIR function
-- [ ] define linkage/visibility policy for module-local and externally visible functions
-- [ ] build an object-module plan from a prepared FIR module before byte emission
-- [ ] reject symbol collisions and unsupported symbol states explicitly
-- [ ] preserve exact C9 Forge signatures/ABI plans at symbol boundaries
-- [ ] add deterministic-order and symbol-policy tests on AArch64 and RV64
+- [x] define deterministic object symbol identity for every FIR function
+- [x] define linkage/visibility policy for module-local and externally visible functions
+- [x] build an object-module plan from a prepared FIR module before byte emission
+- [x] reject symbol collisions and unsupported symbol states explicitly
+- [x] preserve exact C9 Forge signatures/ABI plans at symbol boundaries
+- [x] add deterministic-order and symbol-policy tests on AArch64 and RV64
 
 ## C10b — object emission
 
