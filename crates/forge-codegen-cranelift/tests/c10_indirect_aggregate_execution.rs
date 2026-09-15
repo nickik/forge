@@ -244,7 +244,10 @@ fn indirect_aggregate_call_links_and_executes_on_riscv64() {
         "riscv64-linux-gnu-ld",
         "qemu-riscv64",
     ] {
-        assert!(tool_available(tool), "required RV64 execution tool missing: {tool}");
+        assert!(
+            tool_available(tool),
+            "required RV64 execution tool missing: {tool}"
+        );
     }
 
     let dir = temporary_directory("indirect-aggregate-riscv64");
