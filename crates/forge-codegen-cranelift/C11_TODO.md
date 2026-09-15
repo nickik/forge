@@ -37,15 +37,17 @@ C11c completion record: final CI run `35008041414` on tested implementation head
 
 ## C11d — runtime global initialization
 
-- [ ] compile `FirGlobalInitializer.function`
-- [ ] honor initializer dependencies and `global_init_order`
-- [ ] generate one module initialization entry point
-- [ ] store initializer results into their global storage
-- [ ] verify dependent initializers execute exactly once and in specified order
-- [ ] link and execute initializer tests on native AArch64 and RV64/QEMU
+- [x] compile `FirGlobalInitializer.function`
+- [x] honor initializer dependencies and `global_init_order`
+- [x] generate one module initialization entry point
+- [x] store initializer results into their global storage
+- [x] verify dependent initializers execute exactly once and in specified order
+- [x] link and execute initializer tests on native AArch64 and RV64/QEMU
+
+C11d completion record: final CI run `35009862629` on tested implementation head `96a9abad45b27177c4baa96381fcb8c52bff4175` passed formatting, workspace check, build-system tests, generated collections snapshot, frontend tests, all workspace tests, conformance, and strict Clippy. Runtime initializer FIR functions are compiled as deterministic internal functions through the existing C9/C11 lowering path. One synthetic module initialization entry point calls them exactly once in `global_init_order` and stores scalar, direct-aggregate, or hidden-return aggregate results directly into C11 global storage using the authoritative C9 ABI/layout. A dependency-chain test (`FIRST -> SECOND -> aggregate PAIR`) verifies zeroed pre-init storage, ordered dependent reads, exact-once call relocations, aggregate materialization, linking, and execution on native AArch64 and RV64/QEMU.
 
 ## Completion gate
 
-C11 is complete only when a Forge FIR module containing constant globals, aggregate globals, and dependent runtime-initialized globals can be emitted into a real relocatable object, linked, initialized, and executed correctly on native AArch64 with RV64/QEMU coverage, while the full formatting/check/test/conformance/Clippy gate remains green.
+C11 is complete: a Forge FIR module containing constant globals, aggregate globals, and dependent runtime-initialized globals can be emitted into a real relocatable object, linked, initialized, and executed correctly on native AArch64 with RV64/QEMU coverage while the full formatting/check/test/conformance/Clippy gate remains green.
 
 C11 does not redefine C9 layout/ABI policy and does not include closures or varargs.
