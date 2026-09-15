@@ -39,9 +39,10 @@ pub use typecheck::{
 };
 
 pub use fir::{
-    verify_fir_function, FirBasicBlock, FirBlockId, FirConst, FirDiagnostic, FirFunction, FirGlobal,
-    FirGlobalInitializer, FirInstruction, FirInstructionKind, FirLocal, FirLocalId, FirModule,
-    FirOutput, FirPlace, FirSelectCase, FirTerminator, FirUnaryOp, FirValueId, OverflowMode,
+    verify_fir_function, FirBasicBlock, FirBlockId, FirConst, FirDiagnostic, FirFunction,
+    FirGlobal, FirGlobalInitializer, FirInstruction, FirInstructionKind, FirLocal, FirLocalId,
+    FirModule, FirOutput, FirPlace, FirSelectCase, FirTerminator, FirUnaryOp, FirValueId,
+    OverflowMode,
 };
 pub use fir_boundary::{dump_fir_module, lower_fir, verify_fir_boundary, verify_fir_module};
 

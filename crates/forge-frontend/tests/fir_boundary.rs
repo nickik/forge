@@ -3,20 +3,34 @@ use forge_frontend::{
     type_check_module, verify_fir_boundary, verify_fir_module, FirInstructionKind, FirModule, Ty,
 };
 
-fn pipeline(source: &str) -> (
+fn pipeline(
+    source: &str,
+) -> (
     forge_frontend::BodyHirOutput,
     forge_frontend::TypeCheckOutput,
     forge_frontend::FirOutput,
 ) {
     let parsed = parse_source(source);
-    assert!(parsed.diagnostics.is_empty(), "parse: {:?}", parsed.diagnostics);
+    assert!(
+        parsed.diagnostics.is_empty(),
+        "parse: {:?}",
+        parsed.diagnostics
+    );
     let ast = parsed.ast.expect("AST");
     let hir = lower_module(&ast);
     assert!(hir.diagnostics.is_empty(), "hir: {:?}", hir.diagnostics);
     let bodies = lower_resolved_bodies(&ast, &hir.module);
-    assert!(bodies.diagnostics.is_empty(), "body HIR: {:?}", bodies.diagnostics);
+    assert!(
+        bodies.diagnostics.is_empty(),
+        "body HIR: {:?}",
+        bodies.diagnostics
+    );
     let typed = type_check_module(&ast, &hir.module, &bodies);
-    assert!(typed.diagnostics.is_empty(), "typed: {:?}", typed.diagnostics);
+    assert!(
+        typed.diagnostics.is_empty(),
+        "typed: {:?}",
+        typed.diagnostics
+    );
     let fir = lower_fir(&bodies, &typed);
     (bodies, typed, fir)
 }

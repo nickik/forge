@@ -6,7 +6,10 @@ use forge_fir::{ConstValue, DefId, FirGlobal, FirModule, Ty};
 fn aarch64_backend_initializes() {
     let backend = CraneliftBackend::aarch64().expect("AArch64 Cranelift backend");
     assert_eq!(backend.target(), CraneliftTarget::Aarch64);
-    assert_eq!(backend.target_triple().to_string(), "aarch64-unknown-linux-gnu");
+    assert_eq!(
+        backend.target_triple().to_string(),
+        "aarch64-unknown-linux-gnu"
+    );
     assert_eq!(backend.new_signature().call_conv, CallConv::SystemV);
 }
 
@@ -14,7 +17,10 @@ fn aarch64_backend_initializes() {
 fn riscv64_backend_initializes() {
     let backend = CraneliftBackend::riscv64().expect("RISC-V64 Cranelift backend");
     assert_eq!(backend.target(), CraneliftTarget::Riscv64);
-    assert_eq!(backend.target_triple().to_string(), "riscv64gc-unknown-linux-gnu");
+    assert_eq!(
+        backend.target_triple().to_string(),
+        "riscv64gc-unknown-linux-gnu"
+    );
     assert_eq!(backend.new_signature().call_conv, CallConv::SystemV);
 }
 
