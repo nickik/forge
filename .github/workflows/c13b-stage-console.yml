@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/cranelift-c13-native-existing-code
-          fetch-depth: 3
+          fetch-depth: 4
       - uses: actions/checkout@v4
         with:
           repository: nickik/CForge
@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git show HEAD^^:.github/workflows/c13b-stage-console.yml > /tmp/c13b-stage-original.yml
+          git show 08cc51c2c6d5da719bdfaba91db49af8dd4459ac:.github/workflows/c13b-stage-console.yml > /tmp/c13b-stage-original.yml
           python3 - <<'PY'
           from pathlib import Path
           import textwrap
@@ -49,6 +49,11 @@ jobs:
           text = text.replace(
               '.expect_err("unsized global must fail layout");',
               '.expect_err("unknown-length array global must fail layout");',
+              1,
+          )
+          text = text.replace(
+              'assert!(matches!(error, BackendError::InvalidFirShape { .. }));',
+              'assert!(matches!(error, BackendError::UnsupportedType { .. }));',
               1,
           )
           p.write_text(text)
