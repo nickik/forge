@@ -1,9 +1,10 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cranelift_codegen::cursor::{Cursor, FuncCursor};
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{
-    AbiParam, Block, Function, InstBuilder, Signature, TrapCode, UserFuncName, Value,
+    AbiParam, Block, Function, InstBuilder, MemFlagsData, Signature, StackSlot, StackSlotData,
+    StackSlotKind, TrapCode, UserFuncName, Value,
 };
 use cranelift_codegen::isa::{CallConv, TargetIsa};
 use cranelift_codegen::verifier::verify_function;
@@ -13,6 +14,18 @@ use forge_fir::{
 };
 
 use crate::{BackendError, TypeLowering};
+
+#[derive(Clone, Copy)]
+struct MemoryFlags {
+    stack: MemFlagsData,
+    deref: MemFlagsData,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PlaceAccess {
+    Load,
+    Store,
+}
 
 pub(crate) fn lower_function(
     fir: &FirFunction,
@@ -27,6 +40,15 @@ pub(crate) fn lower_function(
 
     let signature = lower_signature(fir, types, isa)?;
     let mut function = Function::with_name_signature(UserFuncName::user(0, fir.owner.0), signature);
+
+    let local_slots = allocate_addressable_locals(fir, types, &mut function)?;
+    let memory_flags = MemoryFlags {
+        stack: MemFlagsData::trusted(),
+        // Dereferences are deliberately conservative: potentially trapping,
+        // unaligned, and not freely movable. C7 does not claim volatile access
+        // semantics; volatile raw dereferences are rejected below.
+        deref: MemFlagsData::new(),
+    };
 
     let mut blocks = BTreeMap::new();
     for fir_block in &fir.blocks {
@@ -64,6 +86,8 @@ pub(crate) fn lower_function(
         entry,
         &blocks,
         &parameter_values,
+        &local_slots,
+        memory_flags,
         &mut values,
         types,
         &mut function,
@@ -82,6 +106,8 @@ pub(crate) fn lower_function(
             clif_block,
             &blocks,
             &parameter_values,
+            &local_slots,
+            memory_flags,
             &mut values,
             types,
             &mut function,
@@ -121,6 +147,50 @@ fn lower_signature(
     Ok(signature)
 }
 
+fn allocate_addressable_locals(
+    fir: &FirFunction,
+    types: &TypeLowering<'_>,
+    function: &mut Function,
+) -> Result<BTreeMap<FirLocalId, StackSlot>, BackendError> {
+    let mut required = BTreeSet::new();
+    for block in &fir.blocks {
+        for instruction in &block.instructions {
+            match &instruction.kind {
+                FirInstructionKind::Load {
+                    place: FirPlace::Local { local },
+                }
+                | FirInstructionKind::Store {
+                    place: FirPlace::Local { local },
+                    ..
+                }
+                | FirInstructionKind::AddressOf {
+                    place: FirPlace::Local { local },
+                    ..
+                } => {
+                    required.insert(*local);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut slots = BTreeMap::new();
+    for local_id in required {
+        let local = fir
+            .locals
+            .get(&local_id)
+            .ok_or_else(|| shape(format!("missing FIR local {local_id:?}")))?;
+        let layout = types.scalar_layout(&local.ty)?;
+        let slot = function.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            layout.size_bytes,
+            layout.align_shift(),
+        ));
+        slots.insert(local_id, slot);
+    }
+    Ok(slots)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn lower_one_block(
     fir: &FirFunction,
@@ -128,6 +198,8 @@ fn lower_one_block(
     clif_block: Block,
     blocks: &BTreeMap<FirBlockId, Block>,
     parameter_values: &BTreeMap<FirLocalId, Value>,
+    local_slots: &BTreeMap<FirLocalId, StackSlot>,
+    memory_flags: MemoryFlags,
     values: &mut BTreeMap<FirValueId, Value>,
     types: &TypeLowering<'_>,
     function: &mut Function,
@@ -145,11 +217,23 @@ fn lower_one_block(
 
     let mut cursor = FuncCursor::new(function);
     cursor.goto_bottom(clif_block);
+
+    if block_id == fir.entry {
+        initialize_parameter_slots(
+            parameter_values,
+            local_slots,
+            memory_flags.stack,
+            types,
+            &mut cursor,
+        )?;
+    }
+
     for instruction in &fir_block.instructions {
         lower_instruction(
             fir,
             instruction,
-            parameter_values,
+            local_slots,
+            memory_flags,
             values,
             types,
             &mut cursor,
@@ -163,14 +247,50 @@ fn lower_one_block(
     lower_terminator(fir, terminator, blocks, values, &mut cursor)
 }
 
+fn initialize_parameter_slots(
+    parameter_values: &BTreeMap<FirLocalId, Value>,
+    local_slots: &BTreeMap<FirLocalId, StackSlot>,
+    stack_flags: MemFlagsData,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<(), BackendError> {
+    let pointer_ty = types.pointer_type()?;
+    for (local, value) in parameter_values {
+        let Some(slot) = local_slots.get(local) else {
+            continue;
+        };
+        let address = cursor.ins().stack_addr(pointer_ty, *slot, 0);
+        cursor.ins().store(stack_flags, *value, address, 0);
+    }
+    Ok(())
+}
+
 fn lower_instruction(
     fir: &FirFunction,
     instruction: &FirInstruction,
-    parameter_values: &BTreeMap<FirLocalId, Value>,
+    local_slots: &BTreeMap<FirLocalId, StackSlot>,
+    memory_flags: MemoryFlags,
     values: &mut BTreeMap<FirValueId, Value>,
     types: &TypeLowering<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
+    if let FirInstructionKind::Store { place, value } = &instruction.kind {
+        if instruction.result.is_some() {
+            return Err(shape("FIR store unexpectedly produces a value"));
+        }
+        lower_store(
+            fir,
+            place,
+            *value,
+            local_slots,
+            memory_flags,
+            values,
+            types,
+            cursor,
+        )?;
+        return Ok(());
+    }
+
     let result_id = instruction
         .result
         .ok_or(BackendError::UnsupportedInstruction {
@@ -183,13 +303,27 @@ fn lower_instruction(
 
     let value = match &instruction.kind {
         FirInstructionKind::Const { value } => lower_const(value, result_ty, types, cursor)?,
-        FirInstructionKind::Load {
-            place: FirPlace::Local { local },
-        } => *parameter_values
-            .get(local)
-            .ok_or(BackendError::UnsupportedInstruction {
-                kind: "load of non-parameter local",
-            })?,
+        FirInstructionKind::Load { place } => lower_load(
+            fir,
+            place,
+            result_ty,
+            local_slots,
+            memory_flags,
+            values,
+            types,
+            cursor,
+        )?,
+        FirInstructionKind::AddressOf { place, mutable } => {
+            lower_address_of(fir, place, *mutable, result_ty, local_slots, types, cursor)?
+        }
+        FirInstructionKind::PointerOffset {
+            pointer,
+            offset,
+            subtract,
+            provenance: _,
+        } => lower_pointer_offset(
+            fir, *pointer, *offset, *subtract, result_ty, values, types, cursor,
+        )?,
         FirInstructionKind::Unary { op, value } => {
             lower_integer_unary(fir, *op, *value, values, cursor)?
         }
@@ -207,9 +341,6 @@ fn lower_instruction(
             }
             lower_integer_convert(fir, *value, target, values, types, cursor)?
         }
-        FirInstructionKind::Load { .. } => {
-            return Err(BackendError::UnsupportedInstruction { kind: "place load" });
-        }
         _ => {
             return Err(BackendError::UnsupportedInstruction {
                 kind: instruction_kind_name(&instruction.kind),
@@ -226,6 +357,272 @@ fn lower_instruction(
     }
     values.insert(result_id, value);
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_load(
+    fir: &FirFunction,
+    place: &FirPlace,
+    result_ty: &Ty,
+    local_slots: &BTreeMap<FirLocalId, StackSlot>,
+    memory_flags: MemoryFlags,
+    values: &BTreeMap<FirValueId, Value>,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    let (address, stored_ty, flags) = lower_place_address(
+        fir,
+        place,
+        PlaceAccess::Load,
+        local_slots,
+        memory_flags,
+        values,
+        types,
+        cursor,
+    )?;
+    if &stored_ty != result_ty {
+        return Err(shape(format!(
+            "FIR load result type {result_ty:?} does not match place type {stored_ty:?}"
+        )));
+    }
+    Ok(cursor
+        .ins()
+        .load(types.value_type(result_ty)?, flags, address, 0))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_store(
+    fir: &FirFunction,
+    place: &FirPlace,
+    value_id: FirValueId,
+    local_slots: &BTreeMap<FirLocalId, StackSlot>,
+    memory_flags: MemoryFlags,
+    values: &BTreeMap<FirValueId, Value>,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<(), BackendError> {
+    let value_ty = fir
+        .value_types
+        .get(&value_id)
+        .ok_or_else(|| shape(format!("missing type for FIR store value {value_id:?}")))?;
+    let value = lookup_value(values, value_id)?;
+    let (address, stored_ty, flags) = lower_place_address(
+        fir,
+        place,
+        PlaceAccess::Store,
+        local_slots,
+        memory_flags,
+        values,
+        types,
+        cursor,
+    )?;
+    if value_ty != &stored_ty {
+        return Err(shape(format!(
+            "FIR store value type {value_ty:?} does not match place type {stored_ty:?}"
+        )));
+    }
+    cursor.ins().store(flags, value, address, 0);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_place_address(
+    fir: &FirFunction,
+    place: &FirPlace,
+    access: PlaceAccess,
+    local_slots: &BTreeMap<FirLocalId, StackSlot>,
+    memory_flags: MemoryFlags,
+    values: &BTreeMap<FirValueId, Value>,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<(Value, Ty, MemFlagsData), BackendError> {
+    match place {
+        FirPlace::Local { local } => {
+            let slot = local_slots
+                .get(local)
+                .copied()
+                .ok_or_else(|| shape(format!("FIR local {local:?} has no C7 stack slot")))?;
+            let local_ty = fir
+                .locals
+                .get(local)
+                .ok_or_else(|| shape(format!("missing FIR local {local:?}")))?
+                .ty
+                .clone();
+            let address = cursor.ins().stack_addr(types.pointer_type()?, slot, 0);
+            Ok((address, local_ty, memory_flags.stack))
+        }
+        FirPlace::Deref { address } => {
+            let address_ty = fir.value_types.get(address).ok_or_else(|| {
+                shape(format!("missing type for dereference address {address:?}"))
+            })?;
+            let (mutable, inner) = match address_ty {
+                Ty::Reference { mutable, inner } => (*mutable, inner.as_ref().clone()),
+                _ => {
+                    return Err(shape(format!(
+                        "safe FIR dereference address has non-reference type {address_ty:?}"
+                    )));
+                }
+            };
+            if access == PlaceAccess::Store && !mutable {
+                return Err(shape("store through shared FIR reference"));
+            }
+            Ok((lookup_value(values, *address)?, inner, memory_flags.deref))
+        }
+        FirPlace::RawDeref {
+            address,
+            volatile,
+            provenance: _,
+        } => {
+            if *volatile {
+                return Err(BackendError::UnsupportedInstruction {
+                    kind: "volatile raw dereference",
+                });
+            }
+            let address_ty = fir.value_types.get(address).ok_or_else(|| {
+                shape(format!(
+                    "missing type for raw dereference address {address:?}"
+                ))
+            })?;
+            let inner = match address_ty {
+                Ty::Pointer { inner, .. } => inner.as_ref().clone(),
+                _ => {
+                    return Err(shape(format!(
+                        "raw FIR dereference address has non-pointer type {address_ty:?}"
+                    )));
+                }
+            };
+            Ok((lookup_value(values, *address)?, inner, memory_flags.deref))
+        }
+        FirPlace::ClosureCapture { .. } => Err(BackendError::UnsupportedInstruction {
+            kind: "closure capture place",
+        }),
+        FirPlace::Field { .. } | FirPlace::Index { .. } => {
+            Err(BackendError::UnsupportedInstruction {
+                kind: "aggregate/index place before C9 layout",
+            })
+        }
+    }
+}
+
+fn lower_address_of(
+    fir: &FirFunction,
+    place: &FirPlace,
+    mutable: bool,
+    result_ty: &Ty,
+    local_slots: &BTreeMap<FirLocalId, StackSlot>,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    let FirPlace::Local { local } = place else {
+        return Err(BackendError::UnsupportedInstruction {
+            kind: "address of non-local place before aggregate layout",
+        });
+    };
+    let local_data = fir
+        .locals
+        .get(local)
+        .ok_or_else(|| shape(format!("missing FIR local {local:?}")))?;
+    if mutable && !local_data.mutable {
+        return Err(shape(format!(
+            "mutable address requested for immutable FIR local {local:?}"
+        )));
+    }
+    let local_ty = &local_data.ty;
+    match result_ty {
+        Ty::Reference {
+            mutable: result_mutable,
+            inner,
+        } if *result_mutable == mutable && inner.as_ref() == local_ty => {}
+        _ => {
+            return Err(shape(format!(
+                "address-of result type {result_ty:?} does not match local {local:?} type {local_ty:?}"
+            )));
+        }
+    }
+    let slot = local_slots.get(local).copied().ok_or_else(|| {
+        shape(format!(
+            "addressed FIR local {local:?} has no C7 stack slot"
+        ))
+    })?;
+    Ok(cursor.ins().stack_addr(types.pointer_type()?, slot, 0))
+}
+
+fn lower_pointer_offset(
+    fir: &FirFunction,
+    pointer: FirValueId,
+    offset: FirValueId,
+    subtract: bool,
+    result_ty: &Ty,
+    values: &BTreeMap<FirValueId, Value>,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    let pointer_ty = fir
+        .value_types
+        .get(&pointer)
+        .ok_or_else(|| shape(format!("missing type for pointer-offset base {pointer:?}")))?;
+    let inner = match pointer_ty {
+        Ty::Pointer { inner, .. } => inner.as_ref(),
+        _ => {
+            return Err(shape(format!(
+                "pointer offset base has non-pointer FIR type {pointer_ty:?}"
+            )));
+        }
+    };
+    if result_ty != pointer_ty {
+        return Err(shape(format!(
+            "pointer offset result type {result_ty:?} differs from base type {pointer_ty:?}"
+        )));
+    }
+
+    let offset_ty = fir
+        .value_types
+        .get(&offset)
+        .ok_or_else(|| shape(format!("missing type for pointer offset {offset:?}")))?;
+    if !is_integer_type(offset_ty) {
+        return Err(shape(format!(
+            "pointer offset has non-integer FIR type {offset_ty:?}"
+        )));
+    }
+
+    // Pointer arithmetic uses Forge scalar layout, not CLIF value width, to
+    // determine element stride. Aggregate pointees stay explicitly unsupported
+    // until C9 defines their Forge ABI/layout representation.
+    let stride = types.scalar_layout(inner)?.size_bytes;
+    let pointer_clif = types.pointer_type()?;
+    let raw_offset = lookup_value(values, offset)?;
+    let normalized_offset =
+        normalize_integer_to_type(offset_ty, raw_offset, pointer_clif, types, cursor)?;
+    let scaled_offset = if stride == 1 {
+        normalized_offset
+    } else {
+        let stride_value = cursor.ins().iconst(pointer_clif, i64::from(stride));
+        cursor.ins().imul(normalized_offset, stride_value)
+    };
+    let base = lookup_value(values, pointer)?;
+    Ok(if subtract {
+        cursor.ins().isub(base, scaled_offset)
+    } else {
+        cursor.ins().iadd(base, scaled_offset)
+    })
+}
+
+fn normalize_integer_to_type(
+    source_ty: &Ty,
+    value: Value,
+    target_clif: cranelift_codegen::ir::Type,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    let source_clif = types.value_type(source_ty)?;
+    Ok(match source_clif.bits().cmp(&target_clif.bits()) {
+        std::cmp::Ordering::Equal => value,
+        std::cmp::Ordering::Greater => cursor.ins().ireduce(target_clif, value),
+        std::cmp::Ordering::Less if integer_signed(source_ty)? => {
+            cursor.ins().sextend(target_clif, value)
+        }
+        std::cmp::Ordering::Less => cursor.ins().uextend(target_clif, value),
+    })
 }
 
 fn lower_integer_unary(
@@ -405,17 +802,13 @@ fn lower_integer_convert(
         });
     }
 
-    let value = lookup_value(values, input)?;
-    let source_clif = types.value_type(source)?;
-    let target_clif = types.value_type(target)?;
-    Ok(match source_clif.bits().cmp(&target_clif.bits()) {
-        std::cmp::Ordering::Equal => value,
-        std::cmp::Ordering::Greater => cursor.ins().ireduce(target_clif, value),
-        std::cmp::Ordering::Less if integer_signed(source)? => {
-            cursor.ins().sextend(target_clif, value)
-        }
-        std::cmp::Ordering::Less => cursor.ins().uextend(target_clif, value),
-    })
+    normalize_integer_to_type(
+        source,
+        lookup_value(values, input)?,
+        types.value_type(target)?,
+        types,
+        cursor,
+    )
 }
 
 fn matching_integer_operands<'a>(

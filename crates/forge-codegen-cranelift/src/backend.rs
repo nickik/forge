@@ -277,15 +277,23 @@ fn schedule_c4_blocks(fir: &FirFunction) -> Result<FirFunction, BackendError> {
 fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
     let mut available = outer.clone();
     for instruction in &block.instructions {
-        let ready = match &instruction.kind {
-            FirInstructionKind::Unary { value, .. } | FirInstructionKind::Convert { value, .. } => {
-                available.contains(value)
-            }
-            FirInstructionKind::Binary { left, right, .. } => {
-                available.contains(left) && available.contains(right)
-            }
-            _ => true,
-        };
+        let ready =
+            match &instruction.kind {
+                FirInstructionKind::Unary { value, .. }
+                | FirInstructionKind::Convert { value, .. } => available.contains(value),
+                FirInstructionKind::Binary { left, right, .. } => {
+                    available.contains(left) && available.contains(right)
+                }
+                FirInstructionKind::Load { place }
+                | FirInstructionKind::AddressOf { place, .. } => place_ready(place, &available),
+                FirInstructionKind::Store { place, value } => {
+                    available.contains(value) && place_ready(place, &available)
+                }
+                FirInstructionKind::PointerOffset {
+                    pointer, offset, ..
+                } => available.contains(pointer) && available.contains(offset),
+                _ => true,
+            };
         if !ready {
             return false;
         }
@@ -297,6 +305,19 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
         Some(FirTerminator::Branch { condition, .. }) => available.contains(condition),
         Some(FirTerminator::Return { value: Some(value) }) => available.contains(value),
         _ => true,
+    }
+}
+
+fn place_ready(place: &FirPlace, available: &BTreeSet<FirValueId>) -> bool {
+    match place {
+        FirPlace::Local { .. } | FirPlace::ClosureCapture { .. } => true,
+        FirPlace::Field { base, .. } => place_ready(base, available),
+        FirPlace::Index { base, index } => {
+            place_ready(base, available) && available.contains(index)
+        }
+        FirPlace::Deref { address } | FirPlace::RawDeref { address, .. } => {
+            available.contains(address)
+        }
     }
 }
 
