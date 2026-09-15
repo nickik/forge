@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git show 08cc51c2c6d5da719bdfaba91db49af8dd4459ac:.github/workflows/c13b-stage-console.yml > /tmp/c13b-stage-original.yml
+          curl -fsSL https://raw.githubusercontent.com/nickik/forge/08cc51c2c6d5da719bdfaba91db49af8dd4459ac/.github/workflows/c13b-stage-console.yml > /tmp/c13b-stage-original.yml
           python3 - <<'PY'
           from pathlib import Path
           import textwrap
