@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/cranelift-c13-native-existing-code
-          fetch-depth: 4
+          fetch-depth: 5
       - uses: actions/checkout@v4
         with:
           repository: nickik/CForge
@@ -46,16 +46,11 @@ jobs:
           if text.count(old) != 1:
               raise SystemExit('C11 illegal-layout regression source shape changed')
           text = text.replace(old, new, 1)
-          text = text.replace(
-              '.expect_err("unsized global must fail layout");',
-              '.expect_err("unknown-length array global must fail layout");',
-              1,
-          )
-          text = text.replace(
-              'assert!(matches!(error, BackendError::InvalidFirShape { .. }));',
-              'assert!(matches!(error, BackendError::UnsupportedType { .. }));',
-              1,
-          )
+          old_tail = '''        .expect_err("unsized global must fail layout");\n    assert!(matches!(error, BackendError::InvalidFirShape { .. }));\n'''
+          new_tail = '''        .expect_err("unknown-length array global must fail layout");\n    assert!(matches!(error, BackendError::UnsupportedType { .. }));\n'''
+          if text.count(old_tail) != 1:
+              raise SystemExit('C11 illegal-layout assertion source shape changed')
+          text = text.replace(old_tail, new_tail, 1)
           p.write_text(text)
           PY
           cargo fmt --all
