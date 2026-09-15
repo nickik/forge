@@ -353,7 +353,6 @@ fn emit_elf64(
     relocs: &[PendingRelocation],
 ) -> Result<Vec<u8>, BackendError> {
     const TEXT_SECTION: u16 = 1;
-    const RELA_TEXT_SECTION: u32 = 2;
     const SYMTAB_SECTION: u32 = 3;
     const STRTAB_SECTION: u32 = 4;
     const SHSTRTAB_SECTION: u16 = 5;
