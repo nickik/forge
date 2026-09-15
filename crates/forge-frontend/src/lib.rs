@@ -13,7 +13,7 @@ pub mod lexer;
 pub mod parser;
 #[path = "resolution_v1.rs"]
 pub mod resolution;
-#[path = "typecheck_v1.rs"]
+#[path = "typecheck_c9.rs"]
 pub mod typecheck;
 
 pub use body_hir::{
@@ -30,19 +30,20 @@ pub use resolution::{
     ResolvedName,
 };
 pub use typecheck::{
-    type_check_module, CaptureMode, ConstValue, ContextSlot, IntWidth, MatchCondition,
-    MatchProjection, MatchScalar, MatchTest, ResolvedCallArgument, ResolvedReceiver, Ty,
-    TypeCheckOutput, TypeDiagnostic, TypedBitField, TypedBitFieldAccess, TypedBitStruct, TypedBody,
-    TypedCapture, TypedClosurePlan, TypedCollectionPatternProtocol, TypedContextOverride,
-    TypedContextScope, TypedExpr, TypedExprKind, TypedGlobalInitializer, TypedMatchArmPlan,
-    TypedMatchBinding, TypedMatchPlan, TypedUnsafeScope, UnsafeOperationKind, UnsafeProvenance,
+    collect_type_definitions, type_check_module, CaptureMode, ConstValue, ContextSlot, IntWidth,
+    MatchCondition, MatchProjection, MatchScalar, MatchTest, ResolvedCallArgument,
+    ResolvedReceiver, Ty, TypeCheckOutput, TypeDefinition, TypeDefinitionKind, TypeDefinitionTable,
+    TypeDiagnostic, TypeFieldDefinition, TypeVariantDefinition, TypedBitField, TypedBitFieldAccess,
+    TypedBitStruct, TypedBody, TypedCapture, TypedClosurePlan, TypedCollectionPatternProtocol,
+    TypedContextOverride, TypedContextScope, TypedExpr, TypedExprKind, TypedGlobalInitializer,
+    TypedMatchArmPlan, TypedMatchBinding, TypedMatchPlan, TypedUnsafeScope, UnsafeOperationKind,
+    UnsafeProvenance,
 };
 
 pub use fir::{
-    verify_fir_function, FirBasicBlock, FirBlockId, FirConst, FirDiagnostic, FirFunction,
-    FirGlobal, FirGlobalInitializer, FirInstruction, FirInstructionKind, FirLocal, FirLocalId,
-    FirModule, FirOutput, FirPlace, FirSelectCase, FirTerminator, FirUnaryOp, FirValueId,
-    OverflowMode,
+    verify_fir_function, FirBasicBlock, FirBlockId, FirConst, FirDiagnostic, FirFunction, FirGlobal,
+    FirGlobalInitializer, FirInstruction, FirInstructionKind, FirLocal, FirLocalId, FirModule,
+    FirOutput, FirPlace, FirSelectCase, FirTerminator, FirUnaryOp, FirValueId, OverflowMode,
 };
 pub use fir_boundary::{dump_fir_module, lower_fir, verify_fir_boundary, verify_fir_module};
 
