@@ -29,7 +29,11 @@ fn list_u64_has_no_allocator_field() {
         })
         .expect("ListU64 struct");
 
-    let fields: Vec<_> = list.fields.iter().map(|field| field.name.as_str()).collect();
+    let fields: Vec<_> = list
+        .fields
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
     assert_eq!(fields, ["block", "len", "capacity"]);
 }
 
@@ -70,7 +74,9 @@ fn list_u64_policy_is_forge_source() {
 #[test]
 fn list_u64_commits_resize_only_after_success() {
     let source = collections_source();
-    let reserve_start = source.find("pub fn list_u64_try_reserve").expect("reserve start");
+    let reserve_start = source
+        .find("pub fn list_u64_try_reserve")
+        .expect("reserve start");
     let reserve_end = source[reserve_start..]
         .find("pub fn list_u64_push")
         .map(|offset| reserve_start + offset)
@@ -94,7 +100,9 @@ fn list_u64_commits_resize_only_after_success() {
 #[test]
 fn list_u64_destroy_resets_only_after_successful_free() {
     let source = collections_source();
-    let destroy_start = source.find("pub fn list_u64_destroy").expect("destroy start");
+    let destroy_start = source
+        .find("pub fn list_u64_destroy")
+        .expect("destroy start");
     let destroy_end = source[destroy_start..]
         .find("// HashSetU64")
         .map(|offset| destroy_start + offset)
