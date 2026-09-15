@@ -6,10 +6,10 @@
 
 #[allow(dead_code)]
 mod abi;
-#[path = "backend_c11c.rs"]
+#[path = "backend_c11d.rs"]
 mod backend_c11a;
 #[allow(dead_code)]
-#[path = "backend_c11c_legacy.rs"]
+#[path = "backend_c11d_legacy.rs"]
 mod backend_legacy;
 mod c9_memory_checks;
 mod diagnostic;

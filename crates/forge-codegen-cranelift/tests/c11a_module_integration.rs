@@ -86,10 +86,16 @@ fn c11a_prepared_module_carries_functions_globals_and_init_order() {
             .expect("integrated prepared module");
 
         assert_eq!(prepared.target(), target);
-        assert_eq!(
-            prepared.functions().keys().copied().collect::<Vec<_>>(),
-            vec![DefId(1)]
-        );
+        assert!(prepared.functions().contains_key(&DefId(1)));
+        let runtime_initializer = prepared
+            .runtime_initializer_function(DefId(11))
+            .expect("runtime initializer function");
+        let module_initializer = prepared
+            .module_initializer_owner()
+            .expect("module initializer function");
+        assert!(prepared.functions().contains_key(&runtime_initializer));
+        assert!(prepared.functions().contains_key(&module_initializer));
+        assert_eq!(prepared.functions().len(), 3);
         assert_eq!(
             prepared.globals().keys().copied().collect::<Vec<_>>(),
             vec![DefId(10), DefId(11)]
@@ -123,7 +129,7 @@ fn c11a_object_plan_carries_function_and_global_symbols_together() {
             .plan_object_module_with_exports(&prepared, [DefId(1), DefId(10)])
             .expect("integrated object plan");
 
-        assert_eq!(plan.function_symbols().len(), 1);
+        assert_eq!(plan.function_symbols().len(), 3);
         assert_eq!(plan.global_symbols().len(), 2);
         assert_eq!(plan.global_init_order(), &[DefId(11)]);
         assert_eq!(
@@ -148,6 +154,26 @@ fn c11a_object_plan_carries_function_and_global_symbols_together() {
             plan.global_symbol(DefId(11))
                 .expect("runtime symbol")
                 .linkage(),
+            ObjectLinkage::Local
+        );
+        assert_eq!(
+            plan.symbol(
+                prepared
+                    .runtime_initializer_function(DefId(11))
+                    .expect("runtime initializer")
+            )
+            .expect("runtime initializer symbol")
+            .linkage(),
+            ObjectLinkage::Local
+        );
+        assert_eq!(
+            plan.symbol(
+                prepared
+                    .module_initializer_owner()
+                    .expect("module initializer")
+            )
+            .expect("module initializer symbol")
+            .linkage(),
             ObjectLinkage::Local
         );
     }
@@ -181,6 +207,8 @@ fn c11a_function_only_c10_object_path_remains_unchanged() {
         let prepared = backend.prepare_module(&module).expect("prepared");
         assert!(prepared.globals().is_empty());
         assert!(prepared.global_init_order().is_empty());
+        assert!(prepared.runtime_initializer_functions().is_empty());
+        assert!(prepared.module_initializer_owner().is_none());
 
         let plan = backend
             .plan_object_module_with_exports(&prepared, [owner])
