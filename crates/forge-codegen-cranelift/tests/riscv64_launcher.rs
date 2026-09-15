@@ -10,8 +10,7 @@ fn handcrafted_rv64_elf_exits_with_requested_status() {
     for status in [0_u16, 2, 5, 10] {
         let (actual, trace) = run_direct_exit(status);
         assert_eq!(
-            actual,
-            status as i32,
+            actual, status as i32,
             "qemu-riscv64 trace for requested status {status}:\n{trace}"
         );
     }
