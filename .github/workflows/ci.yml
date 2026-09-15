@@ -4,9 +4,6 @@ on:
   push:
   pull_request:
 
-permissions:
-  contents: write
-
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -21,21 +18,23 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Normalize merged Rust formatting
+      - name: Formatting
         timeout-minutes: 2
-        run: cargo fmt --all
-      - name: Workspace check and lockfile refresh
+        run: cargo fmt --all -- --check
+      - name: Workspace check
         timeout-minutes: 5
-        run: cargo check --workspace
+        run: cargo check --workspace --locked
       - name: Build-system tests
         timeout-minutes: 5
-        run: cargo test -p forge-build -- --nocapture
-      - name: Regenerate native collections
+        run: cargo test -p forge-build --locked -- --nocapture
+      - name: Generated native collections snapshot
         timeout-minutes: 3
-        run: cargo run --quiet -p forge-build --bin forge-collections-gen -- packages/forge-collections-native/src/lib.fg
+        run: |
+          cargo run --quiet -p forge-build --locked --bin forge-collections-gen -- /tmp/forge-collections-native.fg
+          diff -u packages/forge-collections-native/src/lib.fg /tmp/forge-collections-native.fg
       - name: Frontend tests
         timeout-minutes: 5
-        run: cargo test -p forge-frontend -- --nocapture
+        run: cargo test -p forge-frontend --locked -- --nocapture
       - name: Workspace tests
         timeout-minutes: 10
         run: cargo test --workspace --locked -- --nocapture
@@ -45,17 +44,3 @@ jobs:
       - name: Clippy
         timeout-minutes: 8
         run: cargo clippy --workspace --all-targets --locked -- -D warnings -A unused_mut -A clippy::collapsible_match -A clippy::large-enum-variant -A clippy::only-used-in-recursion
-      - name: Commit normalized integration artifacts
-        if: github.event_name == 'push' && github.ref == 'refs/heads/agent/cranelift-c0-c1-integration'
-        timeout-minutes: 2
-        run: |
-          if git diff --quiet; then
-            echo "Integration artifacts already normalized"
-            exit 0
-          fi
-          git status --short
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -u
-          git commit -m "Normalize merged build artifacts"
-          git push
