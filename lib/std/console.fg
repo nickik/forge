@@ -1,7 +1,5 @@
 module std.console;
 
-import core;
-
 // Hosted console convenience API.
 //
 // The public API is portable. Its provider is selected by the hosted runtime:

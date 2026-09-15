@@ -361,3 +361,56 @@ fn aggregate_function_pointer_uses_same_c9_signature() {
     let caller_clif = prepared.function(caller_id).unwrap().display().to_string();
     assert!(caller_clif.contains("call_indirect"), "{caller_clif}");
 }
+
+#[test]
+fn void_call_accepts_frontend_void_result_value() {
+    let span = Span::new(0, 0);
+    let callee_id = DefId(30);
+    let caller_id = DefId(31);
+    let call_result = FirValueId(0);
+
+    let callee = FirFunction {
+        owner: callee_id,
+        params: vec![],
+        return_type: Ty::Void,
+        locals: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![],
+            terminator: Some(FirTerminator::Return { value: None }),
+        }],
+        value_types: BTreeMap::new(),
+    };
+
+    let caller = FirFunction {
+        owner: caller_id,
+        params: vec![],
+        return_type: Ty::Void,
+        locals: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![FirInstruction {
+                span,
+                result: Some(call_result),
+                kind: FirInstructionKind::Call {
+                    target: callee_id,
+                    args: vec![],
+                    tail: false,
+                },
+            }],
+            terminator: Some(FirTerminator::Return { value: None }),
+        }],
+        value_types: BTreeMap::from([(call_result, Ty::Void)]),
+    };
+
+    let mut module = FirModule::default();
+    module.functions.insert(callee_id, callee);
+    module.functions.insert(caller_id, caller);
+    assert_prepares_both(&module, &BTreeMap::new());
+}

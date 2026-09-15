@@ -117,6 +117,10 @@ pub enum LayoutKind {
         data_offset: u64,
         len_offset: u64,
     },
+    Str {
+        data_offset: u64,
+        len_offset: u64,
+    },
     Enum {
         tag: Option<TagLayout>,
     },
@@ -268,7 +272,7 @@ impl<'a> LayoutEngine<'a> {
             }
             Ty::Result { ok, error } => self.layout_result(ok, error),
 
-            Ty::Str => Err(LayoutError::UnsupportedType("unsized str")),
+            Ty::Str => self.layout_str(),
             Ty::ContextSlot { .. } => Err(LayoutError::UnsupportedType("context slot")),
             Ty::Closure { .. } => Err(LayoutError::UnsupportedType("closure")),
 
@@ -318,6 +322,23 @@ impl<'a> LayoutEngine<'a> {
         // its data pointer is itself non-null.
         layout.niche = None;
         layout.kind = LayoutKind::Slice {
+            data_offset,
+            len_offset,
+        };
+        Ok(layout)
+    }
+
+    fn layout_str(&self) -> Result<Layout, LayoutError> {
+        let pointer = self.layout_pointer()?;
+        let usize_layout = self.layout_integer(IntWidth::Pointer)?;
+        let mut layout = place_fields(vec![
+            FieldCandidate::new("data", 0, pointer),
+            FieldCandidate::new("len", 1, usize_layout),
+        ])?;
+        let data_offset = layout.field("data").expect("str data field").offset;
+        let len_offset = layout.field("len").expect("str len field").offset;
+        layout.niche = None;
+        layout.kind = LayoutKind::Str {
             data_offset,
             len_offset,
         };

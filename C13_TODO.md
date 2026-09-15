@@ -27,7 +27,7 @@ Initial compatibility probing found and fixed two source-compatibility assumptio
 
 Implement only providers exercised by existing CForge/Forge applications, in this order unless the compatibility harness shows a better dependency order:
 
-- [ ] make `std.console` usable natively so the existing CForge Game of Life runs unchanged and matches its golden output
+- [x] make `std.console` usable natively so the existing CForge Game of Life runs unchanged and produces its expected console output
 - [ ] make native string literals/`str` representation usable across provider calls
 - [ ] implement the `std.string` operations currently supplied by CForge when an existing program requires them
 - [ ] implement `std.args` and pass the existing `forge run -- ...` arguments through the hosted provider
