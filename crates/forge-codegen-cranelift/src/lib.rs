@@ -4,10 +4,13 @@
 //! translates it to Cranelift IR without consulting AST, HIR, Typed HIR, or
 //! reconstructing Forge-language decisions.
 
+#[allow(dead_code)]
 mod abi;
 mod backend;
+mod c9_memory_checks;
 mod diagnostic;
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, dead_code)]
+#[path = "function_c9d_impl.rs"]
 mod function;
 mod machine;
 mod target;

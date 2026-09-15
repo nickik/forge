@@ -1,13 +1,13 @@
 use cranelift_codegen::ir::{self, types};
-use forge_fir::{IntWidth, Ty};
+use forge_fir::{IntWidth, LayoutEngine, LayoutError, LayoutTarget, Ty, TypeDefinitionTable};
 
 use crate::{BackendError, TargetLayout};
 
-/// Forge-owned size/alignment for scalar values that can live in memory.
+/// Compatibility view used by the existing C7 memory lowering.
 ///
-/// This is deliberately separate from CLIF `Type`: aggregate/enum layout will
-/// extend the Forge ABI/layout layer later rather than treating Cranelift's
-/// value representation as Forge's layout specification.
+/// Size/alignment policy now comes from `forge_fir::LayoutEngine`; this wrapper
+/// remains only until aggregate-aware memory lowering consumes `Layout`
+/// directly.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScalarLayout {
     pub size_bytes: u32,
@@ -31,8 +31,8 @@ impl ScalarLayout {
 /// Mechanical FIR value-representation lowering.
 ///
 /// This layer does not choose Forge semantics. It maps already-resolved FIR
-/// types onto Forge scalar layout facts and CLIF scalar value types according
-/// to the Forge target layout.
+/// types onto Forge layout facts and CLIF scalar value types according to the
+/// target layout.
 pub struct TypeLowering<'a> {
     target: &'a TargetLayout,
 }
@@ -56,17 +56,12 @@ impl<'a> TypeLowering<'a> {
 
     pub fn scalar_layout(&self, ty: &Ty) -> Result<ScalarLayout, BackendError> {
         match ty {
-            Ty::Bool | Ty::Byte => Ok(ScalarLayout::new(1, 1)),
-            Ty::Int { width, .. } => Ok(match width {
-                IntWidth::W8 => ScalarLayout::new(1, 1),
-                IntWidth::W16 => ScalarLayout::new(2, 2),
-                IntWidth::W32 => ScalarLayout::new(4, 4),
-                IntWidth::W64 => ScalarLayout::new(8, 8),
-                IntWidth::Pointer => self.pointer_layout()?,
-            }),
-            Ty::Pointer { .. } | Ty::Reference { .. } | Ty::Function { .. } => {
-                self.pointer_layout()
-            }
+            Ty::Bool
+            | Ty::Byte
+            | Ty::Int { .. }
+            | Ty::Pointer { .. }
+            | Ty::Reference { .. }
+            | Ty::Function { .. } => self.authoritative_scalar_layout(ty),
 
             Ty::Never => unsupported("never"),
             Ty::Void => unsupported("void"),
@@ -127,12 +122,36 @@ impl<'a> TypeLowering<'a> {
         }
     }
 
-    fn pointer_layout(&self) -> Result<ScalarLayout, BackendError> {
-        match self.target.pointer_bits {
-            32 => Ok(ScalarLayout::new(4, 4)),
-            64 => Ok(ScalarLayout::new(8, 8)),
-            pointer_bits => Err(BackendError::UnsupportedTargetLayout { pointer_bits }),
+    fn authoritative_scalar_layout(&self, ty: &Ty) -> Result<ScalarLayout, BackendError> {
+        let definitions = TypeDefinitionTable::new();
+        let mut layouts =
+            LayoutEngine::new(LayoutTarget::new(self.target.pointer_bits), &definitions);
+        let layout = layouts.layout_of(ty).map_err(layout_error)?;
+        let size_bytes = u32::try_from(layout.size).map_err(|_| BackendError::UnsupportedType {
+            kind: "scalar layout size",
+        })?;
+        let align_bytes =
+            u32::try_from(layout.align).map_err(|_| BackendError::UnsupportedType {
+                kind: "scalar layout alignment",
+            })?;
+        Ok(ScalarLayout::new(size_bytes, align_bytes))
+    }
+}
+
+fn layout_error(error: LayoutError) -> BackendError {
+    match error {
+        LayoutError::UnsupportedPointerWidth(pointer_bits) => {
+            BackendError::UnsupportedTargetLayout { pointer_bits }
         }
+        LayoutError::SemanticTypeLeak(kind) => BackendError::SemanticTypeLeak { kind },
+        LayoutError::UnsupportedType(kind) => BackendError::UnsupportedType { kind },
+        LayoutError::UnknownNominal(_)
+        | LayoutError::RecursiveType(_)
+        | LayoutError::UnknownArrayLength
+        | LayoutError::SizeOverflow
+        | LayoutError::TooManyVariants => BackendError::UnsupportedType {
+            kind: "non-scalar layout",
+        },
     }
 }
 

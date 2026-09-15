@@ -5,15 +5,17 @@ use cranelift_codegen::isa::{CallConv, OwnedTargetIsa};
 use cranelift_codegen::Context;
 use forge_fir::{
     verify_fir_module, BinaryOp, DefId, FirBasicBlock, FirFunction, FirInstructionKind, FirModule,
-    FirPlace, FirTerminator, FirValueId, IntWidth, Ty,
+    FirPlace, FirTerminator, FirValueId, IntWidth, Ty, TypeDefinitionTable,
 };
 use target_lexicon::Triple;
 
+use crate::c9_memory_checks::validate_c9_memory_places;
 use crate::function::lower_function;
 use crate::{BackendError, CraneliftTarget, TargetLayout, TypeLowering};
 
 /// Target-specific Cranelift state. It deliberately owns no Forge semantic
-/// state other than verified FIR passed to lowering operations.
+/// state other than verified FIR and the resolved type-definition table passed
+/// to lowering operations.
 pub struct CraneliftBackend {
     target: CraneliftTarget,
     layout: TargetLayout,
@@ -62,9 +64,20 @@ impl CraneliftBackend {
         Signature::new(CallConv::triple_default(self.isa.triple()))
     }
 
-    /// Verify FIR and mechanically lower every supported FIR function to CLIF.
-    /// Globals and runtime initializers remain explicit unsupported boundaries.
+    /// Compatibility entry point for scalar-only modules and aggregate modules
+    /// that do not contain nominal types.
     pub fn prepare_module(&self, module: &FirModule) -> Result<PreparedModule, BackendError> {
+        let definitions = TypeDefinitionTable::new();
+        self.prepare_module_with_types(module, &definitions)
+    }
+
+    /// Verify FIR and lower every supported function using the resolved Forge
+    /// type-definition table as the sole aggregate layout/ABI source.
+    pub fn prepare_module_with_types(
+        &self,
+        module: &FirModule,
+        definitions: &TypeDefinitionTable,
+    ) -> Result<PreparedModule, BackendError> {
         let diagnostics = verify_fir_module(module);
         if !diagnostics.is_empty() {
             return Err(BackendError::InvalidFir {
@@ -91,9 +104,21 @@ impl CraneliftBackend {
         let lowering = self.type_lowering();
         let mut functions = BTreeMap::new();
         for (owner, fir) in &module.functions {
+            // Preserve all scalar semantic barriers established before C9.
             validate_c4_scalar_contract(fir, &self.layout)?;
-            let scheduled = schedule_scalar_blocks(fir)?;
-            let function = lower_function(&scheduled, &module.functions, &lowering, &*self.isa)?;
+            validate_c9_memory_places(fir)?;
+
+            // FIR block IDs remain indexes, but value dependencies are allowed
+            // to be non-topological in vector order. Schedule both scalar and
+            // aggregate value dependencies before CLIF lowering.
+            let scheduled = schedule_value_blocks(fir)?;
+            let function = lower_function(
+                &scheduled,
+                &module.functions,
+                definitions,
+                &lowering,
+                &*self.isa,
+            )?;
             functions.insert(*owner, function);
         }
 
@@ -233,7 +258,7 @@ fn integer_shape(ty: &Ty, layout: &TargetLayout) -> Option<(bool, u16)> {
     }
 }
 
-fn schedule_scalar_blocks(fir: &FirFunction) -> Result<FirFunction, BackendError> {
+fn schedule_value_blocks(fir: &FirFunction) -> Result<FirFunction, BackendError> {
     let mut scheduled = fir.clone();
     let entry = fir
         .blocks
@@ -277,29 +302,80 @@ fn schedule_scalar_blocks(fir: &FirFunction) -> Result<FirFunction, BackendError
 fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
     let mut available = outer.clone();
     for instruction in &block.instructions {
-        let ready =
-            match &instruction.kind {
-                FirInstructionKind::Unary { value, .. }
-                | FirInstructionKind::Convert { value, .. } => available.contains(value),
-                FirInstructionKind::Binary { left, right, .. } => {
-                    available.contains(left) && available.contains(right)
-                }
-                FirInstructionKind::Load { place }
-                | FirInstructionKind::AddressOf { place, .. } => place_ready(place, &available),
-                FirInstructionKind::Store { place, value } => {
-                    available.contains(value) && place_ready(place, &available)
-                }
-                FirInstructionKind::PointerOffset {
-                    pointer, offset, ..
-                } => available.contains(pointer) && available.contains(offset),
-                FirInstructionKind::Call { args, .. } => {
-                    args.iter().all(|value| available.contains(value))
-                }
-                FirInstructionKind::CallIndirect { callee, args, .. } => {
-                    available.contains(callee) && args.iter().all(|value| available.contains(value))
-                }
-                _ => true,
-            };
+        let ready = match &instruction.kind {
+            FirInstructionKind::Const { .. }
+            | FirInstructionKind::Unit
+            | FirInstructionKind::FunctionRef { .. }
+            | FirInstructionKind::LoadGlobal { .. }
+            | FirInstructionKind::ContextLoad { .. }
+            | FirInstructionKind::ContextSave { .. }
+            | FirInstructionKind::MakeNone
+            | FirInstructionKind::Variant { .. }
+            | FirInstructionKind::Poison => true,
+
+            FirInstructionKind::ContextSet { value, .. }
+            | FirInstructionKind::Unary { value, .. }
+            | FirInstructionKind::Convert { value, .. }
+            | FirInstructionKind::BitStructStorage { value, .. }
+            | FirInstructionKind::BitStructFromStorage { value, .. }
+            | FirInstructionKind::BitFieldCheck { value, .. }
+            | FirInstructionKind::PointerConvert { value, .. }
+            | FirInstructionKind::MakeSome { value }
+            | FirInstructionKind::VariantIs { value, .. }
+            | FirInstructionKind::ExtractField { base: value, .. }
+            | FirInstructionKind::Len { value }
+            | FirInstructionKind::Subsequence { base: value, .. }
+            | FirInstructionKind::CollectionPatternLookup {
+                collection: value, ..
+            }
+            | FirInstructionKind::CollectionPatternHasOnly {
+                collection: value, ..
+            }
+            | FirInstructionKind::ResultIsOk { value }
+            | FirInstructionKind::ResultUnwrapOk { value }
+            | FirInstructionKind::ResultUnwrapErr { value }
+            | FirInstructionKind::OptionIsSome { value }
+            | FirInstructionKind::OptionUnwrap { value } => available.contains(value),
+
+            FirInstructionKind::ContextRestore { saved, .. } => available.contains(saved),
+            FirInstructionKind::Binary { left, right, .. }
+            | FirInstructionKind::BoundsCheck {
+                index: left,
+                len: right,
+            }
+            | FirInstructionKind::IndexUnchecked {
+                base: left,
+                index: right,
+            } => available.contains(left) && available.contains(right),
+            FirInstructionKind::Load { place } | FirInstructionKind::AddressOf { place, .. } => {
+                place_ready(place, &available)
+            }
+            FirInstructionKind::Store { place, value } => {
+                available.contains(value) && place_ready(place, &available)
+            }
+            FirInstructionKind::PointerOffset {
+                pointer, offset, ..
+            } => available.contains(pointer) && available.contains(offset),
+            FirInstructionKind::MakeArray { items } => {
+                items.iter().all(|value| available.contains(value))
+            }
+            FirInstructionKind::MakeAggregate { fields, .. } => {
+                fields.iter().all(|(_, value)| available.contains(value))
+            }
+            FirInstructionKind::MakeClosure { captures, .. } => {
+                captures.iter().all(|value| available.contains(value))
+            }
+            FirInstructionKind::CallClosure { closure, args, .. } => {
+                available.contains(closure) && args.iter().all(|value| available.contains(value))
+            }
+            FirInstructionKind::Call { args, .. } => {
+                args.iter().all(|value| available.contains(value))
+            }
+            FirInstructionKind::CallIndirect { callee, args, .. } => {
+                available.contains(callee) && args.iter().all(|value| available.contains(value))
+            }
+            FirInstructionKind::MakeResultErr { error } => available.contains(error),
+        };
         if !ready {
             return false;
         }
