@@ -19,6 +19,7 @@ mod function;
 #[path = "globals_c11b.rs"]
 mod globals;
 mod machine;
+#[allow(clippy::too_many_arguments)]
 #[path = "object_c11c.rs"]
 mod object;
 mod target;
