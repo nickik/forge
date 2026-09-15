@@ -14,7 +14,7 @@ fn resolved_type_definitions_preserve_source_identity_and_order() {
             middle: u16;
         }
         tagged Value {
-            None,
+            Empty,
             Pair { left: u8; right: u32; },
         }
         fn main() -> i32 { return 0; }
@@ -75,7 +75,7 @@ fn resolved_type_definitions_preserve_source_identity_and_order() {
             .iter()
             .map(|variant| (variant.name.as_str(), variant.declaration_index))
             .collect::<Vec<_>>(),
-        vec![("None", 0), ("Pair", 1)]
+        vec![("Empty", 0), ("Pair", 1)]
     );
     assert!(variants[0].fields.is_empty());
     assert_eq!(
