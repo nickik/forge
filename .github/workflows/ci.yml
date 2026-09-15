@@ -14,6 +14,10 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all
+      - name: Regenerate lockfile and show required update
+        run: |
+          cargo generate-lockfile
+          git diff -- Cargo.lock
       - run: cargo check --workspace --locked
       - run: cargo test --workspace --locked
       - run: cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn
