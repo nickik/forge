@@ -6,19 +6,31 @@
 
 #[allow(dead_code)]
 mod abi;
-mod backend;
+#[path = "backend_c11d.rs"]
+mod backend_c11a;
+#[allow(dead_code)]
+#[path = "backend_c11d_legacy.rs"]
+mod backend_legacy;
 mod c9_memory_checks;
 mod diagnostic;
 #[allow(clippy::too_many_arguments, dead_code)]
-#[path = "function_c9d_impl.rs"]
+#[path = "function_c11c_impl.rs"]
 mod function;
+#[path = "globals_c11b.rs"]
+mod globals;
 mod machine;
+#[allow(clippy::too_many_arguments)]
+#[path = "object_c11c.rs"]
 mod object;
 mod target;
 mod types;
 
-pub use backend::{CraneliftBackend, PreparedModule};
+pub use backend_c11a::{CraneliftBackend, PreparedModule};
 pub use diagnostic::BackendError;
+pub use globals::{
+    GlobalInitialization, GlobalObjectPlan, GlobalObjectSymbol, GlobalStorageClass, PreparedGlobal,
+    PreparedGlobals, PreparedStaticData, PreparedStaticRelocation,
+};
 pub use machine::MachineCode;
 pub use object::{NativeObject, ObjectLinkage, ObjectModulePlan, ObjectSymbol};
 pub use target::{CraneliftTarget, TargetLayout};
