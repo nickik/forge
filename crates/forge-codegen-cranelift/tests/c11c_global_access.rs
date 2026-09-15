@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use forge_codegen_cranelift::{CraneliftBackend, CraneliftTarget};
 use forge_fir::{
-    ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal,
-    FirInstruction, FirInstructionKind, FirModule, FirTerminator, FirValueId, IntWidth, Span,
+    ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal, FirInstruction,
+    FirInstructionKind, FirModule, FirTerminator, FirValueId, IntWidth, Span,
     StaticGlobalInitializer, StaticGlobalInitializerTable, StaticValue, Ty, TypeDefinitionTable,
 };
 
@@ -110,11 +110,7 @@ fn aggregate_reader() -> FirFunction {
     }
 }
 
-fn fixture() -> (
-    FirModule,
-    TypeDefinitionTable,
-    StaticGlobalInitializerTable,
-) {
+fn fixture() -> (FirModule, TypeDefinitionTable, StaticGlobalInitializerTable) {
     let module = FirModule {
         functions: BTreeMap::from([
             (SCALAR_READER, scalar_reader()),
@@ -175,7 +171,10 @@ fn c11c_load_global_emits_real_text_relocations_on_both_targets() {
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let first = emit(target);
         let second = emit(target);
-        assert_eq!(first, second, "{target:?} C11c object must be deterministic");
+        assert_eq!(
+            first, second,
+            "{target:?} C11c object must be deterministic"
+        );
         assert_eq!(&first[..4], b"\x7fELF");
 
         if !tool_available("readelf") {
@@ -231,7 +230,10 @@ int main(void) {
         .arg("-o")
         .arg(&executable);
     successful_output(&mut linker, "link AArch64 C11c object");
-    successful_output(&mut Command::new(&executable), "execute AArch64 C11c program");
+    successful_output(
+        &mut Command::new(&executable),
+        "execute AArch64 C11c program",
+    );
     let _ = fs::remove_dir_all(dir);
 }
 
