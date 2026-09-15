@@ -8,11 +8,16 @@ fn handcrafted_rv64_elf_exits_with_requested_status() {
         return;
     }
     for status in [0_u16, 2, 5, 10] {
-        assert_eq!(run_direct_exit(status), status as i32);
+        let (actual, trace) = run_direct_exit(status);
+        assert_eq!(
+            actual,
+            status as i32,
+            "qemu-riscv64 trace for requested status {status}:\n{trace}"
+        );
     }
 }
 
-fn run_direct_exit(status: u16) -> i32 {
+fn run_direct_exit(status: u16) -> (i32, String) {
     let image = direct_exit_elf(status);
     let path = std::env::temp_dir().join(format!(
         "forge-rv64-launcher-{}-{status}.elf",
@@ -22,23 +27,22 @@ fn run_direct_exit(status: u16) -> i32 {
     file.write_all(&image).expect("write RV64 ELF");
     drop(file);
     let output = Command::new("qemu-riscv64")
+        .arg("-strace")
         .arg(&path)
         .output()
         .expect("run qemu-riscv64");
     let _ = fs::remove_file(&path);
-    assert!(
-        output.stderr.is_empty(),
-        "qemu-riscv64 stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    output.status.code().expect("qemu terminated by signal")
+    (
+        output.status.code().expect("qemu terminated by signal"),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
 }
 
 fn direct_exit_elf(status: u16) -> Vec<u8> {
     const ELF_HEADER: usize = 64;
     const PROGRAM_HEADER: usize = 56;
     const CODE_OFFSET: usize = 0x1000;
-    const BASE_ADDRESS: u64 = 0x1_0000;
+    const BASE_ADDRESS: u64 = 0x40_0000;
 
     let wrapper = [
         encode_addi(10, 0, status),
