@@ -57,7 +57,11 @@ fn assert_scalar_mappings(backend: &CraneliftBackend) {
         mutable_reference,
         function_pointer,
     ] {
-        assert_eq!(lowering.value_type(&ty), Ok(types::I64), "mapping for {ty:?}");
+        assert_eq!(
+            lowering.value_type(&ty),
+            Ok(types::I64),
+            "mapping for {ty:?}"
+        );
     }
 }
 
