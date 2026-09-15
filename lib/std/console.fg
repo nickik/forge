@@ -12,5 +12,5 @@ nfn __forge_console_write(text: str) -> void {
 }
 
 pub fn write(text: str) -> void {
-    __forge_console_write(text);
+    __forge_console_write(:text=text);
 }
