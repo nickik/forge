@@ -333,21 +333,18 @@ fn lossless_integer_widening_uses_sign_or_zero_extension() {
 
     assert!(sext.contains("sextend"), "{sext}");
     assert!(uext.contains("uextend"), "{uext}");
-    assert!(unsigned_to_wider_signed.contains("uextend"), "{unsigned_to_wider_signed}");
+    assert!(
+        unsigned_to_wider_signed.contains("uextend"),
+        "{unsigned_to_wider_signed}"
+    );
 }
 
 #[test]
 fn lossy_integer_conversions_are_rejected_until_fir_defines_their_policy() {
     let cases = [
-        (
-            int_ty(false, IntWidth::W64),
-            int_ty(false, IntWidth::W16),
-        ),
+        (int_ty(false, IntWidth::W64), int_ty(false, IntWidth::W16)),
         (int_ty(false, IntWidth::W8), int_ty(true, IntWidth::W8)),
-        (
-            int_ty(true, IntWidth::W8),
-            int_ty(false, IntWidth::W64),
-        ),
+        (int_ty(true, IntWidth::W8), int_ty(false, IntWidth::W64)),
     ];
 
     for (source, target) in cases {
