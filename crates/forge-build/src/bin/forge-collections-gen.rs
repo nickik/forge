@@ -433,7 +433,12 @@ fn snake(suffix: &str) -> String {
 fn emit_list_stub(out: &mut String, ty: TypeSpec) {
     let name = snake(ty.suffix);
     writeln!(out, "// List{}: contiguous growable vector.", ty.suffix).unwrap();
-    writeln!(out, "// element_size={} element_align={}", ty.size, ty.align).unwrap();
+    writeln!(
+        out,
+        "// element_size={} element_align={}",
+        ty.size, ty.align
+    )
+    .unwrap();
     writeln!(out, "pub struct List{} {{", ty.suffix).unwrap();
     writeln!(out, "    block: core.MemoryBlock?;").unwrap();
     writeln!(out, "    len: usize;").unwrap();
@@ -441,25 +446,80 @@ fn emit_list_stub(out: &mut String, ty: TypeSpec) {
     writeln!(out, "}}").unwrap();
     writeln!(out, "nfn list_{name}_create() -> List{} {{ }}", ty.suffix).unwrap();
     writeln!(out, "nfn list_{name}_with_capacity(allocator: &mut core.Allocator, capacity: usize) -> Result[List{}, core.AllocError] {{ }}", ty.suffix).unwrap();
-    writeln!(out, "pub fn list_{name}_len(list: &List{}) -> usize {{ return list.len; }}", ty.suffix).unwrap();
-    writeln!(out, "pub fn list_{name}_capacity(list: &List{}) -> usize {{ return list.capacity; }}", ty.suffix).unwrap();
-    writeln!(out, "pub fn list_{name}_is_empty(list: &List{}) -> bool {{ return list.len == 0; }}", ty.suffix).unwrap();
+    writeln!(
+        out,
+        "pub fn list_{name}_len(list: &List{}) -> usize {{ return list.len; }}",
+        ty.suffix
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "pub fn list_{name}_capacity(list: &List{}) -> usize {{ return list.capacity; }}",
+        ty.suffix
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "pub fn list_{name}_is_empty(list: &List{}) -> bool {{ return list.len == 0; }}",
+        ty.suffix
+    )
+    .unwrap();
     writeln!(out, "nfn list_{name}_try_reserve(list: &mut List{}, allocator: &mut core.Allocator, capacity: usize) -> Result[void, core.AllocError] {{ }}", ty.suffix).unwrap();
     writeln!(out, "nfn list_{name}_push(list: &mut List{}, allocator: &mut core.Allocator, value: {}) -> Result[void, core.AllocError] {{ }}", ty.suffix, ty.forge).unwrap();
     writeln!(out, "nfn list_{name}_insert(list: &mut List{}, allocator: &mut core.Allocator, index: usize, value: {}) -> Result[void, core.AllocError] {{ }}", ty.suffix, ty.forge).unwrap();
-    writeln!(out, "nfn list_{name}_pop(list: &mut List{}) -> {}? {{ }}", ty.suffix, ty.forge).unwrap();
-    writeln!(out, "nfn list_{name}_get(list: &List{}, index: usize) -> {} {{ }}", ty.suffix, ty.forge).unwrap();
-    writeln!(out, "nfn list_{name}_set(list: &mut List{}, index: usize, value: {}) -> void {{ }}", ty.suffix, ty.forge).unwrap();
-    writeln!(out, "nfn list_{name}_remove(list: &mut List{}, index: usize) -> {} {{ }}", ty.suffix, ty.forge).unwrap();
-    writeln!(out, "nfn list_{name}_swap_remove(list: &mut List{}, index: usize) -> {} {{ }}", ty.suffix, ty.forge).unwrap();
-    writeln!(out, "nfn list_{name}_clear(list: &mut List{}) -> void {{ }}", ty.suffix).unwrap();
-    writeln!(out, "nfn list_{name}_truncate(list: &mut List{}, len: usize) -> void {{ }}", ty.suffix).unwrap();
+    writeln!(
+        out,
+        "nfn list_{name}_pop(list: &mut List{}) -> {}? {{ }}",
+        ty.suffix, ty.forge
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "nfn list_{name}_get(list: &List{}, index: usize) -> {} {{ }}",
+        ty.suffix, ty.forge
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "nfn list_{name}_set(list: &mut List{}, index: usize, value: {}) -> void {{ }}",
+        ty.suffix, ty.forge
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "nfn list_{name}_remove(list: &mut List{}, index: usize) -> {} {{ }}",
+        ty.suffix, ty.forge
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "nfn list_{name}_swap_remove(list: &mut List{}, index: usize) -> {} {{ }}",
+        ty.suffix, ty.forge
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "nfn list_{name}_clear(list: &mut List{}) -> void {{ }}",
+        ty.suffix
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "nfn list_{name}_truncate(list: &mut List{}, len: usize) -> void {{ }}",
+        ty.suffix
+    )
+    .unwrap();
     writeln!(out, "nfn list_{name}_destroy(list: &mut List{}, allocator: &mut core.Allocator) -> Result[void, core.AllocError] {{ }}\n", ty.suffix).unwrap();
 }
 
 fn emit_set(out: &mut String, ty: TypeSpec) {
     let name = snake(ty.suffix);
-    writeln!(out, "// HashSet{}: open addressing, linear probing, tombstones.", ty.suffix).unwrap();
+    writeln!(
+        out,
+        "// HashSet{}: open addressing, linear probing, tombstones.",
+        ty.suffix
+    )
+    .unwrap();
     writeln!(out, "pub struct HashSet{} {{", ty.suffix).unwrap();
     writeln!(out, "    states: core.MemoryBlock?;").unwrap();
     writeln!(out, "    keys: core.MemoryBlock?;").unwrap();
@@ -467,12 +527,32 @@ fn emit_set(out: &mut String, ty: TypeSpec) {
     writeln!(out, "    buckets: usize;").unwrap();
     writeln!(out, "    tombstones: usize;").unwrap();
     writeln!(out, "}}").unwrap();
-    writeln!(out, "nfn hash_set_{name}_create() -> HashSet{} {{ }}", ty.suffix).unwrap();
-    writeln!(out, "nfn hash_set_{name}_contains(set: &HashSet{}, value: {}) -> bool {{ }}", ty.suffix, ty.forge).unwrap();
+    writeln!(
+        out,
+        "nfn hash_set_{name}_create() -> HashSet{} {{ }}",
+        ty.suffix
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "nfn hash_set_{name}_contains(set: &HashSet{}, value: {}) -> bool {{ }}",
+        ty.suffix, ty.forge
+    )
+    .unwrap();
     writeln!(out, "nfn hash_set_{name}_insert(set: &mut HashSet{}, allocator: &mut core.Allocator, value: {}) -> Result[bool, core.AllocError] {{ }}", ty.suffix, ty.forge).unwrap();
-    writeln!(out, "nfn hash_set_{name}_remove(set: &mut HashSet{}, value: {}) -> bool {{ }}", ty.suffix, ty.forge).unwrap();
+    writeln!(
+        out,
+        "nfn hash_set_{name}_remove(set: &mut HashSet{}, value: {}) -> bool {{ }}",
+        ty.suffix, ty.forge
+    )
+    .unwrap();
     writeln!(out, "nfn hash_set_{name}_try_reserve(set: &mut HashSet{}, allocator: &mut core.Allocator, capacity: usize) -> Result[void, core.AllocError] {{ }}", ty.suffix).unwrap();
-    writeln!(out, "nfn hash_set_{name}_clear(set: &mut HashSet{}) -> void {{ }}", ty.suffix).unwrap();
+    writeln!(
+        out,
+        "nfn hash_set_{name}_clear(set: &mut HashSet{}) -> void {{ }}",
+        ty.suffix
+    )
+    .unwrap();
     writeln!(out, "nfn hash_set_{name}_destroy(set: &mut HashSet{}, allocator: &mut core.Allocator) -> Result[void, core.AllocError] {{ }}\n", ty.suffix).unwrap();
 }
 
@@ -480,7 +560,11 @@ fn emit_map(out: &mut String, spec: MapSpec) {
     let key_name = snake(spec.key.suffix);
     let value_name = snake(spec.value.suffix);
     let suffix = format!("{}{}", spec.key.suffix, spec.value.suffix);
-    writeln!(out, "// HashMap{suffix}: shared open-addressing table algorithm.").unwrap();
+    writeln!(
+        out,
+        "// HashMap{suffix}: shared open-addressing table algorithm."
+    )
+    .unwrap();
     writeln!(out, "pub struct HashMap{suffix} {{").unwrap();
     writeln!(out, "    states: core.MemoryBlock?;").unwrap();
     writeln!(out, "    keys: core.MemoryBlock?;").unwrap();
@@ -489,13 +573,26 @@ fn emit_map(out: &mut String, spec: MapSpec) {
     writeln!(out, "    buckets: usize;").unwrap();
     writeln!(out, "    tombstones: usize;").unwrap();
     writeln!(out, "}}").unwrap();
-    writeln!(out, "nfn hash_map_{key_name}_{value_name}_create() -> HashMap{suffix} {{ }}").unwrap();
+    writeln!(
+        out,
+        "nfn hash_map_{key_name}_{value_name}_create() -> HashMap{suffix} {{ }}"
+    )
+    .unwrap();
     writeln!(out, "nfn hash_map_{key_name}_{value_name}_contains(map: &HashMap{suffix}, key: {}) -> bool {{ }}", spec.key.forge).unwrap();
-    writeln!(out, "nfn hash_map_{key_name}_{value_name}_get(map: &HashMap{suffix}, key: {}) -> {}? {{ }}", spec.key.forge, spec.value.forge).unwrap();
+    writeln!(
+        out,
+        "nfn hash_map_{key_name}_{value_name}_get(map: &HashMap{suffix}, key: {}) -> {}? {{ }}",
+        spec.key.forge, spec.value.forge
+    )
+    .unwrap();
     writeln!(out, "nfn hash_map_{key_name}_{value_name}_put(map: &mut HashMap{suffix}, allocator: &mut core.Allocator, key: {}, value: {}) -> Result[bool, core.AllocError] {{ }}", spec.key.forge, spec.value.forge).unwrap();
     writeln!(out, "nfn hash_map_{key_name}_{value_name}_remove(map: &mut HashMap{suffix}, key: {}) -> bool {{ }}", spec.key.forge).unwrap();
     writeln!(out, "nfn hash_map_{key_name}_{value_name}_try_reserve(map: &mut HashMap{suffix}, allocator: &mut core.Allocator, capacity: usize) -> Result[void, core.AllocError] {{ }}").unwrap();
-    writeln!(out, "nfn hash_map_{key_name}_{value_name}_clear(map: &mut HashMap{suffix}) -> void {{ }}").unwrap();
+    writeln!(
+        out,
+        "nfn hash_map_{key_name}_{value_name}_clear(map: &mut HashMap{suffix}) -> void {{ }}"
+    )
+    .unwrap();
     writeln!(out, "nfn hash_map_{key_name}_{value_name}_destroy(map: &mut HashMap{suffix}, allocator: &mut core.Allocator) -> Result[void, core.AllocError] {{ }}\n").unwrap();
 }
 
