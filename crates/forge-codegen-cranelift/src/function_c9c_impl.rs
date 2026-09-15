@@ -21,6 +21,8 @@ type MemFlags = MemFlagsData;
 
 #[allow(dead_code)]
 mod legacy {
+    use super::MemFlags;
+
     include!("function.rs");
 
     #[allow(clippy::too_many_arguments)]
@@ -1421,7 +1423,7 @@ fn read_variant_test(
     match &layout.kind {
         LayoutKind::Enum { tag: Some(tag) } => {
             let raw = load_integer(tag.size as u16 * 8, base, tag.offset, flags, cursor)?;
-            Ok(cursor.ins().icmp_imm(IntCC::Equal, raw, variant as i64))
+            Ok(cursor.ins().icmp_imm_u(IntCC::Equal, raw, variant as i64))
         }
         LayoutKind::Enum { tag: None } => Ok(cursor.ins().iconst(clif_types::I8, 1)),
         LayoutKind::Optional { encoding }
@@ -1430,7 +1432,7 @@ fn read_variant_test(
             SumEncoding::Single => Ok(cursor.ins().iconst(clif_types::I8, 1)),
             SumEncoding::Tagged { tag, .. } => {
                 let raw = load_integer(tag.size as u16 * 8, base, tag.offset, flags, cursor)?;
-                Ok(cursor.ins().icmp_imm(IntCC::Equal, raw, variant as i64))
+                Ok(cursor.ins().icmp_imm_u(IntCC::Equal, raw, variant as i64))
             }
             SumEncoding::Niche {
                 payload_variant,
@@ -1442,7 +1444,7 @@ fn read_variant_test(
                 if *payload_variant == variant {
                     let mut result = cursor.ins().iconst(clif_types::I8, 1);
                     for (_, niche) in fieldless_values {
-                        let valid = cursor.ins().icmp_imm(IntCC::NotEqual, raw, *niche as i64);
+                        let valid = cursor.ins().icmp_imm_u(IntCC::NotEqual, raw, *niche as i64);
                         result = cursor.ins().band(result, valid);
                     }
                     Ok(result)
@@ -1452,7 +1454,7 @@ fn read_variant_test(
                         .find(|(index, _)| *index == variant)
                         .map(|(_, value)| *value)
                         .ok_or_else(|| shape("missing niche for tested variant"))?;
-                    Ok(cursor.ins().icmp_imm(IntCC::Equal, raw, niche as i64))
+                    Ok(cursor.ins().icmp_imm_u(IntCC::Equal, raw, niche as i64))
                 }
             }
         },
@@ -1564,7 +1566,7 @@ fn add_offset(
         return Ok(base);
     }
     let offset = i64::try_from(offset).map_err(|_| shape("layout offset exceeds i64"))?;
-    Ok(cursor.ins().iadd_imm(base, offset))
+    Ok(cursor.ins().iadd_imm_u(base, offset))
 }
 
 fn value_type(fir: &FirFunction, id: FirValueId) -> Result<&Ty, BackendError> {
