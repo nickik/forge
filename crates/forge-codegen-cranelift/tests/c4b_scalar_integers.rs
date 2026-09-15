@@ -240,19 +240,11 @@ fn shifts_check_count_and_select_signed_right_shift() {
         CraneliftBackend::aarch64().expect("AArch64"),
     );
     let signed_right = lower(
-        binary(
-            BinaryOp::ShiftRight,
-            signed,
-            Some(OverflowMode::Checked),
-        ),
+        binary(BinaryOp::ShiftRight, signed, Some(OverflowMode::Checked)),
         CraneliftBackend::aarch64().expect("AArch64"),
     );
     let unsigned_right = lower(
-        binary(
-            BinaryOp::ShiftRight,
-            unsigned,
-            Some(OverflowMode::Checked),
-        ),
+        binary(BinaryOp::ShiftRight, unsigned, Some(OverflowMode::Checked)),
         CraneliftBackend::aarch64().expect("AArch64"),
     );
     assert!(left.contains("ishl") && left.contains("trapnz"), "{left}");
