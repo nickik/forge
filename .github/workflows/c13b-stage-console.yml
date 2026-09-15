@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/cranelift-c13-native-existing-code
-          fetch-depth: 2
+          fetch-depth: 3
       - uses: actions/checkout@v4
         with:
           repository: nickik/CForge
@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git show HEAD^:.github/workflows/c13b-stage-console.yml > /tmp/c13b-stage-original.yml
+          git show HEAD^^:.github/workflows/c13b-stage-console.yml > /tmp/c13b-stage-original.yml
           python3 - <<'PY'
           from pathlib import Path
           import textwrap
@@ -38,6 +38,20 @@ jobs:
           end = source.index("\n          PY", start)
           script = textwrap.dedent(source[start:end])
           exec(compile(script, '<c13b-stage>', 'exec'))
+
+          p = Path('crates/forge-codegen-cranelift/tests/c11a_global_model.rs')
+          text = p.read_text()
+          old = '        globals: BTreeMap::from([global(21, Ty::Str, None)]),\n'
+          new = '''        globals: BTreeMap::from([global(\n            21,\n            Ty::Array {\n                element: Box::new(u64_ty()),\n                length: None,\n            },\n            None,\n        )]),\n'''
+          if text.count(old) != 1:
+              raise SystemExit('C11 illegal-layout regression source shape changed')
+          text = text.replace(old, new, 1)
+          text = text.replace(
+              '.expect_err("unsized global must fail layout");',
+              '.expect_err("unknown-length array global must fail layout");',
+              1,
+          )
+          p.write_text(text)
           PY
           cargo fmt --all
           cargo check -p forge-compiler
@@ -72,12 +86,12 @@ jobs:
           actual="$($FORGEC --library "std.console=$GITHUB_WORKSPACE/lib/std/console.fg" --run /tmp/c13-console.fg)"
           test "$actual" = 'hello from Forge'
 
-          game="$($FORGEC \
+          "$FORGEC" \
             --library "std.console=$GITHUB_WORKSPACE/lib/std/console.fg" \
             --library "bootstrap_support=$GITHUB_WORKSPACE/.cforge/packages/bootstrap-support/src/lib.fg" \
-            --run "$GITHUB_WORKSPACE/.cforge/examples/game_of_life.fg")"
-          test "$(printf '%s\n' "$game" | grep -c '^Generation$')" -eq 4
-          printf '%s\n' "$game" | head -n 12
+            --run "$GITHUB_WORKSPACE/.cforge/examples/game_of_life.fg" \
+            > /tmp/game-of-life.out
+          diff -u "$GITHUB_WORKSPACE/examples/game_of_life.expected.txt" /tmp/game-of-life.out
       - name: Commit verified C13b slice
         shell: bash
         run: |
