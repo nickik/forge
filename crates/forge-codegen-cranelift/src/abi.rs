@@ -67,9 +67,7 @@ fn lower_signature(
         if *ty == Ty::Void {
             return Err(shape("void FIR parameter reached ABI lowering"));
         }
-        signature
-            .params
-            .push(AbiParam::new(types.value_type(ty)?));
+        signature.params.push(AbiParam::new(types.value_type(ty)?));
     }
     if *result != Ty::Void {
         signature
