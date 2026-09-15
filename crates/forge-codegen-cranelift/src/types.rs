@@ -15,7 +15,7 @@ pub struct ScalarLayout {
 }
 
 impl ScalarLayout {
-    const fn new(size_bytes: u32, align_bytes: u32) -> Self {
+    pub const fn new(size_bytes: u32, align_bytes: u32) -> Self {
         Self {
             size_bytes,
             align_bytes,
