@@ -2,12 +2,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use cranelift_codegen::cursor::{Cursor, FuncCursor};
 use cranelift_codegen::ir::condcodes::IntCC;
-use cranelift_codegen::ir::{AbiParam, Block, Function, InstBuilder, Signature, UserFuncName, Value};
+use cranelift_codegen::ir::{
+    AbiParam, Block, Function, InstBuilder, Signature, UserFuncName, Value,
+};
 use cranelift_codegen::isa::{CallConv, TargetIsa};
 use cranelift_codegen::verifier::verify_function;
 use forge_fir::{
-    BinaryOp, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction,
-    FirInstructionKind, FirLocalId, FirPlace, FirTerminator, FirValueId, IntWidth, Ty,
+    BinaryOp, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction, FirInstructionKind,
+    FirLocalId, FirPlace, FirTerminator, FirValueId, IntWidth, Ty,
 };
 
 use crate::{BackendError, TypeLowering};
@@ -113,7 +115,10 @@ pub(crate) fn lower_function(
     }
 
     verify_function(&function, isa).map_err(|errors| BackendError::Cranelift {
-        message: format!("CLIF verifier rejected FIR function {:?}: {errors}", fir.owner),
+        message: format!(
+            "CLIF verifier rejected FIR function {:?}: {errors}",
+            fir.owner
+        ),
     })?;
 
     Ok(function)
@@ -198,70 +203,69 @@ fn lower_instruction(
         .get(&result_id)
         .ok_or_else(|| shape(format!("missing type for FIR value {result_id:?}")))?;
 
-    let value = match &instruction.kind {
-        FirInstructionKind::Const { value } => lower_const(value, result_ty, types, cursor)?,
-        FirInstructionKind::Load {
-            place: FirPlace::Local { local },
-        } => {
-            let local_ty = &fir
-                .locals
-                .get(local)
-                .ok_or_else(|| shape(format!("missing FIR local {local:?}")))?
-                .ty;
-            if local_ty != result_ty {
-                return Err(shape(format!(
-                    "load of {local:?} has FIR type {result_ty:?}, local is {local_ty:?}"
-                )));
+    let value =
+        match &instruction.kind {
+            FirInstructionKind::Const { value } => lower_const(value, result_ty, types, cursor)?,
+            FirInstructionKind::Load {
+                place: FirPlace::Local { local },
+            } => {
+                let local_ty = &fir
+                    .locals
+                    .get(local)
+                    .ok_or_else(|| shape(format!("missing FIR local {local:?}")))?
+                    .ty;
+                if local_ty != result_ty {
+                    return Err(shape(format!(
+                        "load of {local:?} has FIR type {result_ty:?}, local is {local_ty:?}"
+                    )));
+                }
+                *parameter_values
+                    .get(local)
+                    .ok_or(BackendError::UnsupportedInstruction {
+                        kind: "load of non-parameter local",
+                    })?
             }
-            *parameter_values
-                .get(local)
-                .ok_or(BackendError::UnsupportedInstruction {
-                    kind: "load of non-parameter local",
-                })?
-        }
-        FirInstructionKind::Binary {
-            op,
-            left,
-            right,
-            overflow: _,
-        } if is_comparison(*op) => {
-            if *result_ty != Ty::Bool {
-                return Err(shape(format!(
-                    "comparison result {result_id:?} has non-bool FIR type {result_ty:?}"
-                )));
+            FirInstructionKind::Binary {
+                op,
+                left,
+                right,
+                overflow: _,
+            } if is_comparison(*op) => {
+                if *result_ty != Ty::Bool {
+                    return Err(shape(format!(
+                        "comparison result {result_id:?} has non-bool FIR type {result_ty:?}"
+                    )));
+                }
+                let left_ty = fir.value_types.get(left).ok_or_else(|| {
+                    shape(format!("missing type for comparison operand {left:?}"))
+                })?;
+                let right_ty = fir.value_types.get(right).ok_or_else(|| {
+                    shape(format!("missing type for comparison operand {right:?}"))
+                })?;
+                if left_ty != right_ty {
+                    return Err(shape(format!(
+                        "comparison operands have different FIR types: {left_ty:?} and {right_ty:?}"
+                    )));
+                }
+                let left_value = lookup_value(values, *left)?;
+                let right_value = lookup_value(values, *right)?;
+                let cc = comparison_condition(*op, left_ty)?;
+                cursor.ins().icmp(cc, left_value, right_value)
             }
-            let left_ty = fir
-                .value_types
-                .get(left)
-                .ok_or_else(|| shape(format!("missing type for comparison operand {left:?}")))?;
-            let right_ty = fir
-                .value_types
-                .get(right)
-                .ok_or_else(|| shape(format!("missing type for comparison operand {right:?}")))?;
-            if left_ty != right_ty {
-                return Err(shape(format!(
-                    "comparison operands have different FIR types: {left_ty:?} and {right_ty:?}"
-                )));
+            FirInstructionKind::Load { .. } => {
+                return Err(BackendError::UnsupportedInstruction { kind: "place load" });
             }
-            let left_value = lookup_value(values, *left)?;
-            let right_value = lookup_value(values, *right)?;
-            let cc = comparison_condition(*op, left_ty)?;
-            cursor.ins().icmp(cc, left_value, right_value)
-        }
-        FirInstructionKind::Load { .. } => {
-            return Err(BackendError::UnsupportedInstruction { kind: "place load" });
-        }
-        FirInstructionKind::Binary { .. } => {
-            return Err(BackendError::UnsupportedInstruction {
-                kind: "non-comparison binary operation",
-            });
-        }
-        _ => {
-            return Err(BackendError::UnsupportedInstruction {
-                kind: instruction_kind_name(&instruction.kind),
-            });
-        }
-    };
+            FirInstructionKind::Binary { .. } => {
+                return Err(BackendError::UnsupportedInstruction {
+                    kind: "non-comparison binary operation",
+                });
+            }
+            _ => {
+                return Err(BackendError::UnsupportedInstruction {
+                    kind: instruction_kind_name(&instruction.kind),
+                });
+            }
+        };
 
     let actual = cursor.func.dfg.value_type(value);
     let expected = types.value_type(result_ty)?;
@@ -271,7 +275,9 @@ fn lower_instruction(
         )));
     }
     if values.insert(result_id, value).is_some() {
-        return Err(shape(format!("duplicate FIR value definition {result_id:?}")));
+        return Err(shape(format!(
+            "duplicate FIR value definition {result_id:?}"
+        )));
     }
     Ok(())
 }
@@ -293,9 +299,7 @@ fn lower_terminator(
             else_block,
         } => {
             if fir.value_types.get(condition) != Some(&Ty::Bool) {
-                return Err(shape(format!(
-                    "branch condition {condition:?} is not bool"
-                )));
+                return Err(shape(format!("branch condition {condition:?} is not bool")));
             }
             cursor.ins().brif(
                 lookup_value(values, *condition)?,

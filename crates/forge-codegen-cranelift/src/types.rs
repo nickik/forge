@@ -41,9 +41,7 @@ impl<'a> TypeLowering<'a> {
                 IntWidth::Pointer => self.pointer_type(),
             },
 
-            Ty::Pointer { .. } | Ty::Reference { .. } | Ty::Function { .. } => {
-                self.pointer_type()
-            }
+            Ty::Pointer { .. } | Ty::Reference { .. } | Ty::Function { .. } => self.pointer_type(),
 
             Ty::Never => unsupported("never"),
             Ty::Void => unsupported("void"),

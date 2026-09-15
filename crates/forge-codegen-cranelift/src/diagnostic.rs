@@ -70,7 +70,10 @@ impl fmt::Display for BackendError {
                 write!(f, "FIR instruction is not lowered to CLIF yet: {kind}")
             }
             Self::UnsupportedControlFlow { feature } => {
-                write!(f, "FIR control-flow shape is not supported by C3: {feature}")
+                write!(
+                    f,
+                    "FIR control-flow shape is not supported by C3: {feature}"
+                )
             }
             Self::Cranelift { message } => write!(f, "Cranelift error: {message}"),
         }

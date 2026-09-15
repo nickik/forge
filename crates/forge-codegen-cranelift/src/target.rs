@@ -28,18 +28,21 @@ impl CraneliftTarget {
     }
 
     pub(crate) fn isa(self) -> Result<OwnedTargetIsa, BackendError> {
-        let triple = Triple::from_str(self.triple()).map_err(|error| BackendError::InvalidTarget {
-            triple: self.triple(),
-            message: error.to_string(),
-        })?;
+        let triple =
+            Triple::from_str(self.triple()).map_err(|error| BackendError::InvalidTarget {
+                triple: self.triple(),
+                message: error.to_string(),
+            })?;
         let flags = settings::Flags::new(settings::builder());
         let builder = isa::lookup(triple).map_err(|error| BackendError::InvalidTarget {
             triple: self.triple(),
             message: error.to_string(),
         })?;
-        builder.finish(flags).map_err(|error| BackendError::Cranelift {
-            message: error.to_string(),
-        })
+        builder
+            .finish(flags)
+            .map_err(|error| BackendError::Cranelift {
+                message: error.to_string(),
+            })
     }
 }
 
