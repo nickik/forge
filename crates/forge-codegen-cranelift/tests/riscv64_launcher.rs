@@ -40,7 +40,11 @@ fn direct_exit_elf(status: u16) -> Vec<u8> {
     const CODE_OFFSET: usize = 0x1000;
     const BASE_ADDRESS: u64 = 0x1_0000;
 
-    let wrapper = [encode_addi(10, 0, status), encode_addi(17, 0, 93), 0x0000_0073];
+    let wrapper = [
+        encode_addi(10, 0, status),
+        encode_addi(17, 0, 93),
+        0x0000_0073,
+    ];
     let mut code = Vec::new();
     for instruction in wrapper {
         code.extend_from_slice(&instruction.to_le_bytes());
