@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use forge_codegen_cranelift::CraneliftBackend;
+use forge_codegen_cranelift::{BackendError, CraneliftBackend};
 use forge_fir::{
     BinaryOp, DefId, FirBasicBlock, FirBlockId, FirFunction, FirInstruction, FirInstructionKind,
     FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator, FirUnaryOp, FirValueId, IntWidth,
@@ -11,12 +11,19 @@ fn int_ty(signed: bool, width: IntWidth) -> Ty {
     Ty::Int { signed, width }
 }
 
-fn lower(function: FirFunction, backend: CraneliftBackend) -> String {
+fn prepare(
+    function: FirFunction,
+    backend: CraneliftBackend,
+) -> Result<forge_codegen_cranelift::PreparedModule, BackendError> {
     let owner = function.owner;
     let mut module = FirModule::default();
     module.functions.insert(owner, function);
-    backend
-        .prepare_module(&module)
+    backend.prepare_module(&module)
+}
+
+fn lower(function: FirFunction, backend: CraneliftBackend) -> String {
+    let owner = function.owner;
+    prepare(function, backend)
         .expect("C4b FIR should lower")
         .function(owner)
         .expect("lowered function")
@@ -281,22 +288,31 @@ fn checked_add_sub_mul_emit_overflow_traps_for_signed_and_unsigned() {
 }
 
 #[test]
-fn unary_negation_and_bitnot_lower() {
+fn bitnot_lowers_but_negation_waits_for_explicit_fir_overflow_semantics() {
     let ty = int_ty(true, IntWidth::W64);
-    let neg = lower(
-        unary(FirUnaryOp::Neg, ty.clone()),
-        CraneliftBackend::aarch64().expect("AArch64"),
-    );
     let not = lower(
-        unary(FirUnaryOp::BitNot, ty),
+        unary(FirUnaryOp::BitNot, ty.clone()),
         CraneliftBackend::aarch64().expect("AArch64"),
     );
-    assert!(neg.contains("ineg"), "{neg}");
     assert!(not.contains("bnot"), "{not}");
+
+    let error = match prepare(
+        unary(FirUnaryOp::Neg, ty),
+        CraneliftBackend::aarch64().expect("AArch64"),
+    ) {
+        Ok(_) => panic!("negation unexpectedly lowered without FIR overflow semantics"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error,
+        BackendError::UnsupportedInstruction {
+            kind: "integer negation requires explicit FIR overflow semantics"
+        }
+    );
 }
 
 #[test]
-fn integer_conversions_use_reduce_sign_extend_and_zero_extend() {
+fn lossless_integer_widening_uses_sign_or_zero_extension() {
     let signed8 = int_ty(true, IntWidth::W8);
     let unsigned8 = int_ty(false, IntWidth::W8);
     let signed64 = int_ty(true, IntWidth::W64);
@@ -307,17 +323,48 @@ fn integer_conversions_use_reduce_sign_extend_and_zero_extend() {
         CraneliftBackend::aarch64().expect("AArch64"),
     );
     let uext = lower(
-        conversion(unsigned8, unsigned64.clone()),
+        conversion(unsigned8.clone(), unsigned64),
         CraneliftBackend::aarch64().expect("AArch64"),
     );
-    let reduce = lower(
-        conversion(unsigned64, int_ty(false, IntWidth::W16)),
+    let unsigned_to_wider_signed = lower(
+        conversion(unsigned8, signed64),
         CraneliftBackend::aarch64().expect("AArch64"),
     );
 
     assert!(sext.contains("sextend"), "{sext}");
     assert!(uext.contains("uextend"), "{uext}");
-    assert!(reduce.contains("ireduce"), "{reduce}");
+    assert!(unsigned_to_wider_signed.contains("uextend"), "{unsigned_to_wider_signed}");
+}
+
+#[test]
+fn lossy_integer_conversions_are_rejected_until_fir_defines_their_policy() {
+    let cases = [
+        (
+            int_ty(false, IntWidth::W64),
+            int_ty(false, IntWidth::W16),
+        ),
+        (int_ty(false, IntWidth::W8), int_ty(true, IntWidth::W8)),
+        (
+            int_ty(true, IntWidth::W8),
+            int_ty(false, IntWidth::W64),
+        ),
+    ];
+
+    for (source, target) in cases {
+        let error = match prepare(
+            conversion(source, target),
+            CraneliftBackend::riscv64().expect("RV64"),
+        ) {
+            Ok(_) => panic!("lossy conversion unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::UnsupportedInstruction {
+                kind: "lossy integer conversion requires explicit FIR conversion semantics"
+            }
+        );
+    }
 }
 
 fn rebuild(backend: &CraneliftBackend) -> CraneliftBackend {
