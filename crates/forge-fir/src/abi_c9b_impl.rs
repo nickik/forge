@@ -242,7 +242,10 @@ impl<'a> AbiDecomposer<'a> {
                 },
             )),
             Ty::Duration => out.push(integer(base, 64)),
-            Ty::Pointer { .. } | Ty::Reference { .. } | Ty::Function { .. } => {
+            Ty::Pointer { .. }
+            | Ty::Reference { .. }
+            | Ty::Function { .. }
+            | Ty::Closure { .. } => {
                 out.push(pointer(base, self.target.pointer_bits));
             }
             Ty::Nominal(owner) => self.collect_nominal(*owner, base, layout, out)?,
@@ -337,7 +340,6 @@ impl<'a> AbiDecomposer<'a> {
                 ));
             }
             Ty::ContextSlot { .. } => return Err(AbiError::UnsupportedType("context slot")),
-            Ty::Closure { .. } => return Err(AbiError::UnsupportedType("closure ABI")),
             Ty::Error | Ty::Unknown | Ty::IntLiteral | Ty::FloatLiteral | Ty::NoneLiteral => {
                 return Err(AbiError::UnsupportedType("non-concrete semantic type"));
             }

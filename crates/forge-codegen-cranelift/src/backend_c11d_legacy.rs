@@ -23,6 +23,16 @@ impl CraneliftBackend {
             });
         }
 
+        if module
+            .globals
+            .values()
+            .any(|global| matches!(global.ty, Ty::Closure { .. }))
+        {
+            return Err(BackendError::UnsupportedFir {
+                component: "global captured closure storage requires heap/lifetime support",
+            });
+        }
+
         let mut used = BTreeSet::new();
         used.extend(module.functions.keys().copied());
         used.extend(module.globals.keys().copied());
@@ -66,6 +76,11 @@ impl CraneliftBackend {
         };
 
         crate::completion::lift_capture_free_function_values(
+            &mut all_functions,
+            &mut used,
+            &mut next_internal,
+        )?;
+        crate::completion::lift_captured_closure_values(
             &mut all_functions,
             &mut used,
             &mut next_internal,

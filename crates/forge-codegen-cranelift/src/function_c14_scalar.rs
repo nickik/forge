@@ -14,7 +14,16 @@ pub(crate) fn lower_function_c14_scalar(
     types: &TypeLowering<'_>,
     isa: &dyn TargetIsa,
 ) -> Result<Function, BackendError> {
-    if !fir.closures.is_empty() {
+    let has_closure_value = fir
+        .locals
+        .values()
+        .any(|local| matches!(&local.ty, Ty::Closure { .. }));
+    let has_closure_call = fir
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .any(|instruction| matches!(&instruction.kind, FirInstructionKind::CallClosure { .. }));
+    if !fir.closures.is_empty() || has_closure_value || has_closure_call {
         return lower_function_c14(fir, all_functions, all_globals, definitions, types, isa);
     }
 

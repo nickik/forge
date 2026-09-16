@@ -35,6 +35,23 @@ for source in \
   fi
 done
 
+echo "native-spec expected capability rejection: escaping captured closure"
+escape_error="$(mktemp)"
+if "$FORGEC" "${common[@]}" --run \
+  "$ROOT/examples/c14-native-spec/reject_escaping_closure.fg" \
+  >/dev/null 2>"$escape_error"; then
+  echo "escaping captured closure unexpectedly compiled" >&2
+  rm -f "$escape_error"
+  exit 1
+fi
+if ! grep -q 'code: "closure/escape"' "$escape_error" ||    ! grep -q "closure values are non-escaping" "$escape_error"; then
+  echo "escaping captured closure failed for the wrong reason:" >&2
+  cat "$escape_error" >&2
+  rm -f "$escape_error"
+  exit 1
+fi
+rm -f "$escape_error"
+
 echo "native-spec expected capability rejection: required tail call"
 tail_error="$(mktemp)"
 if "$FORGEC" "${common[@]}" --run \

@@ -1,0 +1,12 @@
+module examples.c14_native_spec.reject_escaping_closure;
+
+fn make_adder(base: i32) -> closure(i32) -> i32 {
+    val add = [base](value: i32) -> i32 {
+        return base + value;
+    };
+    return add;
+}
+
+fn main() -> i32 {
+    return 0;
+}

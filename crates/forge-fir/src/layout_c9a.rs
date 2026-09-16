@@ -259,9 +259,10 @@ impl<'a> LayoutEngine<'a> {
             // Forge duration is a fixed-width scalar representation. Unit
             // semantics have already been resolved before FIR/layout.
             Ty::Duration => Ok(Layout::scalar(8, 8, None)),
-            Ty::Pointer { .. } | Ty::Reference { .. } | Ty::Function { .. } => {
-                self.layout_pointer()
-            }
+            Ty::Pointer { .. }
+            | Ty::Reference { .. }
+            | Ty::Function { .. }
+            | Ty::Closure { .. } => self.layout_pointer(),
             Ty::Void | Ty::Never => Ok(Layout::zero_sized()),
             Ty::Nominal(owner) => self.layout_nominal(*owner),
             Ty::Optional { inner } => self.layout_optional(inner),
@@ -274,7 +275,6 @@ impl<'a> LayoutEngine<'a> {
 
             Ty::Str => self.layout_str(),
             Ty::ContextSlot { .. } => Err(LayoutError::UnsupportedType("context slot")),
-            Ty::Closure { .. } => Err(LayoutError::UnsupportedType("closure")),
 
             Ty::Error => Err(LayoutError::SemanticTypeLeak("error")),
             Ty::Unknown => Err(LayoutError::SemanticTypeLeak("unknown")),

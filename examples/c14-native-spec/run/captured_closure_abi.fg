@@ -1,0 +1,43 @@
+module examples.c14_native_spec.captured_closure_abi;
+
+fn apply(f: closure(i32) -> i32, value: i32) -> i32 {
+    return f(value);
+}
+
+fn relay(f: closure(i32) -> i32, value: i32) -> i32 {
+    return apply(f, value);
+}
+
+fn main() -> i32 {
+    val factor: i32 = 3i32;
+    val bias: i32 = 1i32;
+    val affine = [factor, bias](value: i32) -> i32 {
+        return value * factor + bias;
+    };
+    if (relay(affine, 13i32) != 40i32) {
+        return 1;
+    }
+
+    var count: i32 = 10i32;
+    val bump = [&mut count](delta: i32) -> i32 {
+        count = count + delta;
+        return count;
+    };
+    if (apply(bump, 5i32) != 15i32 || count != 15i32) {
+        return 2;
+    }
+
+    val base_a: i32 = 40i32;
+    val base_b: i32 = 100i32;
+    val add_a = [base_a](value: i32) -> i32 {
+        return base_a + value;
+    };
+    val add_b = [base_b](value: i32) -> i32 {
+        return base_b + value;
+    };
+    if (apply(add_a, 2i32) != 42i32 || apply(add_b, 2i32) != 102i32) {
+        return 3;
+    }
+
+    return 0;
+}
