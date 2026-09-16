@@ -35,6 +35,9 @@ pub enum BackendError {
     UnsupportedControlFlow {
         feature: &'static str,
     },
+    UnfinishedTargetLowering {
+        target: &'static str,
+    },
     Cranelift {
         message: String,
     },
@@ -75,6 +78,10 @@ impl fmt::Display for BackendError {
                     "FIR control-flow shape is not supported by C3: {feature}"
                 )
             }
+            Self::UnfinishedTargetLowering { target } => write!(
+                f,
+                "{target} target is configured, but general FIR/CLIF lowering is not implemented yet"
+            ),
             Self::Cranelift { message } => write!(f, "Cranelift error: {message}"),
         }
     }
