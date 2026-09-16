@@ -48,6 +48,10 @@ pub struct BuildGraph {
 pub struct Driver {
     pub program: String,
     pub prefix_args: Vec<String>,
+    /// Additional compiler libraries/options exposed only to `:std true`
+    /// targets. This makes the manifest's std policy a real visibility rule
+    /// instead of passive metadata.
+    pub hosted_args: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -444,11 +448,39 @@ fn selected_targets<'a>(package: &'a Package, name: Option<&str>) -> Result<Vec<
     Ok(package.targets.values().collect())
 }
 
-fn invoke(driver: &Driver, mode: &str, target: &Target) -> Result<Output> {
+fn runnable(target: &Target) -> bool {
+    matches!(target.kind.as_str(), "executable" | "test")
+}
+
+pub fn artifact_path(package: &Package, target: &Target) -> PathBuf {
+    let mut name = target.name.clone();
+    if target.kind == "kernel" {
+        name.push_str(".o");
+    }
+    package.root_dir.join("build").join(name)
+}
+
+fn invoke(
+    driver: &Driver,
+    mode: &str,
+    target: &Target,
+    output_path: Option<&Path>,
+) -> Result<Output> {
     let mut command = Command::new(&driver.program);
     command.args(&driver.prefix_args);
+    if target.std {
+        command.args(&driver.hosted_args);
+    }
+    if mode != "--check" {
+        if let Some(entry) = &target.entry {
+            command.arg("--entry").arg(entry);
+        }
+    }
     command.arg(mode);
     command.arg(&target.root);
+    if let Some(output_path) = output_path {
+        command.arg("-o").arg(output_path);
+    }
     command.output().map_err(|e| {
         BuildError(format!(
             "failed to execute driver {} for target {}: {e}",
@@ -484,21 +516,59 @@ pub fn execute(
 
     for target in targets {
         match action {
-            Action::Build | Action::Check => {
-                let output = invoke(driver, "--check", target)?;
+            Action::Check => {
+                let output = invoke(driver, "--check", target, None)?;
                 require_success(&output, target)?;
             }
-            Action::Run => {
+            Action::Build => {
                 if target.kind == "library" {
+                    // The current build-system contract consumes local
+                    // dependency libraries from source. Until compiled module
+                    // interfaces replace that contract, building a library is
+                    // the same full semantic/native lowering gate as check.
+                    let output = invoke(driver, "--check", target, None)?;
+                    require_success(&output, target)?;
                     continue;
                 }
-                let output = invoke(driver, "--run", target)?;
+
+                let artifact = artifact_path(package, target);
+                let parent = artifact.parent().ok_or_else(|| {
+                    BuildError(format!(
+                        "artifact path has no parent: {}",
+                        artifact.display()
+                    ))
+                })?;
+                fs::create_dir_all(parent)
+                    .map_err(|e| BuildError(format!("cannot create {}: {e}", parent.display())))?;
+                let mode = if target.kind == "kernel" {
+                    "--emit-object"
+                } else {
+                    "--build"
+                };
+                let output = invoke(driver, mode, target, Some(&artifact))?;
+                require_success(&output, target)?;
+                if !artifact.is_file() {
+                    return Err(BuildError(format!(
+                        "target {} succeeded but did not create artifact {}",
+                        target.name,
+                        artifact.display()
+                    )));
+                }
+            }
+            Action::Run => {
+                if !runnable(target) {
+                    continue;
+                }
+                let output = invoke(driver, "--run", target, None)?;
                 require_success(&output, target)?;
                 print!("{}", String::from_utf8_lossy(&output.stdout));
                 eprint!("{}", String::from_utf8_lossy(&output.stderr));
             }
             Action::Test => {
-                let output = invoke(driver, "--run", target)?;
+                if !runnable(target) {
+                    continue;
+                }
+                let output = invoke(driver, "--run", target, None)?;
                 require_success(&output, target)?;
                 if let Some(expected_path) = &target.expected_output {
                     let expected = fs::read(expected_path).map_err(|e| {
@@ -581,5 +651,39 @@ mod tests {
         let package = load_package(&root.join("forge.fdn")).unwrap();
         assert!(!package.targets["kernel"].std);
         assert_eq!(package.targets["kernel"].entry.as_deref(), Some("start"));
+    }
+
+    #[test]
+    fn build_artifacts_are_package_local_and_kind_aware() {
+        let root = temp_dir("artifact");
+        let package = Package {
+            manifest_path: root.join("forge.fdn"),
+            root_dir: root.clone(),
+            name: "demo".into(),
+            version: "0.1.0".into(),
+            dependencies: BTreeMap::new(),
+            targets: BTreeMap::new(),
+        };
+        let executable = Target {
+            name: "app".into(),
+            kind: "executable".into(),
+            root: root.join("app.fg"),
+            std: true,
+            entry: None,
+            expected_output: None,
+        };
+        let kernel = Target {
+            name: "kernel".into(),
+            kind: "kernel".into(),
+            root: root.join("kernel.fg"),
+            std: false,
+            entry: Some("start".into()),
+            expected_output: None,
+        };
+        assert_eq!(artifact_path(&package, &executable), root.join("build/app"));
+        assert_eq!(
+            artifact_path(&package, &kernel),
+            root.join("build/kernel.o")
+        );
     }
 }

@@ -34,6 +34,19 @@ jobs:
       - name: Build-system tests
         timeout-minutes: 5
         run: cargo test -p forge-build --locked -- --nocapture
+      - name: C14 native build-system integration
+        timeout-minutes: 5
+        run: |
+          cargo build -p forge-build -p forge-compiler --bins --locked
+          export PATH="$PWD/target/debug:$PATH"
+          forge check --manifest-path examples/c14-build-system/forge.fdn
+          forge build --manifest-path examples/c14-build-system/forge.fdn --target app
+          test -x examples/c14-build-system/build/app
+          test "$(forge run --manifest-path examples/c14-build-system/forge.fdn --target app -- alpha beta)" = "run-ok"
+          forge test --manifest-path examples/c14-build-system/forge.fdn --target smoke
+          forge build --manifest-path examples/c14-build-system/forge.fdn --target kernel
+          test -s examples/c14-build-system/build/kernel.o
+          forge check --manifest-path examples/c14-build-system/forge.fdn --target lib
       - name: Generated native collections snapshot
         timeout-minutes: 3
         run: |

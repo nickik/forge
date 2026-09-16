@@ -1,0 +1,5 @@
+module c14_build_system.kernel;
+
+fn start() -> i32 {
+    return 0;
+}

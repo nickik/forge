@@ -1,0 +1,18 @@
+module c14_build_system.app;
+
+import std.args;
+import std.console;
+
+fn main() -> i32 {
+    if (args.count() != 2) {
+        return 10;
+    }
+    if (args.get(0) != "alpha") {
+        return 11;
+    }
+    if (args.get(1) != "beta") {
+        return 12;
+    }
+    console.write("run-ok\n");
+    return 0;
+}

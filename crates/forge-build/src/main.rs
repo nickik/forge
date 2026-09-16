@@ -3,7 +3,8 @@ use std::path::PathBuf;
 
 fn usage() -> ! {
     eprintln!(
-        "usage: forge <build|check|run|test|graph> [--manifest-path PATH] [--target NAME] \\\n         [--driver PROGRAM] [--driver-arg ARG]..."
+        "usage: forge <build|check|run|test|graph> [--manifest-path PATH] [--target NAME] \\
+         [--driver PROGRAM] [--driver-arg ARG]..."
     );
     std::process::exit(64);
 }
@@ -61,6 +62,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     let driver = Driver {
         program: driver_program,
         prefix_args: driver_args,
+        hosted_args: Vec::new(),
     };
     execute(&graph, &driver, action.unwrap(), target.as_deref())?;
     Ok(())

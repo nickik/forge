@@ -1,0 +1,5 @@
+module c14_build_system.lib;
+
+pub fn answer() -> i32 {
+    return 42;
+}

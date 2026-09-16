@@ -1,0 +1,27 @@
+#forge/package {
+  :name "c14-build-system"
+  :version "0.1.0"
+
+  :targets {
+    :app {
+      :kind :executable
+      :root "src/main.fg"
+    }
+    :smoke {
+      :kind :test
+      :root "src/test.fg"
+      :test {:expected "expected.txt"}
+    }
+    :kernel {
+      :kind :kernel
+      :root "src/kernel.fg"
+      :entry "start"
+    }
+    :lib {
+      :kind :library
+      :root "src/lib.fg"
+    }
+  }
+
+  :dependencies {}
+}

@@ -1,0 +1,8 @@
+module c14_build_system.test;
+
+import std.console;
+
+fn main() -> i32 {
+    console.write("test-ok\n");
+    return 0;
+}
