@@ -32,6 +32,12 @@ impl CraneliftBackend {
         Self::new(CraneliftTarget::Riscv64)
     }
 
+    /// Configure the real SIA32 target. Construction and target metadata are
+    /// supported before M5; module lowering remains an explicit error.
+    pub fn sia32() -> Result<Self, BackendError> {
+        Self::new(CraneliftTarget::Sia32)
+    }
+
     pub const fn target(&self) -> CraneliftTarget {
         self.legacy.target()
     }
@@ -56,7 +62,15 @@ impl CraneliftBackend {
         self.legacy.new_signature()
     }
 
+    fn require_module_lowering(&self) -> Result<(), BackendError> {
+        if self.target() == CraneliftTarget::Sia32 {
+            return Err(BackendError::UnfinishedTargetLowering { target: "SIA32" });
+        }
+        Ok(())
+    }
+
     pub fn prepare_module(&self, module: &FirModule) -> Result<PreparedModule, BackendError> {
+        self.require_module_lowering()?;
         let definitions = TypeDefinitionTable::new();
         self.prepare_module_with_types(module, &definitions)
     }
@@ -66,6 +80,7 @@ impl CraneliftBackend {
         module: &FirModule,
         definitions: &TypeDefinitionTable,
     ) -> Result<PreparedModule, BackendError> {
+        self.require_module_lowering()?;
         self.prepare_module_with_static_initializers(
             module,
             definitions,
@@ -79,6 +94,7 @@ impl CraneliftBackend {
         definitions: &TypeDefinitionTable,
         static_initializers: &StaticGlobalInitializerTable,
     ) -> Result<PreparedModule, BackendError> {
+        self.require_module_lowering()?;
         let globals = self.prepare_globals_with_static_initializers(
             module,
             definitions,
@@ -104,14 +120,7 @@ pub struct PreparedModule {
 }
 
 impl PreparedModule {
-    pub const fn target(&self) -> CraneliftTarget {
-        self.functions.target()
-    }
-
-    /// All emitted code functions. In C11d this includes ordinary Forge
-    /// functions, internal runtime-global initializer functions, and the one
-    /// synthetic module initializer when runtime initialization is required.
-    pub fn functions(&self) -> &BTreeMap<DefId, Function> {
+    pub fn functions(&self) -> impl Iterator<Item = (&DefId, &Function)> {
         self.functions.functions()
     }
 
@@ -119,11 +128,7 @@ impl PreparedModule {
         self.functions.function(owner)
     }
 
-    pub fn prepared_globals(&self) -> &PreparedGlobals {
-        &self.globals
-    }
-
-    pub fn globals(&self) -> &BTreeMap<DefId, PreparedGlobal> {
+    pub fn globals(&self) -> impl Iterator<Item = (&DefId, &PreparedGlobal)> {
         self.globals.globals()
     }
 
@@ -131,25 +136,10 @@ impl PreparedModule {
         self.globals.global(owner)
     }
 
-    pub fn global_init_order(&self) -> &[DefId] {
-        self.globals.init_order()
-    }
-
-    /// Maps each runtime-initialized global to the deterministic internal
-    /// function that computes its value.
-    pub fn runtime_initializer_functions(&self) -> &BTreeMap<DefId, DefId> {
-        &self.runtime_initializer_functions
-    }
-
     pub fn runtime_initializer_function(&self, global: DefId) -> Option<DefId> {
         self.runtime_initializer_functions.get(&global).copied()
     }
 
-    /// Synthetic function owner for the single module initialization entry
-    /// point. It is `None` when the module has no runtime-initialized globals.
-    /// As with other Forge functions, object linkage remains explicit: include
-    /// this owner in `plan_object_module_with_exports`/`emit_object_with_exports`
-    /// when an external startup routine must call it.
     pub const fn module_initializer_owner(&self) -> Option<DefId> {
         self.module_initializer_owner
     }
