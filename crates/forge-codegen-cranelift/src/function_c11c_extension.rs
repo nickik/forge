@@ -148,6 +148,21 @@ fn lower_c11c_instruction(
         );
     }
 
+    if lower_c14_projection_instruction(
+        fir,
+        definitions,
+        instruction,
+        local_slots,
+        flags,
+        scalars,
+        aggregates,
+        types,
+        layouts,
+        cursor,
+    )? {
+        return Ok(());
+    }
+
     lower_c9d_instruction(
         fir,
         all_functions,
@@ -163,6 +178,247 @@ fn lower_c11c_instruction(
         layouts,
         cursor,
     )
+}
+
+/// C14 completes the frontend's existing auto-dereference rule for field and
+/// index projections. C9c could project only a directly stored nominal/array
+/// place, even though typed HIR also permits `reference.field` and
+/// `reference[index]`. Lower these projections here before the legacy C9d
+/// instruction path sees them.
+#[allow(clippy::too_many_arguments)]
+fn lower_c14_projection_instruction(
+    fir: &FirFunction,
+    definitions: &TypeDefinitionTable,
+    instruction: &FirInstruction,
+    local_slots: &BTreeMap<FirLocalId, StackSlot>,
+    flags: MemoryFlags,
+    scalars: &mut BTreeMap<FirValueId, Value>,
+    aggregates: &mut BTreeMap<FirValueId, AggregateValue>,
+    types: &TypeLowering<'_>,
+    layouts: &mut LayoutEngine<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<bool, BackendError> {
+    match &instruction.kind {
+        FirInstructionKind::Load { place } if place_needs_c9(place) => {
+            let id = instruction
+                .result
+                .ok_or_else(|| shape("projected load has no result"))?;
+            let ty = value_type(fir, id)?;
+            let (address, stored_ty, src_flags) = lower_c14_place_address(
+                fir,
+                definitions,
+                place,
+                local_slots,
+                flags,
+                scalars,
+                types,
+                layouts,
+                cursor,
+            )?;
+            if ty != &stored_ty {
+                return Err(shape("projected load result and place types differ"));
+            }
+            materialize_result(
+                id,
+                ty,
+                address,
+                src_flags,
+                flags.stack,
+                scalars,
+                aggregates,
+                layouts,
+                types,
+                cursor,
+            )?;
+            Ok(true)
+        }
+        FirInstructionKind::Store { place, value } if place_needs_c9(place) => {
+            if instruction.result.is_some() {
+                return Err(shape("projected store unexpectedly has a result"));
+            }
+            let ty = value_type(fir, *value)?;
+            let (address, stored_ty, dst_flags) = lower_c14_place_address(
+                fir,
+                definitions,
+                place,
+                local_slots,
+                flags,
+                scalars,
+                types,
+                layouts,
+                cursor,
+            )?;
+            if ty != &stored_ty {
+                return Err(shape("projected store value and place types differ"));
+            }
+            store_typed_value(
+                *value,
+                ty,
+                address,
+                dst_flags,
+                flags.stack,
+                scalars,
+                aggregates,
+                layouts,
+                cursor,
+            )?;
+            Ok(true)
+        }
+        FirInstructionKind::AddressOf { place, mutable } if place_needs_c9(place) => {
+            let id = instruction
+                .result
+                .ok_or_else(|| shape("projected address-of has no result"))?;
+            let result_ty = value_type(fir, id)?;
+            let (address, stored_ty, _) = lower_c14_place_address(
+                fir,
+                definitions,
+                place,
+                local_slots,
+                flags,
+                scalars,
+                types,
+                layouts,
+                cursor,
+            )?;
+            match result_ty {
+                Ty::Reference {
+                    mutable: result_mutable,
+                    inner,
+                } if *result_mutable == *mutable && inner.as_ref() == &stored_ty => {}
+                _ => return Err(shape("projected address-of result does not match place type")),
+            }
+            scalars.insert(id, address);
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_c14_place_address(
+    fir: &FirFunction,
+    definitions: &TypeDefinitionTable,
+    place: &FirPlace,
+    local_slots: &BTreeMap<FirLocalId, StackSlot>,
+    flags: MemoryFlags,
+    scalars: &BTreeMap<FirValueId, Value>,
+    types: &TypeLowering<'_>,
+    layouts: &mut LayoutEngine<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<(Value, Ty, MemFlags), BackendError> {
+    match place {
+        FirPlace::Local { local } => {
+            let slot = local_slots
+                .get(local)
+                .copied()
+                .ok_or_else(|| shape(format!("missing stack slot for {local:?}")))?;
+            let ty = fir
+                .locals
+                .get(local)
+                .ok_or_else(|| shape(format!("missing local {local:?}")))?
+                .ty
+                .clone();
+            Ok((
+                cursor.ins().stack_addr(types.pointer_type()?, slot, 0),
+                ty,
+                flags.stack,
+            ))
+        }
+        FirPlace::Deref { address } => {
+            let Ty::Reference { inner, .. } = value_type(fir, *address)? else {
+                return Err(shape("safe dereference has non-reference address"));
+            };
+            Ok((
+                scalar(scalars, *address)?,
+                inner.as_ref().clone(),
+                flags.deref,
+            ))
+        }
+        FirPlace::RawDeref {
+            address, volatile, ..
+        } => {
+            if *volatile {
+                return Err(BackendError::UnsupportedInstruction {
+                    kind: "volatile raw dereference",
+                });
+            }
+            let Ty::Pointer { inner, .. } = value_type(fir, *address)? else {
+                return Err(shape("raw dereference has non-pointer address"));
+            };
+            Ok((
+                scalar(scalars, *address)?,
+                inner.as_ref().clone(),
+                flags.deref,
+            ))
+        }
+        FirPlace::Field { base, field } => {
+            let (address, base_ty, mem_flags) = lower_c14_place_address(
+                fir,
+                definitions,
+                base,
+                local_slots,
+                flags,
+                scalars,
+                types,
+                layouts,
+                cursor,
+            )?;
+            let (address, base_ty, mem_flags) = c14_autoderef_projection_base(
+                address, base_ty, mem_flags, flags, types, cursor,
+            )?;
+            let (field_ty, offset) = field_projection(definitions, layouts, &base_ty, field)?;
+            Ok((add_offset(address, offset, cursor)?, field_ty, mem_flags))
+        }
+        FirPlace::Index { base, index } => {
+            let (address, base_ty, mem_flags) = lower_c14_place_address(
+                fir,
+                definitions,
+                base,
+                local_slots,
+                flags,
+                scalars,
+                types,
+                layouts,
+                cursor,
+            )?;
+            let (address, base_ty, mem_flags) = c14_autoderef_projection_base(
+                address, base_ty, mem_flags, flags, types, cursor,
+            )?;
+            let (address, element_ty) = index_address(
+                fir,
+                &base_ty,
+                address,
+                *index,
+                mem_flags,
+                scalars,
+                layouts,
+                types,
+                cursor,
+            )?;
+            Ok((address, element_ty, mem_flags))
+        }
+        FirPlace::ClosureCapture { .. } => Err(BackendError::UnsupportedInstruction {
+            kind: "closure capture place",
+        }),
+    }
+}
+
+fn c14_autoderef_projection_base(
+    mut address: Value,
+    mut ty: Ty,
+    mut mem_flags: MemFlags,
+    flags: MemoryFlags,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<(Value, Ty, MemFlags), BackendError> {
+    while let Ty::Reference { inner, .. } = ty {
+        address = cursor
+            .ins()
+            .load(types.pointer_type()?, mem_flags, address, 0);
+        ty = *inner;
+        mem_flags = flags.deref;
+    }
+    Ok((address, ty, mem_flags))
 }
 
 #[allow(clippy::too_many_arguments)]
