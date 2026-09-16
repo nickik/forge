@@ -26,7 +26,8 @@ done
 
 for source in \
   "$ROOT/examples/c14-native-spec/trap_checked_add.fg" \
-  "$ROOT/examples/c14-native-spec/trap_div_zero.fg"; do
+  "$ROOT/examples/c14-native-spec/trap_div_zero.fg" \
+  "$ROOT/examples/c14-native-spec/trap_panic.fg"; do
   echo "native-spec expected trap: $(basename "$source")"
   if "$FORGEC" "${common[@]}" --run "$source" >/dev/null 2>&1; then
     echo "expected trap unexpectedly succeeded: $source" >&2

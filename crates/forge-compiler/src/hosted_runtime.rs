@@ -324,6 +324,9 @@ static void forge_lock_release(ForgeFileLock lock) {
     let provider_names = providers.keys().cloned().collect::<BTreeSet<_>>();
     for (name, symbol) in providers {
         let definition = match name.as_str() {
+  "__forge_panic" => format!(
+      "__attribute__((noreturn)) void {symbol}(const void *info) {{ (void)info; forge_host_abort(); }}\n"
+  ),
   "__forge_console_write" => format!(
       "void {symbol}(const uint8_t *data, uintptr_t len) {{ if (len != 0 && fwrite(data, 1, (size_t)len, stdout) != (size_t)len) forge_host_abort(); }}\n"
   ),
@@ -381,7 +384,8 @@ static void forge_lock_release(ForgeFileLock lock) {
     for name in provider_names {
         if !matches!(
             name.as_str(),
-            "__forge_console_write"
+            "__forge_panic"
+                | "__forge_console_write"
                 | "__forge_args_count"
                 | "__forge_args_get"
                 | "__forge_time_monotonic_us"
