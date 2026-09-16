@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Apply validated sequence-rest FIR patch
+      - name: Apply live sequence-rest FIR patch
         shell: bash
         run: |
           python3 - <<'PY'
@@ -19,51 +19,44 @@ jobs:
 
           path = Path("crates/forge-frontend/src/fir_v1.rs")
           source = path.read_text()
-          old = '''            HirPatternKind::Sequence { items, rest } => {
-                          for item in items {
-                              self.bind_irrefutable_pattern(item, ty, value)?;
-                          }
-                          if rest.is_some() {
-                              return Err(CompileError::new(
-                                  "fir/rest-pattern",
-                                  "`..rest` irrefutable bindings are not lowered yet",
+          old = r'''                if let Some(rest) = rest {
+                              self.diagnostic(
                                   pattern.span,
-                              ));
+                                  "fir/rest-pattern",
+                                  format!("irrefutable rest binding {rest:?} needs slice-view lowering"),
+                              );
                           }
-                          Ok(())
-                      }
           '''
-          new = '''            HirPatternKind::Sequence { items, rest } => {
-                          for item in items {
-                              self.bind_irrefutable_pattern(item, ty, value)?;
-                          }
-
-                          if let Some((rest_local, _)) = rest {
-                              let rest_ty = self.local_ty(*rest_local).ok_or_else(|| {
-                                  CompileError::new(
-                                      "fir/rest-pattern",
-                                      "sequence rest binding is missing a typed local",
-                                      pattern.span,
-                                  )
-                              })?;
-                              let subsequence = self.emit(
+          new = r'''                if let Some(rest) = rest {
+                              let rest_ty = self
+                                  .typed
+                                  .local_types
+                                  .get(rest)
+                                  .cloned()
+                                  .unwrap_or(Ty::Unknown);
+                              let rest_value = self.emit_value(
+                                  pattern.span,
                                   rest_ty,
                                   FirInstructionKind::Subsequence {
                                       base: value,
                                       start: items.len() as u64,
                                   },
-                                  pattern.span,
                               );
-                              self.store_local(*rest_local, subsequence, pattern.span)?;
+                              self.store_local(pattern.span, *rest, rest_value);
                           }
-                          Ok(())
-                      }
           '''
           if source.count(old) != 1:
-              raise SystemExit(f"expected one sequence-rest seam, found {source.count(old)}")
-          path.write_text(source.replace(old, new, 1))
+              raise SystemExit(f"expected one live sequence-rest seam, found {source.count(old)}")
+          patched = source.replace(old, new, 1)
+          if "irrefutable rest binding" in patched:
+              raise SystemExit("old sequence-rest diagnostic remains")
+          path.write_text(patched)
           PY
           rustfmt --edition 2024 crates/forge-frontend/src/fir_v1.rs
+          cargo fmt --all -- --check
+
+      - name: Verify patched frontend
+        run: cargo test -p forge-frontend
 
       - name: Upload exact patched FIR source
         uses: actions/upload-artifact@v4
