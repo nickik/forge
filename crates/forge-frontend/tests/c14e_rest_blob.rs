@@ -56,7 +56,11 @@ fn emit_c14e_rest_patched_fir_blob() {
                     self.store_local(pattern.span, *rest, rest_value);
                 }
 "#;
-    assert_eq!(text.matches(old).count(), 1, "unexpected rest lowering shape");
+    assert_eq!(
+        text.matches(old).count(),
+        1,
+        "unexpected rest lowering shape"
+    );
     let patched = text.replacen(old, new, 1);
     assert!(!patched.contains("fir/rest-pattern"));
     println!("BEGIN_C14E_REST_FIR_BASE64");
