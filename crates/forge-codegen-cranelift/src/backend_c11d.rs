@@ -79,14 +79,20 @@ impl CraneliftBackend {
         definitions: &TypeDefinitionTable,
         static_initializers: &StaticGlobalInitializerTable,
     ) -> Result<PreparedModule, BackendError> {
+        // Context operations are explicit FIR. Give those semantic slots real
+        // native storage only in the backend's private module view so source
+        // identity and the public Forge ABI remain unchanged.
+        let mut augmented = module.clone();
+        crate::context::install_context_storage(&mut augmented)?;
+
         let globals = self.prepare_globals_with_static_initializers(
-            module,
+            &augmented,
             definitions,
             static_initializers,
         )?;
         let prepared = self
             .legacy
-            .prepare_functions_and_initializers_with_globals(module, definitions)?;
+            .prepare_functions_and_initializers_with_globals(&augmented, definitions)?;
         Ok(PreparedModule {
             functions: prepared.module,
             globals,
