@@ -24,6 +24,7 @@ mod machine;
 mod object;
 mod sia32_image;
 mod sia32_object;
+mod sia32_shell;
 mod target;
 mod types;
 
@@ -43,5 +44,6 @@ pub use sia32_object::{
     link_sia32_objects, link_sia32_sectioned_objects, LinkedSia32Object, Sia32Object,
     Sia32Relocation, Sia32Section, Sia32SectionBases, Sia32Symbol,
 };
-pub use target::{CraneliftTarget, TargetLayout};
+pub use sia32_shell::Sia32IntegrationShell;
+pub use target::{CraneliftTarget, ExecutableFormat, TargetAbi, TargetLayout};
 pub use types::{ScalarLayout, TypeLowering};
