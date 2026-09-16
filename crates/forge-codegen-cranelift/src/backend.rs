@@ -203,9 +203,9 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                     let source = value_type(fir, *value, "conversion input")?;
-                    if !lossless_integer_conversion(source, target, layout)? {
+                    if !c14_explicit_integer_conversion(source, target, layout) {
                         return Err(BackendError::UnsupportedInstruction {
-                            kind: "lossy integer conversion requires explicit FIR conversion semantics",
+                            kind: "conversion requires dedicated FIR conversion semantics",
                         });
                     }
                 }
@@ -216,29 +216,21 @@ fn validate_c4_scalar_contract(
     Ok(())
 }
 
-fn lossless_integer_conversion(
-    source: &Ty,
-    target: &Ty,
-    layout: &TargetLayout,
-) -> Result<bool, BackendError> {
+/// `FirInstructionKind::Convert` is already the semantic marker for an
+/// explicit source conversion. C14 therefore accepts concrete integer
+/// narrowing, widening and signedness changes here and leaves their exact bit
+/// transformation to the lowering layer. The bool-to-unsigned case is not a
+/// source-language bool/integer cast: FIR emits it internally when packing a
+/// one-bit boolean bitstruct field.
+fn c14_explicit_integer_conversion(source: &Ty, target: &Ty, layout: &TargetLayout) -> bool {
     if source == target {
-        return Ok(true);
+        return true;
     }
-    let Some((source_signed, source_bits)) = integer_shape(source, layout) else {
-        return Ok(false);
-    };
-    let Some((target_signed, target_bits)) = integer_shape(target, layout) else {
-        return Ok(false);
-    };
-
-    if target_bits <= source_bits {
-        return Ok(false);
+    if integer_shape(source, layout).is_some() && integer_shape(target, layout).is_some() {
+        return true;
     }
-
-    Ok(match (source_signed, target_signed) {
-        (true, true) | (false, false) | (false, true) => true,
-        (true, false) => false,
-    })
+    matches!(source, Ty::Bool)
+        && matches!(target, Ty::Byte | Ty::Int { signed: false, .. })
 }
 
 fn integer_shape(ty: &Ty, layout: &TargetLayout) -> Option<(bool, u16)> {

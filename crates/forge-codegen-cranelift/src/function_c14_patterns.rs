@@ -15,6 +15,20 @@ fn lower_c14_pattern_instruction(
     layouts: &mut LayoutEngine<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
+    if lower_c14_bitstruct_instruction(
+        fir,
+        definitions,
+        instruction,
+        flags,
+        scalars,
+        aggregates,
+        types,
+        layouts,
+        cursor,
+    )? {
+        return Ok(());
+    }
+
     if let FirInstructionKind::Subsequence { base, start } = &instruction.kind {
         return lower_c14_subsequence(
             fir,

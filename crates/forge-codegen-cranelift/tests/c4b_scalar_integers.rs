@@ -340,26 +340,37 @@ fn lossless_integer_widening_uses_sign_or_zero_extension() {
 }
 
 #[test]
-fn lossy_integer_conversions_are_rejected_until_fir_defines_their_policy() {
-    let cases = [
-        (int_ty(false, IntWidth::W64), int_ty(false, IntWidth::W16)),
-        (int_ty(false, IntWidth::W8), int_ty(true, IntWidth::W8)),
-        (int_ty(true, IntWidth::W8), int_ty(false, IntWidth::W64)),
-    ];
+fn explicit_integer_conversions_define_narrowing_and_signedness_changes() {
+    for backend in [
+        CraneliftBackend::aarch64().expect("AArch64"),
+        CraneliftBackend::riscv64().expect("RV64"),
+    ] {
+        let narrowing = lower(
+            conversion(int_ty(false, IntWidth::W64), int_ty(false, IntWidth::W16)),
+            rebuild(&backend),
+        );
+        assert!(narrowing.contains("ireduce"), "{narrowing}");
 
-    for (source, target) in cases {
-        let error = match prepare(
-            conversion(source, target),
-            CraneliftBackend::riscv64().expect("RV64"),
-        ) {
-            Ok(_) => panic!("lossy conversion unexpectedly lowered"),
-            Err(error) => error,
-        };
-        assert_eq!(
-            error,
-            BackendError::UnsupportedInstruction {
-                kind: "lossy integer conversion requires explicit FIR conversion semantics"
-            }
+        let signed_to_wider_unsigned = lower(
+            conversion(int_ty(true, IntWidth::W8), int_ty(false, IntWidth::W64)),
+            rebuild(&backend),
+        );
+        assert!(
+            signed_to_wider_unsigned.contains("sextend"),
+            "{signed_to_wider_unsigned}"
+        );
+
+        // Same-width signedness conversion is a representation-preserving
+        // reinterpretation at FIR level; no extension or reduction is needed.
+        let same_width = lower(
+            conversion(int_ty(false, IntWidth::W8), int_ty(true, IntWidth::W8)),
+            rebuild(&backend),
+        );
+        assert!(
+            !same_width.contains("sextend")
+                && !same_width.contains("uextend")
+                && !same_width.contains("ireduce"),
+            "{same_width}"
         );
     }
 }
