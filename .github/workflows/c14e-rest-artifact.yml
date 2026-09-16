@@ -1,0 +1,74 @@
+name: C14e sequence-rest FIR artifact
+
+on:
+  push:
+    branches:
+      - agent/c14e-rest-format-helper
+
+jobs:
+  build-artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply validated sequence-rest FIR patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/forge-frontend/src/fir_v1.rs")
+          source = path.read_text()
+          old = '''            HirPatternKind::Sequence { items, rest } => {
+                          for item in items {
+                              self.bind_irrefutable_pattern(item, ty, value)?;
+                          }
+                          if rest.is_some() {
+                              return Err(CompileError::new(
+                                  "fir/rest-pattern",
+                                  "`..rest` irrefutable bindings are not lowered yet",
+                                  pattern.span,
+                              ));
+                          }
+                          Ok(())
+                      }
+          '''
+          new = '''            HirPatternKind::Sequence { items, rest } => {
+                          for item in items {
+                              self.bind_irrefutable_pattern(item, ty, value)?;
+                          }
+
+                          if let Some((rest_local, _)) = rest {
+                              let rest_ty = self.local_ty(*rest_local).ok_or_else(|| {
+                                  CompileError::new(
+                                      "fir/rest-pattern",
+                                      "sequence rest binding is missing a typed local",
+                                      pattern.span,
+                                  )
+                              })?;
+                              let subsequence = self.emit(
+                                  rest_ty,
+                                  FirInstructionKind::Subsequence {
+                                      base: value,
+                                      start: items.len() as u64,
+                                  },
+                                  pattern.span,
+                              );
+                              self.store_local(*rest_local, subsequence, pattern.span)?;
+                          }
+                          Ok(())
+                      }
+          '''
+          if source.count(old) != 1:
+              raise SystemExit(f"expected one sequence-rest seam, found {source.count(old)}")
+          path.write_text(source.replace(old, new, 1))
+          PY
+          rustfmt --edition 2024 crates/forge-frontend/src/fir_v1.rs
+
+      - name: Upload exact patched FIR source
+        uses: actions/upload-artifact@v4
+        with:
+          name: c14e-rest-fir
+          path: crates/forge-frontend/src/fir_v1.rs
+          if-no-files-found: error
+          retention-days: 1
