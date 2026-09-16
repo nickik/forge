@@ -1,0 +1,8 @@
+module examples.c14_native_spec.trap_panic;
+
+import core;
+
+fn main() -> i32 {
+    core.panic("explicit native panic");
+    return 99;
+}

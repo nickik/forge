@@ -35,6 +35,20 @@ pub struct PanicInfo {
 // core defines the information and may raise panic paths, but does not decide
 // whether a process exits, a kernel halts, firmware resets, or a debugger runs.
 
+
+nfn __forge_panic(info: &PanicInfo) -> never {
+    return __forge_panic(:info=info);
+}
+
+pub fn panic(message: str) -> never {
+    val info: PanicInfo = PanicInfo{
+        kind: PanicKind::Explicit,
+        message: message,
+        location: None,
+    };
+    return __forge_panic(:info=&info);
+}
+
 pub enum AllocError {
     OutOfMemory,
     InvalidSize,
