@@ -91,6 +91,8 @@ where
         Token::Volatile => "volatile".to_owned(),
         Token::None => "None".to_owned(),
         Token::Some => "Some".to_owned(),
+        Token::Ok => "Ok".to_owned(),
+        Token::Err => "Err".to_owned(),
         Token::Xor => "xor".to_owned(),
         Token::ResultType => "Result".to_owned(),
         Token::ClosureType => "closure".to_owned(),
@@ -465,6 +467,17 @@ where
                 span(e.span()),
             )
         });
+    let result_pattern = choice((just(Token::Ok), just(Token::Err)))
+        .then(
+            pattern
+                .clone()
+                .delimited_by(just(Token::LParen), just(Token::RParen)),
+        )
+        .map_with(|(tag, value), e| match tag {
+            Token::Ok => Node::new(PatternKind::Ok { value: Box::new(value) }, span(e.span())),
+            Token::Err => Node::new(PatternKind::Err { value: Box::new(value) }, span(e.span())),
+            _ => unreachable!("result-pattern parser only produces Ok or Err"),
+        });
     let sequence_rest = just(Token::DotDot)
         .ignore_then(ident().or_not())
         .map(|name| name.unwrap_or_default());
@@ -525,6 +538,7 @@ where
         variant_pattern,
         none_pattern,
         some_pattern,
+        result_pattern,
         struct_pattern,
         sequence_pattern,
         map_pattern,
@@ -601,6 +615,14 @@ where
             },
             span(e.span()),
         )
+    });
+    let result_expr = choice((just(Token::Ok), just(Token::Err))).map_with(|token, e| {
+        let name = match token {
+            Token::Ok => "Ok",
+            Token::Err => "Err",
+            _ => unreachable!("result-expression parser only produces Ok or Err"),
+        };
+        Node::new(ExprKind::Path { path: Path::new(vec![name.into()]) }, span(e.span()))
     });
     let keyword_expr = just(Token::Colon)
         .ignore_then(fdn_name())
@@ -771,6 +793,7 @@ where
         literal_expr,
         none_expr,
         some_expr,
+        result_expr,
         keyword_expr,
         array_expr,
         path_expr,
@@ -1681,7 +1704,10 @@ fn validate_pattern(pattern: &Pattern, diagnostics: &mut Vec<Diagnostic>) {
                 validate_pattern(item, diagnostics);
             }
         }
-        PatternKind::Some { value } | PatternKind::As { pattern: value, .. } => {
+        PatternKind::Some { value }
+        | PatternKind::Ok { value }
+        | PatternKind::Err { value }
+        | PatternKind::As { pattern: value, .. } => {
             validate_pattern(value, diagnostics)
         }
         PatternKind::Or { patterns } => {

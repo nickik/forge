@@ -522,6 +522,12 @@ pub enum PatternKind {
     Some {
         value: Box<Pattern>,
     },
+    Ok {
+        value: Box<Pattern>,
+    },
+    Err {
+        value: Box<Pattern>,
+    },
     Struct {
         path: Path,
         fields: Vec<PatternField>,

@@ -470,6 +470,23 @@ Arrays/collections of optional/tagged values may use packed/sidecar discriminant
 Ok(T) | Err(E)
 ```
 
+`Ok` is discriminant 0 and `Err` is discriminant 1. Both variants share one
+payload storage region; its offset and the tag placement follow the target ABI
+layout engine. Where a payload has an available niche, the layout may use that
+niche instead of materializing a tag; this does not change the logical
+discriminants. Nested Results are ordinary payloads and therefore preserve the
+same rule recursively. A zero-sized payload occupies no payload bytes, but its
+variant identity remains observable through the Result discriminant.
+
+`Ok(value)` and `Err(error)` are compiler-defined constructors. They require a
+contextual `Result[T,E]` type: `Ok` accepts `T`, `Err` accepts `E`. When the
+selected payload type is `void`, the corresponding payloadless form is valid:
+`Ok()` for `Result[void,E]` and `Err()` for `Result[T,void]`; it materializes a
+zero-sized unit payload. Result
+patterns use the same names (`Ok(binding)`, `Err(binding)`) and bind the
+corresponding payload. A Result match containing both unguarded variants is
+exhaustive.
+
 Example:
 
 ```forge

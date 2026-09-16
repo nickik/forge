@@ -356,6 +356,7 @@ fn lower_mixed_instruction(
     let result_ty = result_id.map(|id| value_type(fir, id)).transpose()?;
 
     match &instruction.kind {
+        FirInstructionKind::Unit => return Ok(()),
         FirInstructionKind::Load { place }
             if result_ty.is_some_and(is_memory_value) || place_needs_c9(place) =>
         {

@@ -2011,3 +2011,41 @@ fn independent_runtime_globals_keep_source_order() {
         .collect::<Vec<_>>();
     assert_eq!(output.global_init_order, sorted);
 }
+
+#[test]
+fn result_constructors_and_patterns_require_a_compatible_result_context() {
+    let nested = check(
+        r#"
+        module test.result_nested;
+        fn nested() -> Result[Result[u8, u16], u32] {
+            return Ok(Err(7u16));
+        }
+        fn inspect(value: Result[u8, u16]) -> u8 {
+            return match (value) { Ok(payload) => payload, Err(_) => 0u8, };
+        }
+        "#,
+    );
+    assert!(nested.diagnostics.is_empty(), "{:?}", nested.diagnostics);
+
+    let invalid = check(
+        r#"
+        module test.result_invalid;
+        fn bad_constructor() -> void { Ok(1u8); }
+        fn bad_pattern(value: u8) -> u8 {
+            return match (value) { Ok(payload) => payload, _ => 0u8, };
+        }
+        fn bad_propagation(value: Result[u8, u16]) -> Result[u8, u8] { return value?; }
+        "#,
+    );
+    assert!(has(&invalid, "constructor/context"), "{:?}", invalid.diagnostics);
+    assert!(has(&invalid, "pattern/result-ok"), "{:?}", invalid.diagnostics);
+    assert!(has(&invalid, "try/error-type"), "{:?}", invalid.diagnostics);
+
+    let invalid_payloadless = check(
+        r#"
+        module test.result_invalid_payloadless;
+        fn bad() -> Result[u8, u8] { return Ok(); }
+        "#,
+    );
+    assert!(has(&invalid_payloadless, "constructor/arguments"), "{:?}", invalid_payloadless.diagnostics);
+}

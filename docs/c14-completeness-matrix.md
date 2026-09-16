@@ -25,7 +25,7 @@ Legend:
 | Structs and enums | 1 | Construction, projection, layout, ABI and matching tests. |
 | Tagged unions | 1 | Construction, payload extraction, nested match and ABI basics execute; expand mixed-payload ABI coverage. |
 | `Option[T]` | 1 | `None`, explicit `Some(value)`, implicit promotion, patterns and native layout/lowering. |
-| `Result[T,E]` | 4 | Explicit `Ok`/`Err` now reach FIR/native lowering; `?` already lowers. Add Result patterns and end-to-end native execution/ABI fixtures. |
+| `Result[T,E]` | 1 | Canonical `Ok=0`/`Err=1` layout semantics, constructors, patterns, `?`, FIR discriminant/payload lowering and AArch64 object emission are covered. Hosted native execution remains target-gated. |
 | Arrays | 1 | Construction, indexing, bounds, aggregate elements and ABI execute. |
 | Slices | 4 | Pointer/length ABI, indexing and sequence-rest lowering exist. Mutable, aggregate-contained and return-value execution need expansion. |
 | References | 1 | Shared/mutable local rules, dereference, projections and ABI covered. |
@@ -35,7 +35,7 @@ Legend:
 | `if`, `while`, C-style `for` | 1 | Typed CFG/FIR and executable corpus. |
 | value `for` iteration | 5 | Parsed and represented; protocol/static/native completion remains to be proven. |
 | `break`, `continue` | 4 | FIR cleanup paths exist; add nested-loop/defer executable matrix. |
-| `match` | 4 | Bool, scalar, enum, tagged, Option, nested projections, guards, OR/as, ranges and sequence-rest covered. Result and map-protocol native execution remain. |
+| `match` | 4 | Bool, scalar, enum, tagged, Option, Result, nested projections, guards, OR/as, ranges and sequence-rest covered. Map-protocol native execution remains. |
 | Functions and calls | 1 | Direct/indirect, named/default, method calls, scalar/aggregate ABI and non-main entry covered. |
 | Function pointers | 1 | Named functions cross call boundaries; anonymous closure coercion is rejected. |
 | Local captured closures | 1 | Explicit capture lists and local calls execute. Escaping/cross-function closure ABI is intentionally not part of C14. |
