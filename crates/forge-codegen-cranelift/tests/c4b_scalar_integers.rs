@@ -372,5 +372,8 @@ fn rebuild(backend: &CraneliftBackend) -> CraneliftBackend {
         forge_codegen_cranelift::CraneliftTarget::Riscv64 => {
             CraneliftBackend::riscv64().expect("RV64")
         }
+        forge_codegen_cranelift::CraneliftTarget::Sia32 => {
+            panic!("SIA32 CLIF lowering is intentionally unavailable before M5")
+        }
     }
 }

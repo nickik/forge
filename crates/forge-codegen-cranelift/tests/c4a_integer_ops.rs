@@ -248,6 +248,9 @@ impl CloneForTest for CraneliftBackend {
             forge_codegen_cranelift::CraneliftTarget::Riscv64 => {
                 CraneliftBackend::riscv64().expect("RISC-V64 backend")
             }
+            forge_codegen_cranelift::CraneliftTarget::Sia32 => {
+                panic!("SIA32 CLIF lowering is intentionally unavailable before M5")
+            }
         }
     }
 }
