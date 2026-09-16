@@ -21,7 +21,9 @@ fn lower_c14_context_instruction(
                 .result
                 .ok_or_else(|| shape("context load has no result"))?;
             if !is_context_value_type(value_type(fir, result)?) {
-                return Err(shape("context load result is not a non-owning pointer/reference"));
+                return Err(shape(
+                    "context load result is not a non-owning pointer/reference",
+                ));
             }
             let address = c14_context_slot_address(all_globals, *slot, types, cursor)?;
             let value = cursor
@@ -34,7 +36,7 @@ fn lower_c14_context_instruction(
             let result = instruction
                 .result
                 .ok_or_else(|| shape("context save has no result"))?;
-            if value_type(fir, result)? != &Ty::ContextSlot { slot: *slot } {
+            if value_type(fir, result)? != &(Ty::ContextSlot { slot: *slot }) {
                 return Err(shape("context save result does not match its slot"));
             }
             let address = c14_context_slot_address(all_globals, *slot, types, cursor)?;
@@ -49,7 +51,9 @@ fn lower_c14_context_instruction(
                 return Err(shape("context set unexpectedly has a result"));
             }
             if !is_context_value_type(value_type(fir, *value)?) {
-                return Err(shape("context set value is not a non-owning pointer/reference"));
+                return Err(shape(
+                    "context set value is not a non-owning pointer/reference",
+                ));
             }
             let address = c14_context_slot_address(all_globals, *slot, types, cursor)?;
             cursor
@@ -61,7 +65,7 @@ fn lower_c14_context_instruction(
             if instruction.result.is_some() {
                 return Err(shape("context restore unexpectedly has a result"));
             }
-            if value_type(fir, *saved)? != &Ty::ContextSlot { slot: *slot } {
+            if value_type(fir, *saved)? != &(Ty::ContextSlot { slot: *slot }) {
                 return Err(shape("context restore value does not match its slot"));
             }
             let address = c14_context_slot_address(all_globals, *slot, types, cursor)?;
@@ -93,7 +97,7 @@ fn lower_c14_context_instruction(
 
 fn c14_context_slot_address(
     all_globals: &BTreeMap<DefId, FirGlobal>,
-    slot: ContextSlot,
+    slot: forge_fir::ContextSlot,
     types: &TypeLowering<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<Value, BackendError> {
