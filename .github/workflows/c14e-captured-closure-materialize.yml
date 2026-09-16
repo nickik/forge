@@ -5,6 +5,9 @@ on:
     branches:
       - agent/c14e-captured-closure-helper
 
+permissions:
+  contents: write
+
 jobs:
   captured-closure:
     runs-on: ubuntu-latest
@@ -26,6 +29,8 @@ jobs:
         run: cargo test -p forge-fir --test closure_abi
       - name: Workspace check
         run: cargo check --workspace
+      - name: Build forgec
+        run: cargo build -p forge-compiler --bin forgec
       - name: Focused C14 native executable specification
         run: bash scripts/run-c14-native-spec.sh
       - name: Commit semantic captured closure patch
