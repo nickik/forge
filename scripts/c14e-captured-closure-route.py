@@ -24,4 +24,6 @@ if text.count(old) != 1:
     raise SystemExit(f"expected closure routing anchor once, found {text.count(old)}")
 path.write_text(text.replace(old, new, 1))
 
+# Keep this routing patch separate from the ABI materializer so focused failures
+# identify dispatch mistakes independently from environment layout mistakes.
 print("materialized higher-order closure-call routing")
