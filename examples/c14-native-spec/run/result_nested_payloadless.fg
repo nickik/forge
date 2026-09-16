@@ -1,0 +1,30 @@
+module examples.c14.result_nested_payloadless;
+
+fn nested_ok() -> Result[Result[void, u8], void] {
+    return Ok(Ok());
+}
+
+fn nested_err() -> Result[Result[void, u8], void] {
+    return Ok(Err(7u8));
+}
+
+fn propagate(ok: bool) -> Result[void, void] {
+    if (ok) {
+        return Ok();
+    }
+    return Err();
+}
+
+fn prove() -> Result[i32, void] {
+    val first = nested_ok();
+    val second = nested_err();
+    propagate(true)?;
+    return Ok(match (first) {
+        Ok(Ok(_)) => match (second) { Ok(Err(_)) => 0i32, _ => 1i32, },
+        _ => 2i32,
+    });
+}
+
+fn main() -> i32 {
+    return match (prove()) { Ok(code) => code, Err(_) => 3i32, };
+}

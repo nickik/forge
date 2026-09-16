@@ -21,11 +21,11 @@ Legend:
 | Integer, bool, byte scalars | 1 | Checked/wrapping arithmetic, comparisons, shifts, conversions and ABI tests. |
 | `char` | 1 | Native constants, locals, comparison, argument and return fixture. |
 | `duration` | 4 | Layout and scalar representation exist; reader/type/FIR tests exist. Add executable argument/return/load/store coverage. |
-| `f32`, `f64` | 4 | Native scalar constants, arithmetic, negation, comparisons, integer-to-float conversion, and AArch64 object lowering are implemented; executable ARM64 and full ABI coverage remain. |
+| `f32`, `f64` | 4 | Native scalar constants, arithmetic, negation, comparisons, integer-to-float conversion, aggregate field storage, and the AArch64 executable fixture are implemented; full ABI coverage remains. |
 | Structs and enums | 1 | Construction, projection, layout, ABI and matching tests. |
 | Tagged unions | 1 | Construction, payload extraction, nested match and ABI basics execute; expand mixed-payload ABI coverage. |
 | `Option[T]` | 1 | `None`, explicit `Some(value)`, implicit promotion, patterns and native layout/lowering. |
-| `Result[T,E]` | 1 | Canonical `Ok=0`/`Err=1` layout semantics, constructors, patterns, `?`, FIR discriminant/payload lowering and AArch64 object emission are covered. Hosted native execution remains target-gated. |
+| `Result[T,E]` | 1 | Canonical `Ok=0`/`Err=1` layout semantics, contextual and payloadless constructors, nested patterns, `?`, FIR discriminant/payload lowering, AArch64 object emission, and hosted native execution are covered. |
 | Arrays | 1 | Construction, indexing, bounds, aggregate elements and ABI execute. |
 | Slices | 4 | Pointer/length ABI, indexing and sequence-rest lowering exist. Mutable, aggregate-contained and return-value execution need expansion. |
 | References | 1 | Shared/mutable local rules, dereference, projections and ABI covered. |

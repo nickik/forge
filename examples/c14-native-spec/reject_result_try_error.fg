@@ -1,0 +1,9 @@
+module examples.c14.reject_result_try_error;
+
+fn source() -> Result[u8, u16] {
+    return Err(1u16);
+}
+
+fn main() -> Result[u8, u8] {
+    return source()?;
+}

@@ -487,6 +487,13 @@ patterns use the same names (`Ok(binding)`, `Err(binding)`) and bind the
 corresponding payload. A Result match containing both unguarded variants is
 exhaustive.
 
+Constructor inference is deliberately contextual-only in v1: a bare `Ok(...)`
+or `Err(...)` never invents a `Result` error/payload type, and no explicit
+constructor type-ascription syntax is currently part of the language. This
+keeps nested constructors and payloadless forms unambiguous; callers provide
+the type through a return annotation, binding, argument, or enclosing
+constructor.
+
 Example:
 
 ```forge
