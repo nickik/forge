@@ -1,0 +1,22 @@
+module examples.c14.bitstruct_native;
+
+bitstruct Status: u16 {
+    ready: 1;
+    error: 1;
+    mode: 3;
+    code: 5;
+    reserved: 6;
+}
+
+fn main() -> i32 {
+    var status: Status = Status(0u16);
+    status.ready = true;
+    status.error = false;
+    status.mode = 5u8;
+    status.code = 17u8;
+
+    if (status.ready && !status.error && status.mode == 5u8 && status.code == 17u8) {
+        return 0;
+    }
+    return 1;
+}
