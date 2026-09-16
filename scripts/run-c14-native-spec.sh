@@ -16,6 +16,9 @@ for source in "$ROOT"/examples/conformance/run/*.fg; do
   "$FORGEC" "${common[@]}" --run "$source"
 done
 
+echo "native-spec: local captured closures"
+"$FORGEC" "${common[@]}" --run "$ROOT/examples/c14-native-spec/closures.fg"
+
 echo "native-spec: Game of Life"
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT

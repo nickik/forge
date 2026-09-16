@@ -1,0 +1,24 @@
+module examples.c14.native_closures;
+
+fn main() -> i32 {
+    val factor: i32 = 3;
+    var count: i32 = 1;
+
+    val scale = [factor](x: i32) -> i32 {
+        return x * factor;
+    };
+
+    val next = [&mut count, factor]() -> i32 {
+        count = count + factor;
+        return count;
+    };
+
+    val a: i32 = next();
+    val b: i32 = next();
+    val c: i32 = scale(b);
+
+    if (a == 4 && b == 7 && c == 21 && count == 7) {
+        return 0;
+    }
+    return 1;
+}

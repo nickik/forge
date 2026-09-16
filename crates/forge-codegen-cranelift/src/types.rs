@@ -63,6 +63,14 @@ impl<'a> TypeLowering<'a> {
             | Ty::Reference { .. }
             | Ty::Function { .. } => self.authoritative_scalar_layout(ty),
 
+            // A captured closure is a compiler-local non-escaping handle. It
+            // deliberately has pointer representation only inside the
+            // enclosing native function; this is not a public Forge ABI.
+            Ty::Closure { .. } => {
+                let bytes = u32::from(self.target.pointer_bits / 8);
+                Ok(ScalarLayout::new(bytes, bytes))
+            }
+
             Ty::Never => unsupported("never"),
             Ty::Void => unsupported("void"),
             Ty::Char => unsupported("char"),
@@ -75,7 +83,6 @@ impl<'a> TypeLowering<'a> {
             Ty::Slice { .. } => unsupported("slice"),
             Ty::Array { .. } => unsupported("array"),
             Ty::Result { .. } => unsupported("result"),
-            Ty::Closure { .. } => unsupported("closure"),
 
             Ty::Error => semantic_leak("error"),
             Ty::Unknown => semantic_leak("unknown"),
@@ -98,7 +105,10 @@ impl<'a> TypeLowering<'a> {
                 IntWidth::Pointer => self.pointer_type(),
             },
 
-            Ty::Pointer { .. } | Ty::Reference { .. } | Ty::Function { .. } => self.pointer_type(),
+            Ty::Pointer { .. }
+            | Ty::Reference { .. }
+            | Ty::Function { .. }
+            | Ty::Closure { .. } => self.pointer_type(),
 
             Ty::Never => unsupported("never"),
             Ty::Void => unsupported("void"),
@@ -112,7 +122,6 @@ impl<'a> TypeLowering<'a> {
             Ty::Slice { .. } => unsupported("slice"),
             Ty::Array { .. } => unsupported("array"),
             Ty::Result { .. } => unsupported("result"),
-            Ty::Closure { .. } => unsupported("closure"),
 
             Ty::Error => semantic_leak("error"),
             Ty::Unknown => semantic_leak("unknown"),
