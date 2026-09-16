@@ -19,18 +19,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Apply exact formatter and refresh lock
+      - name: Apply formatter and capture check
         run: |
           cargo fmt --all
-          cargo check -p forge-codegen-cranelift
-      - name: Commit generated formatting and lock state
+          set +e
+          cargo check -p forge-codegen-cranelift > M8_DIAG.txt 2>&1
+          echo $? > M8_STATUS.txt
+          exit 0
+      - name: Commit generated state and diagnostic
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add Cargo.lock crates/forge-codegen-cranelift/Cargo.toml crates/forge-codegen-cranelift/src/sia32_object.rs crates/forge-codegen-cranelift/src/sia32_image.rs crates/forge-codegen-cranelift/src/lib.rs crates/forge-codegen-cranelift/tests/sia32_m8_relocations.rs crates/forge-codegen-cranelift/tests/sia32_m8_object_link.rs crates/forge-codegen-cranelift/tests/sia32_m8_image.rs crates/forge-codegen-cranelift/tests/sia32_m8_runtime.rs
-          if git diff --cached --quiet; then
-            echo "No generated changes"
-          else
-            git commit -m "Apply exact M8.3/M8.4 generated state"
-            git push
-          fi
+          git add Cargo.lock crates/forge-codegen-cranelift/Cargo.toml crates/forge-codegen-cranelift/src/sia32_object.rs crates/forge-codegen-cranelift/src/sia32_image.rs crates/forge-codegen-cranelift/src/lib.rs crates/forge-codegen-cranelift/tests/sia32_m8_relocations.rs crates/forge-codegen-cranelift/tests/sia32_m8_object_link.rs crates/forge-codegen-cranelift/tests/sia32_m8_image.rs crates/forge-codegen-cranelift/tests/sia32_m8_runtime.rs M8_DIAG.txt M8_STATUS.txt
+          git commit -m "Capture exact M8.3/M8.4 generated state"
+          git push
