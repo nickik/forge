@@ -223,6 +223,11 @@ impl CraneliftBackend {
         prepared: &PreparedModule,
         plan: &ObjectModulePlan,
     ) -> Result<NativeObject, BackendError> {
+        if self.target() == CraneliftTarget::Sia32 {
+            return Err(object_error(
+                "SIA32 object emission uses the M8 SIAO32 writer/image builder, not legacy ELF64",
+            ));
+        }
         validate_object_plan(self.target(), prepared, plan)?;
         let isa = self.target().isa()?;
         let mut text = Vec::new();
@@ -1099,6 +1104,7 @@ fn write_elf_header(
         match target {
             CraneliftTarget::Aarch64 => 183,
             CraneliftTarget::Riscv64 => 243,
+            CraneliftTarget::Sia32 => unreachable!("SIA32 is rejected before ELF64 emission"),
         },
     );
     write_u32_at(header, 20, 1);
@@ -1109,6 +1115,7 @@ fn write_elf_header(
         match target {
             CraneliftTarget::Aarch64 => 0,
             CraneliftTarget::Riscv64 => 0x5,
+            CraneliftTarget::Sia32 => unreachable!("SIA32 is rejected before ELF64 emission"),
         },
     );
     write_u16_at(header, 52, 64);

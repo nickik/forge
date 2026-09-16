@@ -1,39 +1,71 @@
-name: repair-sia32-shell
+name: ci
 
 on:
   push:
+  pull_request:
 
-permissions:
-  contents: write
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  repair:
+  ci:
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
-      - name: Repair SIA32 integration and lockfile
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Install RV64 execution tools
+        timeout-minutes: 3
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('crates/forge-codegen-cranelift/src/object_c11c.rs')
-          s = p.read_text()
-          old = '''    ) -> Result<NativeObject, BackendError> {\n        validate_object_plan(self.target(), prepared, plan)?;'''
-          new = '''    ) -> Result<NativeObject, BackendError> {\n        if self.target() == CraneliftTarget::Sia32 {\n            return Err(object_error(\n                "SIA32 object emission uses the M8 SIAO32 writer/image builder, not legacy ELF64",\n            ));\n        }\n        validate_object_plan(self.target(), prepared, plan)?;'''
-          assert old in s
-          s = s.replace(old, new, 1)
-          s = s.replace('''            CraneliftTarget::Riscv64 => 243,\n        },''', '''            CraneliftTarget::Riscv64 => 243,\n            CraneliftTarget::Sia32 => unreachable!("SIA32 is rejected before ELF64 emission"),\n        },''', 1)
-          s = s.replace('''            CraneliftTarget::Riscv64 => 0x5,\n        },''', '''            CraneliftTarget::Riscv64 => 0x5,\n            CraneliftTarget::Sia32 => unreachable!("SIA32 is rejected before ELF64 emission"),\n        },''', 1)
-          p.write_text(s)
-          PY
-          cargo check -p forge-codegen-cranelift
-          git fetch origin main
-          git show origin/main:.github/workflows/ci.yml > .github/workflows/ci.yml
-          cargo fmt --all -- --check
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git add Cargo.lock crates/forge-codegen-cranelift/src/object_c11c.rs .github/workflows/ci.yml
-          git commit -m 'Fix SIA32 target integration gate'
-          git push origin HEAD:sia32-integration-shell
+          sudo apt-get update
+          sudo apt-get install -y qemu-user binutils-riscv64-linux-gnu
+          qemu-riscv64 --version
+          riscv64-linux-gnu-as --version | head -1
+      - name: Formatting
+        timeout-minutes: 2
+        run: cargo fmt --all -- --check
+      - name: Workspace check
+        timeout-minutes: 5
+        run: cargo check --workspace --locked
+      - name: Build-system tests
+        timeout-minutes: 5
+        run: cargo test -p forge-build --locked -- --nocapture
+      - name: C14 native build-system integration
+        timeout-minutes: 5
+        run: |
+          cargo build -p forge-build -p forge-compiler --bins --locked
+          export PATH="$PWD/target/debug:$PATH"
+          forge check --manifest-path examples/c14-build-system/forge.fdn
+          forge build --manifest-path examples/c14-build-system/forge.fdn --target app
+          test -x examples/c14-build-system/build/app
+          test "$(forge run --manifest-path examples/c14-build-system/forge.fdn --target app -- alpha beta)" = "run-ok"
+          forge test --manifest-path examples/c14-build-system/forge.fdn --target smoke
+          forge build --manifest-path examples/c14-build-system/forge.fdn --target kernel
+          test -s examples/c14-build-system/build/kernel.o
+          forge check --manifest-path examples/c14-build-system/forge.fdn --target lib
+      - name: C14 native executable specification
+        timeout-minutes: 5
+        run: scripts/run-c14-native-spec.sh
+      - name: Generated native collections snapshot
+        timeout-minutes: 3
+        run: |
+          cargo run --quiet -p forge-build --locked --bin forge-collections-gen -- /tmp/forge-collections-native.fg
+          diff -u packages/forge-collections-native/src/lib.fg /tmp/forge-collections-native.fg
+      - name: Frontend tests
+        timeout-minutes: 5
+        run: cargo test -p forge-frontend --locked -- --nocapture
+      - name: Workspace tests
+        timeout-minutes: 10
+        env:
+          FORGE_RISCV64_EXECUTION: "1"
+        run: cargo test --workspace --locked -- --nocapture
+      - name: Conformance suite
+        timeout-minutes: 5
+        run: cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn
+      - name: Clippy
+        timeout-minutes: 8
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings -A unused_mut -A clippy::collapsible_match -A clippy::large-enum-variant -A clippy::only-used-in-recursion

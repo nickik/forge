@@ -204,7 +204,7 @@ version = "0.1.0"
 dependencies = [
  "cranelift-codegen",
  "forge-fir",
- "target-lexicon 0.13.5",
+ "target-lexicon 0.13.5-sia.1",
 ]
 
 [[package]]
