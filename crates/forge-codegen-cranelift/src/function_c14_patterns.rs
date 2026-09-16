@@ -15,6 +15,15 @@ fn lower_c14_pattern_instruction(
     layouts: &mut LayoutEngine<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
+    if matches!(&instruction.kind, FirInstructionKind::Unit) {
+        if let Some(result) = instruction.result {
+            if value_type(fir, result)? != &Ty::Void {
+                return Err(shape("unit result is not void typed"));
+            }
+        }
+        return Ok(());
+    }
+
     if let FirInstructionKind::Subsequence { base, start } = &instruction.kind {
         return lower_c14_subsequence(
             fir,

@@ -1,0 +1,13 @@
+module examples.c14.unit_match;
+
+fn main() -> i32 {
+    var value: u32 = 0u32;
+
+    match (true) {
+        true => { value = 42u32; },
+        false => { value = 1u32; },
+    };
+
+    if (value == 42u32) { return 0; }
+    return 1;
+}
