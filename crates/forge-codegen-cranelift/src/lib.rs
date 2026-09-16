@@ -34,6 +34,9 @@ pub use globals::{
 };
 pub use machine::MachineCode;
 pub use object::{NativeObject, ObjectLinkage, ObjectModulePlan, ObjectSymbol};
-pub use sia32_object::{link_sia32_objects, Sia32Object, Sia32Relocation};
+pub use sia32_object::{
+    link_sia32_objects, link_sia32_sectioned_objects, LinkedSia32Object, Sia32Object,
+    Sia32Relocation, Sia32Section, Sia32SectionBases, Sia32Symbol,
+};
 pub use target::{CraneliftTarget, TargetLayout};
 pub use types::{ScalarLayout, TypeLowering};
