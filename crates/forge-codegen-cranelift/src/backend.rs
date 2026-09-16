@@ -334,6 +334,7 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
             | FirInstructionKind::ResultIsOk { value }
             | FirInstructionKind::ResultUnwrapOk { value }
             | FirInstructionKind::ResultUnwrapErr { value }
+            | FirInstructionKind::MakeResultOk { value }
             | FirInstructionKind::OptionIsSome { value }
             | FirInstructionKind::OptionUnwrap { value } => available.contains(value),
 

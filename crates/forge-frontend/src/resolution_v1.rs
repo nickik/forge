@@ -17,8 +17,16 @@ pub enum ResolvedName {
     Def(DefId),
     Import(u32),
     BuiltinType,
-    BuiltinValue,
+    BuiltinValue(ResolvedBuiltinValue),
     Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResolvedBuiltinValue {
+    Some,
+    Ok,
+    Err,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -288,8 +296,14 @@ impl<'a, 'd> Resolver<'a, 'd> {
             self.record_use(name, span, ResolvedName::Import(index));
             return;
         }
-        if matches!(name, "Some") {
-            self.record_use(name, span, ResolvedName::BuiltinValue);
+        if matches!(name, "Some" | "Ok" | "Err") {
+            let value = match name {
+                "Some" => ResolvedBuiltinValue::Some,
+                "Ok" => ResolvedBuiltinValue::Ok,
+                "Err" => ResolvedBuiltinValue::Err,
+                _ => unreachable!(),
+            };
+            self.record_use(name, span, ResolvedName::BuiltinValue(value));
             return;
         }
         if self.qualified_only_variants.contains(name) {

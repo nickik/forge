@@ -41,6 +41,7 @@ fn typed_source(kind: &TypedExprKind) -> &HirExpr {
         | TypedExprKind::ResolvedMatch { hir, .. }
         | TypedExprKind::UnsafeOperation { hir, .. }
         | TypedExprKind::ResolvedBitField { hir, .. }
+        | TypedExprKind::BuiltinConstructor { hir, .. }
         | TypedExprKind::OptionalPromote { hir, .. } => hir,
     }
 }

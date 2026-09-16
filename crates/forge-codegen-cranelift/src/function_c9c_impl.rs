@@ -139,6 +139,7 @@ fn needs_aggregate_lowering(fir: &FirFunction) -> bool {
                 | FirInstructionKind::ResultUnwrapOk { .. }
                 | FirInstructionKind::ResultUnwrapErr { .. }
                 | FirInstructionKind::MakeResultErr { .. }
+                | FirInstructionKind::MakeResultOk { .. }
                 | FirInstructionKind::OptionIsSome { .. }
                 | FirInstructionKind::OptionUnwrap { .. }
         ) || matches!(
@@ -618,6 +619,23 @@ fn lower_mixed_instruction(
                 id,
                 result_ty.expect("result-err result type"),
                 *error,
+                flags.stack,
+                scalars,
+                aggregates,
+                layouts,
+                types,
+                cursor,
+            )?;
+            return Ok(());
+        }
+        FirInstructionKind::MakeResultOk { value } => {
+            let id = result_id.ok_or_else(|| shape("make-result-ok has no result"))?;
+            lower_make_result_payload(
+                fir,
+                id,
+                result_ty.expect("result-ok result type"),
+                *value,
+                true,
                 flags.stack,
                 scalars,
                 aggregates,
@@ -1147,22 +1165,40 @@ fn lower_make_result_err(
     types: &TypeLowering<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
-    let Ty::Result {
-        error: error_ty, ..
-    } = ty
-    else {
-        return Err(shape("result-err result is not Result"));
+    lower_make_result_payload(
+        fir, id, ty, error, false, stack_flags, scalars, aggregates, layouts, types, cursor,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_make_result_payload(
+    fir: &FirFunction,
+    id: FirValueId,
+    ty: &Ty,
+    payload: FirValueId,
+    ok: bool,
+    stack_flags: MemFlags,
+    scalars: &BTreeMap<FirValueId, Value>,
+    aggregates: &mut BTreeMap<FirValueId, AggregateValue>,
+    layouts: &mut LayoutEngine<'_>,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<(), BackendError> {
+    let Ty::Result { ok: ok_ty, error } = ty else {
+        return Err(shape("result constructor result is not Result"));
     };
-    if value_type(fir, error)? != error_ty.as_ref() {
-        return Err(shape("Result Err payload type mismatch"));
+    let payload_ty = if ok { ok_ty.as_ref() } else { error.as_ref() };
+    let variant = if ok { 0 } else { 1 };
+    if value_type(fir, payload)? != payload_ty {
+        return Err(shape("Result constructor payload type mismatch"));
     }
     let result = new_aggregate(ty, layouts, types, cursor)?;
     let layout = layouts.layout_of(ty).map_err(layout_error)?;
-    if layouts.layout_of(error_ty).map_err(layout_error)?.size != 0 {
+    if layouts.layout_of(payload_ty).map_err(layout_error)?.size != 0 {
         store_typed_value(
-            error,
-            error_ty,
-            payload_address_for_variant(&layout, 1, result.address, cursor)?,
+            payload,
+            payload_ty,
+            payload_address_for_variant(&layout, variant, result.address, cursor)?,
             stack_flags,
             stack_flags,
             scalars,
@@ -1171,7 +1207,7 @@ fn lower_make_result_err(
             cursor,
         )?;
     }
-    write_variant(&layout, 1, result.address, stack_flags, cursor)?;
+    write_variant(&layout, variant, result.address, stack_flags, cursor)?;
     aggregates.insert(id, result);
     Ok(())
 }

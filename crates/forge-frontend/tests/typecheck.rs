@@ -979,6 +979,31 @@ fn result_try_is_resolved_and_requires_compatible_enclosing_result() {
 }
 
 #[test]
+fn compiler_defined_sum_constructors_use_contextual_payload_types() {
+    let output = check(
+        r#"
+        module test.sum_constructors;
+        fn some() -> u32? { return Some(7u32); }
+        fn ok() -> Result[u32, u8] { return Ok(9u32); }
+        fn err() -> Result[u32, u8] { return Err(3u8); }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+
+    let missing_context = check(
+        r#"
+        module test.sum_constructor_context;
+        fn bad() -> void { Ok(9u32); }
+        "#,
+    );
+    assert!(
+        has(&missing_context, "constructor/context"),
+        "{:?}",
+        missing_context.diagnostics
+    );
+}
+
+#[test]
 fn constants_feed_array_lengths_and_enum_values() {
     let output = check(
         r#"

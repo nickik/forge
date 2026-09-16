@@ -5,7 +5,7 @@ use serde::Serialize;
 use crate::{
     ast::{self, ExprKind, PatternKind, Span, StmtKind, TypeKind},
     hir::{DefId, HirDiagnostic, HirModule},
-    resolution::{LocalId, ResolvedName},
+    resolution::{LocalId, ResolvedBuiltinValue, ResolvedName},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -635,8 +635,13 @@ impl<'a, 'd> Lowerer<'a, 'd> {
         if let Some(index) = self.imports.get(name).copied() {
             return ResolvedName::Import(index);
         }
-        if matches!(name, "Some") {
-            return ResolvedName::BuiltinValue;
+        if matches!(name, "Some" | "Ok" | "Err") {
+            return ResolvedName::BuiltinValue(match name {
+                "Some" => ResolvedBuiltinValue::Some,
+                "Ok" => ResolvedBuiltinValue::Ok,
+                "Err" => ResolvedBuiltinValue::Err,
+                _ => unreachable!(),
+            });
         }
         self.diagnostics.push(HirDiagnostic {
             span,

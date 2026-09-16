@@ -1420,6 +1420,7 @@ fn instruction_kind_name(kind: &FirInstructionKind) -> &'static str {
         FirInstructionKind::ResultUnwrapOk { .. } => "result unwrap ok",
         FirInstructionKind::ResultUnwrapErr { .. } => "result unwrap err",
         FirInstructionKind::MakeResultErr { .. } => "make result err",
+        FirInstructionKind::MakeResultOk { .. } => "make result ok",
         FirInstructionKind::OptionIsSome { .. } => "option is some",
         FirInstructionKind::OptionUnwrap { .. } => "option unwrap",
         FirInstructionKind::Poison => "poison",

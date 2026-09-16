@@ -127,6 +127,22 @@ fn result_try_is_explicit_cfg_with_error_return() {
 }
 
 #[test]
+fn explicit_option_and_result_constructors_reach_fir() {
+    let output = lower(
+        r#"
+        module test.fir_sum_constructors;
+        fn some() -> u32? { return Some(7u32); }
+        fn ok() -> Result[u32, u8] { return Ok(9u32); }
+        fn err() -> Result[u32, u8] { return Err(3u8); }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeSome { .. })));
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeResultOk { .. })));
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeResultErr { .. })));
+}
+
+#[test]
 fn optional_promotion_is_retained_and_lowered_to_some() {
     let parsed = parse_source(
         r#"
