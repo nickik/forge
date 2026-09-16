@@ -120,7 +120,11 @@ pub struct PreparedModule {
 }
 
 impl PreparedModule {
-    pub fn functions(&self) -> impl Iterator<Item = (&DefId, &Function)> {
+    pub const fn target(&self) -> CraneliftTarget {
+        self.functions.target()
+    }
+
+    pub fn functions(&self) -> &BTreeMap<DefId, Function> {
         self.functions.functions()
     }
 
@@ -128,12 +132,24 @@ impl PreparedModule {
         self.functions.function(owner)
     }
 
-    pub fn globals(&self) -> impl Iterator<Item = (&DefId, &PreparedGlobal)> {
+    pub fn prepared_globals(&self) -> &PreparedGlobals {
+        &self.globals
+    }
+
+    pub fn globals(&self) -> &BTreeMap<DefId, PreparedGlobal> {
         self.globals.globals()
     }
 
     pub fn global(&self, owner: DefId) -> Option<&PreparedGlobal> {
         self.globals.global(owner)
+    }
+
+    pub fn global_init_order(&self) -> &[DefId] {
+        self.globals.init_order()
+    }
+
+    pub fn runtime_initializer_functions(&self) -> &BTreeMap<DefId, DefId> {
+        &self.runtime_initializer_functions
     }
 
     pub fn runtime_initializer_function(&self, global: DefId) -> Option<DefId> {
