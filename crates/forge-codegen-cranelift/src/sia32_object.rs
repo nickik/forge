@@ -123,13 +123,6 @@ impl Sia32Object {
             Sia32Section::Data => &self.data,
         }
     }
-    fn section_mut(&mut self, section: Sia32Section) -> &mut Vec<u8> {
-        match section {
-            Sia32Section::Text => &mut self.text,
-            Sia32Section::Rodata => &mut self.rodata,
-            Sia32Section::Data => &mut self.data,
-        }
-    }
     pub fn symbols(&self) -> &BTreeMap<String, Sia32Symbol> {
         &self.symbols
     }
