@@ -1,0 +1,75 @@
+name: C14e constructors materialize v5
+
+on:
+  push:
+    branches:
+      - agent/c14e-constructors-helper
+    paths:
+      - .github/workflows/c14e-constructors-materialize-v5.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/c14e-constructors-helper
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Apply constructor completion
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/c14e-constructors-materialize-v3.yml').read_text()
+          begin = workflow.index("          from pathlib import Path\n", workflow.index("python3 - <<'PY'"))
+          end = workflow.index("\n          PY\n", begin)
+          script = textwrap.dedent(workflow[begin:end])
+          old = 'path.write_text(text.replace(old, new))'
+          new = 'path.write_text(text.replace(old, new, 1))'
+          if script.count(old) != 1:
+              raise SystemExit(f'expected one generic replacement helper, found {script.count(old)}')
+          script = script.replace(old, new)
+          exec(compile(script, 'c14e-constructor-materializer', 'exec'), {})
+
+          path = Path('crates/forge-codegen-cranelift/src/backend.rs')
+          text = path.read_text()
+          old = '            FirInstructionKind::MakeResultErr { error } => available.contains(error),'
+          new = '''            FirInstructionKind::MakeResultOk { value } => available.contains(value),
+            FirInstructionKind::MakeResultErr { error } => available.contains(error),'''
+          if text.count(old) != 1:
+              raise SystemExit(f'backend readiness anchor count={text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          cargo fmt --all
+      - name: Verify constructor completion
+        shell: bash
+        run: |
+          cargo check --workspace --locked
+          cargo test -p forge-frontend --locked -- --nocapture
+          cargo build -p forge-compiler --bin forgec --locked
+          target/debug/forgec --library core=lib/core.fg --run examples/c14-native-spec/run/constructors.fg
+      - name: Commit semantic blobs
+        shell: bash
+        run: |
+          git config user.name "Nick Zbinden"
+          git config user.email "niklaus.zbinden@gmail.com"
+          git add \
+            crates/forge-frontend/src/resolution_v1.rs \
+            crates/forge-frontend/src/body_hir_v1.rs \
+            crates/forge-frontend/src/typecheck_v1.rs \
+            crates/forge-frontend/src/fir_v1.rs \
+            crates/forge-codegen-cranelift/src/backend.rs \
+            crates/forge-codegen-cranelift/src/function_c9c_impl.rs \
+            crates/forge-codegen-cranelift/src/function.rs \
+            examples/c14-native-spec/run/constructors.fg
+          git commit -m "C14e: add native option/result constructors [skip ci]"
+          git push origin HEAD:agent/c14e-constructors-helper
