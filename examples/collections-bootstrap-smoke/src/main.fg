@@ -2,6 +2,19 @@ module examples.collections_bootstrap_smoke;
 
 import forge_collections_bootstrap;
 
+fn require_nonzero(list: usize, index: usize) -> Result[u8, u8] {
+    val value: u8 = forge_collections_bootstrap.list_u8_get(list, index);
+    if (value == 0u8) {
+        return Err(1u8);
+    }
+    return Ok(value);
+}
+
+fn increment_required(list: usize, index: usize) -> Result[u8, u8] {
+    val value: u8 = require_nonzero(list, index)?;
+    return Ok(value + 1u8);
+}
+
 fn main() -> i32 {
     val bytes: usize = forge_collections_bootstrap.list_u8_create(0);
     forge_collections_bootstrap.list_u8_push(bytes, 1);
@@ -9,6 +22,8 @@ fn main() -> i32 {
     forge_collections_bootstrap.list_u8_push(bytes, 3);
     forge_collections_bootstrap.list_u8_push(bytes, 4);
     forge_collections_bootstrap.list_u8_push(bytes, 5);
+    val result: Result[u8, u8] = increment_required(bytes, 2);
+    if (match (result) { Ok(value) => value != 4u8, Err(_) => true, }) { return 32; }
     if (forge_collections_bootstrap.list_u8_len(bytes) != 5) { return 1; }
     if (forge_collections_bootstrap.list_u8_capacity(bytes) < 5) { return 2; }
     if (forge_collections_bootstrap.list_u8_get(bytes, 2) != 3) { return 3; }

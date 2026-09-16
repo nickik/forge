@@ -2061,3 +2061,53 @@ fn result_constructors_and_patterns_require_a_compatible_result_context() {
         invalid_payloadless.diagnostics
     );
 }
+
+#[test]
+fn nested_payloadless_results_match_and_propagate_with_precise_errors() {
+    let valid = check(
+        r#"
+        module test.result_nested_payloadless;
+        fn source(ok: bool) -> Result[void, void] {
+            if (ok) { return Ok(); }
+            return Err();
+        }
+        fn nested(ok: bool) -> Result[Result[void, u8], void] {
+            source(ok)?;
+            return Ok(Ok());
+        }
+        fn inspect(value: Result[Result[void, u8], void]) -> u8 {
+            return match (value) {
+                Ok(Ok(_)) => 1u8,
+                Ok(Err(_)) => 2u8,
+                Ok(_) => 4u8,
+                Err(_) => 3u8,
+            };
+        }
+        "#,
+    );
+    assert!(valid.diagnostics.is_empty(), "{:?}", valid.diagnostics);
+
+    let invalid = check(
+        r#"
+        module test.result_precise_errors;
+        fn source() -> Result[u8, u16] { return Err(1u16); }
+        fn bad_try() -> Result[u8, u8] { return source()?; }
+        fn bad_arms(value: bool) -> Result[u8, u8] {
+            return match (value) { true => Ok(1u8), false => Err(1u16), };
+        }
+        "#,
+    );
+    let propagation = invalid
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "try/error-type")
+        .expect("incompatible propagation diagnostic");
+    assert!(propagation.span.start < propagation.span.end);
+    assert!(propagation.message.contains("cannot propagate error type"));
+    let arm = invalid
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "constructor/payload-type")
+        .expect("incompatible Result arm diagnostic");
+    assert!(arm.span.start < arm.span.end);
+}

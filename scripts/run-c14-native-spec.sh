@@ -51,6 +51,23 @@ if ! grep -q "capture-free anonymous function values" "$closure_error"; then
 fi
 rm -f "$closure_error"
 
+echo "native-spec expected rejection: incompatible Result propagation"
+result_error="$(mktemp)"
+if "$FORGEC" "${common[@]}" --run \
+  "$ROOT/examples/c14-native-spec/reject_result_try_error.fg" \
+  >/dev/null 2>"$result_error"; then
+  echo "incompatible Result propagation unexpectedly succeeded" >&2
+  rm -f "$result_error"
+  exit 1
+fi
+if ! grep -q "try/error-type" "$result_error"; then
+  echo "incompatible Result propagation failed for the wrong reason:" >&2
+  cat "$result_error" >&2
+  rm -f "$result_error"
+  exit 1
+fi
+rm -f "$result_error"
+
 echo "native-spec: Game of Life"
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT

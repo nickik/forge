@@ -108,6 +108,9 @@ fn is_memory_value(ty: &Ty) -> bool {
         Ty::Bool
             | Ty::Byte
             | Ty::Int { .. }
+            | Ty::Float { .. }
+            | Ty::Char
+            | Ty::Duration
             | Ty::Pointer { .. }
             | Ty::Reference { .. }
             | Ty::Function { .. }
@@ -1226,6 +1229,13 @@ fn materialize_result(
     types: &TypeLowering<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
+    // `void` occupies no storage and has no CLIF value representation. It can
+    // occur when a payloadless Option/Result pattern projects `_`; preserving
+    // that projection as a no-op keeps the aggregate's discriminant path real
+    // without attempting to materialize a nonexistent scalar.
+    if *ty == Ty::Void {
+        return Ok(());
+    }
     if is_memory_value(ty) {
         let result = new_aggregate(ty, layouts, types, cursor)?;
         let size = layouts.layout_of(ty).map_err(layout_error)?.size;
@@ -1259,6 +1269,9 @@ fn store_typed_value(
     layouts: &mut LayoutEngine<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
+    if *ty == Ty::Void {
+        return Ok(());
+    }
     if is_memory_value(ty) {
         let source = aggregate(aggregates, id)?;
         if &source.ty != ty {
