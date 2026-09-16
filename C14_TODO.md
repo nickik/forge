@@ -20,6 +20,7 @@ C14 must mechanically reconcile the syntax clarification back into the main lang
 - `val` is immutable and `var` is mutable; every binding has an initializer.
 - assignment is a statement; compound assignment is absent in v1.
 - no `null`, user generics, implicit numeric promotion, `switch`, C ABI syntax, or C varargs.
+- channels, `send`/`recv`, and `select`/`timeout` are future work and are not Forge v1 or C14 requirements.
 - checked arithmetic/indexing remains the default.
 - raw pointer operations remain explicit and unsafe.
 - capture-free closures omit `[]`; captured closures use an explicit capture list.
@@ -32,7 +33,7 @@ C14 must mechanically reconcile the syntax clarification back into the main lang
 ## C14a — one executable Forge v1 specification
 
 - [ ] reconcile every stale Forge example in `docs/forge-v1-spec.md` with `docs/forge-v1-syntax-decisions.md`;
-- [ ] reconcile compatibility/build documentation that still describes deferred v1 syntax such as `extern "C"`;
+- [ ] reconcile compatibility/build documentation that still describes deferred v1 syntax such as `extern "C"`, channels, and `select`;
 - [ ] distinguish intentionally invalid examples from valid Forge examples unambiguously;
 - [ ] add a spec-example corpus that maps valid language examples to parse/check/run acceptance cases;
 - [ ] ensure every complete Forge program presented as valid by the v1 spec parses and checks with `forgec`;
@@ -51,9 +52,11 @@ Promote the complete accepted v1 surface through parser, HIR, type checking and 
 - [ ] `Option`, `Result`, `?`, qualified variants and constructors;
 - [ ] complete v1 `match` semantics including exhaustiveness/unreachable checking, ranges, OR/as patterns, destructuring and guards;
 - [ ] closures and capture rules supported by v1;
-- [ ] `nfn`, context/select/agent/thread language surfaces that are normative in v1;
+- [ ] `nfn`, context/agent/thread language surfaces that are normative in v1;
 - [ ] generic structured metadata/readers where the spec requires preservation/validation;
 - [ ] every syntax-negative and semantic-negative conformance case remains rejected for the specified reason.
+
+Channels and selectors are intentionally excluded from this milestone. Existing parser/HIR/FIR scaffolding for them may remain dormant but does not count as a v1 requirement.
 
 ## C14c — full native execution compatibility
 
@@ -68,6 +71,8 @@ Every v1 construct with runtime semantics must lower through FIR/ABI/Cranelift a
 - [ ] run Game of Life unchanged with exact expected output;
 - [ ] run CKV through the production compiler and hosted providers;
 - [ ] keep CForge differential coverage for cases both implementations support.
+
+Native channel/select runtime support is not required for C14.
 
 ## C14d — complete current `forge` build-system support
 
@@ -101,9 +106,9 @@ The manifest semantics already documented by the repository must work with `forg
 The C14 gate includes, at minimum:
 
 1. formatting, workspace check/tests and Clippy;
-2. complete parser/syntax-negative/semantic-negative conformance;
+2. complete parser/syntax-negative/semantic-negative conformance for the v1 surface;
 3. spec-example parse/check/run suite;
-4. native executable conformance for every runtime language family;
+4. native executable conformance for every v1 runtime language family;
 5. hosted provider integration including process args, time, filesystem and locking;
 6. Game of Life expected-output comparison;
 7. collections bootstrap native smoke;
@@ -112,9 +117,12 @@ The C14 gate includes, at minimum:
 10. CForge differential lane for shared cases;
 11. current Cosmic native semantic suite.
 
+Channel/select execution is explicitly outside this gate.
+
 ## Risks and decisions
 
 - The main v1 spec contains older examples that conflict with the later normative syntax clarification. C14 follows the clarification, then removes the contradiction from the main spec before declaring language compatibility complete.
+- Channels and selectors were previously described as if normative. They are now explicitly future work; retained compiler experiments do not expand the v1 compatibility surface.
 - Parse acceptance is not language compatibility. A construct is complete only when its required static semantics and runtime semantics are covered at the appropriate layer.
 - CForge behavior is an oracle only where it agrees with the normative v1 documents; CForge does not override the specification.
 - Platform-specific host effects remain providers. Portable Forge libraries must not acquire hidden libc/OS dependencies.
@@ -122,4 +130,4 @@ The C14 gate includes, at minimum:
 
 ## Completion gate
 
-C14 is complete only when the production Rust Forge toolchain can be used as the normal implementation for the current language and package ecosystem: the authoritative v1 examples are accepted with their documented semantics, all executable v1 feature families run natively, all existing applicable Forge/CForge examples run through `forgec`, the current `forge.fdn` build-system contract works end to end, and the current hosted Cosmic semantic corpus no longer depends on CForge for normal execution. CForge remains as an independent differential reference implementation.
+C14 is complete only when the production Rust Forge toolchain can be used as the normal implementation for the current Forge v1 language and package ecosystem: the authoritative v1 examples are accepted with their documented semantics, all executable v1 feature families run natively, all existing applicable Forge/CForge examples run through `forgec`, the current `forge.fdn` build-system contract works end to end, and the current hosted Cosmic semantic corpus no longer depends on CForge for normal execution. Deferred channel/select functionality is not part of this completion gate. CForge remains as an independent differential reference implementation.
