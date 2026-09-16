@@ -1,0 +1,13 @@
+module examples.c14.defer_runtime;
+
+fn touch(value: &mut i32) {
+    defer { *value = *value + 4; }
+    *value = *value + 1;
+}
+
+fn main() -> i32 {
+    var value: i32 = 1;
+    touch(&mut value);
+    if (value == 6) { return 0; }
+    return 1;
+}

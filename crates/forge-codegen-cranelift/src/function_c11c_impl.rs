@@ -1,6 +1,7 @@
 mod implementation {
     include!("function_c9c_impl.rs");
     include!("function_c9d_extension.rs");
+    include!("function_c14_pointer.rs");
     include!("function_c11c_extension.rs");
     include!("function_c11d_extension.rs");
     include!("function_c14_closure.rs");

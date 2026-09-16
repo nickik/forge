@@ -1,0 +1,23 @@
+module examples.c14.layout_abi;
+
+struct Big {
+    a: u64;
+    b: u64;
+    c: u64;
+    d: u64;
+    e: u64;
+}
+
+fn make(seed: u64) -> Big {
+    return Big{a: seed, b: seed + 1u64, c: seed + 2u64, d: seed + 3u64, e: seed + 4u64};
+}
+
+fn sum(value: Big) -> u64 {
+    return value.a + value.b + value.c + value.d + value.e;
+}
+
+fn main() -> i32 {
+    val value: Big = make(10u64);
+    if (sum(value) == 60u64) { return 0; }
+    return 1;
+}

@@ -1,0 +1,16 @@
+module examples.c14.option;
+
+fn read(value: u32?) -> u32 {
+    return match (value) {
+        Some(x) when x > 10u32 => x + 1u32,
+        Some(x) => x,
+        None => 0u32,
+    };
+}
+
+fn main() -> i32 {
+    val present: u32? = 12u32;
+    val missing: u32? = None;
+    if (read(present) == 13u32 && read(missing) == 0u32) { return 0; }
+    return 1;
+}

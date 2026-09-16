@@ -1,0 +1,16 @@
+module examples.c14.unsafe_raw;
+
+type WordPtr = *u32;
+
+fn advance(address: usize) -> usize {
+    unsafe {
+        val pointer: WordPtr = WordPtr(address);
+        val next: WordPtr = pointer + 2usize;
+        return usize(next);
+    }
+}
+
+fn main() -> i32 {
+    if (advance(4096usize) == 4104usize) { return 0; }
+    return 1;
+}

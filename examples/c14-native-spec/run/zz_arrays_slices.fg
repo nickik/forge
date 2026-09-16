@@ -1,0 +1,10 @@
+module examples.c14.arrays_slices;
+
+fn sum4(values: u32[]) -> u32 {
+    return values[0] + values[1] + values[2] + values[3];
+}
+
+fn main() -> i32 {
+    val implementation: fn(u32[]) -> u32 = sum4;
+    return 0;
+}

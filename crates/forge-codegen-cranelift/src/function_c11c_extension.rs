@@ -148,6 +148,24 @@ fn lower_c11c_instruction(
         );
     }
 
+    if let FirInstructionKind::PointerConvert {
+        value,
+        target,
+        operation: _,
+        provenance: _,
+    } = &instruction.kind
+    {
+        return lower_c14_pointer_convert(
+            fir,
+            instruction,
+            *value,
+            target,
+            scalars,
+            types,
+            cursor,
+        );
+    }
+
     if lower_c14_projection_instruction(
         fir,
         definitions,
@@ -178,6 +196,56 @@ fn lower_c11c_instruction(
         layouts,
         cursor,
     )
+}
+
+fn lower_c14_pointer_convert(
+    fir: &FirFunction,
+    instruction: &FirInstruction,
+    input: FirValueId,
+    target: &Ty,
+    scalars: &mut BTreeMap<FirValueId, Value>,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<(), BackendError> {
+    let result = instruction
+        .result
+        .ok_or_else(|| shape("pointer convert has no result"))?;
+    let result_ty = value_type(fir, result)?;
+    if result_ty != target {
+        return Err(shape("pointer convert target differs from result type"));
+    }
+
+    let source_ty = value_type(fir, input)?;
+    let source = scalar(scalars, input)?;
+    let source_clif = cursor.func.dfg.value_type(source);
+    let target_clif = types.value_type(target)?;
+
+    let value = match (source_ty, target) {
+        (Ty::Pointer { .. }, Ty::Pointer { .. }) => {
+            if source_clif != target_clif {
+                return Err(shape("pointer reinterpretation changed pointer width"));
+            }
+            source
+        }
+        (Ty::Pointer { .. }, Ty::Byte | Ty::Int { .. }) => {
+            match source_clif.bits().cmp(&target_clif.bits()) {
+                std::cmp::Ordering::Equal => source,
+                std::cmp::Ordering::Greater => cursor.ins().ireduce(target_clif, source),
+                std::cmp::Ordering::Less => cursor.ins().uextend(target_clif, source),
+            }
+        }
+        (Ty::Byte | Ty::Int { .. }, Ty::Pointer { .. }) => {
+            normalize_integer_to_type(source_ty, source, target_clif, types, cursor)?
+        }
+        _ => {
+            return Err(shape(format!(
+                "invalid pointer conversion from {source_ty:?} to {target:?}"
+            )))
+        }
+    };
+
+    scalars.insert(result, value);
+    Ok(())
 }
 
 /// C14 completes the frontend's existing auto-dereference rule for field and

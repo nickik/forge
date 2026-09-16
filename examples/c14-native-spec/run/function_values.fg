@@ -1,0 +1,20 @@
+module examples.c14.function_values;
+
+fn add1(x: u32) -> u32 { return x + 1u32; }
+fn twice(x: u32) -> u32 { return x * 2u32; }
+
+fn apply(op: fn(u32) -> u32, x: u32) -> u32 {
+    return op(x);
+}
+
+fn choose(first: bool) -> fn(u32) -> u32 {
+    if (first) { return add1; }
+    return twice;
+}
+
+fn main() -> i32 {
+    val a: fn(u32) -> u32 = add1;
+    val b: fn(u32) -> u32 = choose(false);
+    if (apply(a, 9u32) == 10u32 && b(7u32) == 14u32) { return 0; }
+    return 1;
+}

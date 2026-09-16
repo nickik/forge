@@ -19,6 +19,21 @@ done
 echo "native-spec: local captured closures"
 "$FORGEC" "${common[@]}" --run "$ROOT/examples/c14-native-spec/closures.fg"
 
+for source in "$ROOT"/examples/c14-native-spec/run/*.fg; do
+  echo "native-spec: $(basename "$source")"
+  "$FORGEC" "${common[@]}" --run "$source"
+done
+
+for source in \
+  "$ROOT/examples/c14-native-spec/trap_checked_add.fg" \
+  "$ROOT/examples/c14-native-spec/trap_div_zero.fg"; do
+  echo "native-spec expected trap: $(basename "$source")"
+  if "$FORGEC" "${common[@]}" --run "$source" >/dev/null 2>&1; then
+    echo "expected trap unexpectedly succeeded: $source" >&2
+    exit 1
+  fi
+done
+
 echo "native-spec: Game of Life"
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT

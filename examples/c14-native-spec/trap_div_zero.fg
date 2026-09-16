@@ -1,0 +1,7 @@
+module examples.c14.trap_div_zero;
+
+fn main() -> i32 {
+    val zero: u32 = 0u32;
+    val value: u32 = 10u32 / zero;
+    return i32(value);
+}

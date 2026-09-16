@@ -1,0 +1,11 @@
+module examples.c14.overflow_wrap;
+
+@overflow(wrap)
+fn wrapped() -> u8 {
+    return 255u8 + 1u8;
+}
+
+fn main() -> i32 {
+    if (wrapped() == 0u8) { return 0; }
+    return 1;
+}

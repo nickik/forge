@@ -1,0 +1,21 @@
+module examples.c14.tagged_match;
+
+tagged Token {
+    Number { value: u32; },
+    Plus,
+}
+
+fn decode(token: Token) -> u32 {
+    return match (token) {
+        Token::Number{value} when value > 40u32 => value + 1u32,
+        Token::Number{value} => value,
+        Token::Plus => 0u32,
+    };
+}
+
+fn main() -> i32 {
+    val number: Token = Token::Number{value: 41u32};
+    val plus: Token = Token::Plus;
+    if (decode(number) == 42u32 && decode(plus) == 0u32) { return 0; }
+    return 1;
+}
