@@ -1,0 +1,25 @@
+module examples.c14.array_aggregate_execution;
+
+fn reverse4(values: [u32; 4]) -> [u32; 4] {
+    return [values[3], values[2], values[1], values[0]];
+}
+
+fn bump_middle(values: &mut [u32; 4]) -> u32 {
+    (*values)[1] = (*values)[1] + 10;
+    (*values)[2] = (*values)[2] + 20;
+    return (*values)[0] + (*values)[1] + (*values)[2] + (*values)[3];
+}
+
+fn main() -> i32 {
+    val source: [u32; 4] = [1, 2, 3, 4];
+    var reversed: [u32; 4] = reverse4(source);
+
+    val before: u32 = reversed[0] + reversed[1] + reversed[2] + reversed[3];
+    val after: u32 = bump_middle(&mut reversed);
+
+    if (before == 10 && after == 40 && reversed[0] == 4 && reversed[1] == 13 && reversed[2] == 22 && reversed[3] == 1) {
+        return 0;
+    } else {
+        return 41;
+    }
+}
