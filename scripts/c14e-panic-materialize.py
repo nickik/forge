@@ -8,6 +8,7 @@ anchor = """// core defines the information and may raise panic paths, but does 
 addition = anchor + """
 
 nfn __forge_panic(info: &PanicInfo) -> never {
+    return __forge_panic(:info=info);
 }
 
 pub fn panic(message: str) -> never {
