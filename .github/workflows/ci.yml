@@ -2,6 +2,7 @@ name: ci
 
 on:
   push:
+    branches-ignore: [agent/c14e-panic-helper]
   pull_request:
 
 concurrency:
