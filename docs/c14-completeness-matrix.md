@@ -1,0 +1,74 @@
+# C14 Forge v1 completeness matrix
+
+Status at branch `agent/c14-full-language-compatibility`. This is a living audit of the
+normative surface in `forge-v1-spec.md`, as corrected by
+`forge-v1-syntax-decisions.md`.
+
+Legend:
+
+1. fully implemented and executable
+2. frontend-only
+3. FIR exists; native lowering incomplete
+4. native lowering exists; executable coverage incomplete
+5. partial or semantic mismatch
+6. intentionally outside C14
+7. stale/non-normative syntax
+
+| Language family | Status | Evidence / remaining work |
+| --- | ---: | --- |
+| Modules, imports, visibility | 1 | Parser, resolver, multi-library compiler and build tests. |
+| `val`, `var`, `const`, assignment | 1 | Typecheck/FIR/native integer corpus; definite initialization still needs a dedicated whole-CFG audit. |
+| Integer, bool, byte scalars | 1 | Checked/wrapping arithmetic, comparisons, shifts, conversions and ABI tests. |
+| `char` | 1 | Native constants, locals, comparison, argument and return fixture. |
+| `duration` | 4 | Layout and scalar representation exist; reader/type/FIR tests exist. Add executable argument/return/load/store coverage. |
+| `f32`, `f64` | 4 | Native scalar constants, arithmetic, negation, comparisons, integer-to-float conversion, and AArch64 object lowering are implemented; executable ARM64 and full ABI coverage remain. |
+| Structs and enums | 1 | Construction, projection, layout, ABI and matching tests. |
+| Tagged unions | 1 | Construction, payload extraction, nested match and ABI basics execute; expand mixed-payload ABI coverage. |
+| `Option[T]` | 1 | `None`, explicit `Some(value)`, implicit promotion, patterns and native layout/lowering. |
+| `Result[T,E]` | 1 | Canonical `Ok=0`/`Err=1` layout semantics, constructors, patterns, `?`, FIR discriminant/payload lowering and AArch64 object emission are covered. Hosted native execution remains target-gated. |
+| Arrays | 1 | Construction, indexing, bounds, aggregate elements and ABI execute. |
+| Slices | 4 | Pointer/length ABI, indexing and sequence-rest lowering exist. Mutable, aggregate-contained and return-value execution need expansion. |
+| References | 1 | Shared/mutable local rules, dereference, projections and ABI covered. |
+| Raw pointers and volatile | 1 | Unsafe authorization, casts, arithmetic, dereference, volatile load/store and barriers covered on AArch64/RISC-V structurally. |
+| Distinct types and aliases | 4 | Static semantics/layout exist; add native conversion and ABI fixtures. |
+| Bitstructs | 3 | Normative layout, typecheck and FIR read/write/checks exist; native lowering audit is still required. |
+| `if`, `while`, C-style `for` | 1 | Typed CFG/FIR and executable corpus. |
+| value `for` iteration | 5 | Parsed and represented; protocol/static/native completion remains to be proven. |
+| `break`, `continue` | 4 | FIR cleanup paths exist; add nested-loop/defer executable matrix. |
+| `match` | 4 | Bool, scalar, enum, tagged, Option, Result, nested projections, guards, OR/as, ranges and sequence-rest covered. Map-protocol native execution remains. |
+| Functions and calls | 1 | Direct/indirect, named/default, method calls, scalar/aggregate ABI and non-main entry covered. |
+| Function pointers | 1 | Named functions cross call boundaries; anonymous closure coercion is rejected. |
+| Local captured closures | 1 | Explicit capture lists and local calls execute. Escaping/cross-function closure ABI is intentionally not part of C14. |
+| `defer` | 4 | Normal and return cleanup lower/execute. Early return, loop exits, `?`, ordering and illegal cleanup-body control flow need a complete matrix. |
+| Globals | 4 | Static data, relocations, loads and ordered runtime initialization exist. Native mutable stores/address-taking and aggregate/pointer fixtures need expansion. |
+| Overflow and traps | 1 | Checked/wrapping add/sub/mul, div/rem, shifts and divide-by-zero coverage exists. Narrowing policy needs matrix documentation. |
+| FDN readers and metadata | 4 | Parse/preservation and duration boundary tests exist; executable behavior is provider/tool-specific. |
+| Hosted providers/build system | 4 | Build/check/run/test, entries and hosted providers exist. Full current Cosmic/CKV acceptance remains. |
+| Freestanding `:kernel`, `:std false` | 3 | Manifest/compiler path exists; C14 still needs symbol/section/relocation and hosted-leak acceptance. |
+| `select` / channels | 6 | Explicitly deferred by the C14 acceptance request. Existing frontend/FIR scaffolding is not completion. |
+| SIA machine-code backend | 6 | C15. |
+| Tail calls | 6 | Not a C14 requirement. |
+| `switch`, `internal`, compound assignment | 7 | Reserved/rejected by the syntax decisions. |
+| Pattern conjunction/negation | 7 | Removed from normative v1. |
+| `extern "C"`, C varargs | 7 | Deferred from v1 by the syntax decisions. |
+| User-defined generics | 7 | Not Forge v1. |
+
+## Mechanical incomplete-code audit
+
+- Backend `UnsupportedInstruction` boundaries are concentrated around genuine FIR operations;
+  each must be matched against the table before removal.
+- Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not
+  prove instruction lowering or ABI execution.
+- `LoadGlobal` has real object/relocation coverage; comments describing it as future work must be
+  reviewed for staleness.
+- `select` occurrences are intentionally retained but excluded from C14 completion.
+- Generic `panic!` occurrences in compiler tests/runtime generation are not automatically language
+  gaps; production fallible paths remain subject to the Rust-quality audit.
+
+## Next acceptance slices
+
+1. Finish Result patterns plus native constructor/argument/return/aggregate execution.
+2. Implement native `f32`/`f64` operations and ABI coverage without integer emulation.
+3. Complete duration, slices, bitstructs, globals and defer executable matrices.
+4. Validate current Cosmic through M18 or later.
+5. Emit and inspect a real freestanding Cosmic kernel object before default cutover.

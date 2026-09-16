@@ -1,0 +1,23 @@
+module examples.c14.result_constructors;
+
+struct Pair {
+    left: u32;
+    right: u32;
+}
+
+fn pass(value: Result[u32, u8]) -> Result[u32, u8] {
+    return value;
+}
+
+fn propagate(value: Result[u32, u8]) -> Result[u32, u8] {
+    val payload: u32 = pass(value)?;
+    return Ok(payload + 1u32);
+}
+
+fn main() -> i32 {
+    val present: u32? = Some(7u32);
+    val success: Result[u32, u8] = propagate(Ok(9u32));
+    val failure: Result[u32, u8] = propagate(Err(3u8));
+    val aggregate: Pair = Pair{left: 1u32, right: 2u32};
+    return 0i32;
+}

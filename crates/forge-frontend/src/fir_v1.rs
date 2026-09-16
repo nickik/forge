@@ -9,7 +9,7 @@ use crate::{
         HirPattern, HirPatternKind, HirStmt, HirStmtKind,
     },
     hir::{DefId, MetadataTableExt, MetadataTarget},
-    resolution::{LocalId, ResolvedName},
+    resolution::{LocalId, ResolvedBuiltinValue, ResolvedName},
     typecheck::{
         CaptureMode, ConstValue, ContextSlot, IntWidth, MatchCondition, MatchProjection,
         MatchScalar, MatchTest, ResolvedCallArgument, ResolvedReceiver, RuntimeOperationId, Ty,
@@ -279,6 +279,9 @@ pub enum FirInstructionKind {
     },
     MakeResultErr {
         error: FirValueId,
+    },
+    MakeResultOk {
+        value: FirValueId,
     },
     OptionIsSome {
         value: FirValueId,
@@ -1367,6 +1370,53 @@ impl<'a> FunctionLowerer<'a> {
             TypedExprKind::ResolvedBitField { access, .. } => {
                 self.lower_bitfield_read(expr, access, result_ty)
             }
+            TypedExprKind::BuiltinConstructor { constructor, .. } => {
+                let HirExprKind::Call { args, .. } = &expr.kind else {
+                    self.diagnostic(
+                        expr.span,
+                        "fir/constructor-shape",
+                        "resolved constructor is not a call",
+                    );
+                    return self.poison(expr.span, result_ty);
+                };
+                let value = if let Some(value) = first_positional(args) {
+                    self.lower_expr(value)
+                } else if args.is_empty()
+                    && match (constructor, &result_ty) {
+                        (ResolvedBuiltinValue::Ok, Ty::Result { ok, .. }) => **ok == Ty::Void,
+                        (ResolvedBuiltinValue::Err, Ty::Result { error, .. }) => {
+                            **error == Ty::Void
+                        }
+                        _ => false,
+                    }
+                {
+                    self.emit_value(expr.span, Ty::Void, FirInstructionKind::Unit)
+                } else {
+                    self.diagnostic(
+                        expr.span,
+                        "fir/constructor-arguments",
+                        "resolved constructor lacks a positional payload",
+                    );
+                    return self.poison(expr.span, result_ty);
+                };
+                match constructor {
+                    ResolvedBuiltinValue::Some => self.emit_value(
+                        expr.span,
+                        result_ty,
+                        FirInstructionKind::MakeSome { value },
+                    ),
+                    ResolvedBuiltinValue::Ok => self.emit_value(
+                        expr.span,
+                        result_ty,
+                        FirInstructionKind::MakeResultOk { value },
+                    ),
+                    ResolvedBuiltinValue::Err => self.emit_value(
+                        expr.span,
+                        result_ty,
+                        FirInstructionKind::MakeResultErr { error: value },
+                    ),
+                }
+            }
             TypedExprKind::UnsafeOperation {
                 operation,
                 provenance,
@@ -2263,6 +2313,7 @@ impl<'a> FunctionLowerer<'a> {
                     .last()
                     .map(|projection| match projection {
                         MatchProjection::OptionPayload { ty }
+                        | MatchProjection::ResultPayload { ty, .. }
                         | MatchProjection::Field { ty, .. }
                         | MatchProjection::Index { ty, .. }
                         | MatchProjection::Rest { ty, .. }
@@ -2470,6 +2521,20 @@ impl<'a> FunctionLowerer<'a> {
                     },
                 )
             }
+            MatchTest::ResultOk => {
+                self.emit_value(span, Ty::Bool, FirInstructionKind::ResultIsOk { value })
+            }
+            MatchTest::ResultErr => {
+                let ok = self.emit_value(span, Ty::Bool, FirInstructionKind::ResultIsOk { value });
+                self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::Unary {
+                        op: FirUnaryOp::Not,
+                        value: ok,
+                    },
+                )
+            }
             MatchTest::Variant { name } => self.emit_value(
                 span,
                 Ty::Bool,
@@ -2539,6 +2604,15 @@ impl<'a> FunctionLowerer<'a> {
                 MatchProjection::OptionPayload { ty } => {
                     self.emit_value(span, ty.clone(), FirInstructionKind::OptionUnwrap { value })
                 }
+                MatchProjection::ResultPayload { ty, ok } => self.emit_value(
+                    span,
+                    ty.clone(),
+                    if *ok {
+                        FirInstructionKind::ResultUnwrapOk { value }
+                    } else {
+                        FirInstructionKind::ResultUnwrapErr { value }
+                    },
+                ),
                 MatchProjection::Field { name, ty } => self.emit_value(
                     span,
                     ty.clone(),
@@ -3340,7 +3414,9 @@ impl<'a> FunctionLowerer<'a> {
 fn first_bound_local(pattern: &HirPattern) -> Option<LocalId> {
     match &pattern.kind {
         HirPatternKind::Binding { local, .. } | HirPatternKind::As { local, .. } => Some(*local),
-        HirPatternKind::Some { value } => first_bound_local(value),
+        HirPatternKind::Some { value }
+        | HirPatternKind::Ok { value }
+        | HirPatternKind::Err { value } => first_bound_local(value),
         HirPatternKind::Sequence { items, rest } => {
             items.iter().find_map(first_bound_local).or(*rest)
         }

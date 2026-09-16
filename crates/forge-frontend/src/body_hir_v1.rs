@@ -5,7 +5,7 @@ use serde::Serialize;
 use crate::{
     ast::{self, ExprKind, PatternKind, Span, StmtKind, TypeKind},
     hir::{DefId, HirDiagnostic, HirModule},
-    resolution::{LocalId, ResolvedName},
+    resolution::{LocalId, ResolvedBuiltinValue, ResolvedName},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -334,6 +334,12 @@ pub enum HirPatternKind {
     Some {
         value: Box<HirPattern>,
     },
+    Ok {
+        value: Box<HirPattern>,
+    },
+    Err {
+        value: Box<HirPattern>,
+    },
     Struct {
         path: HirTypeRef,
         fields: Vec<HirPatternField>,
@@ -635,8 +641,13 @@ impl<'a, 'd> Lowerer<'a, 'd> {
         if let Some(index) = self.imports.get(name).copied() {
             return ResolvedName::Import(index);
         }
-        if matches!(name, "Some") {
-            return ResolvedName::BuiltinValue;
+        if matches!(name, "Some" | "Ok" | "Err") {
+            return ResolvedName::BuiltinValue(match name {
+                "Some" => ResolvedBuiltinValue::Some,
+                "Ok" => ResolvedBuiltinValue::Ok,
+                "Err" => ResolvedBuiltinValue::Err,
+                _ => unreachable!(),
+            });
         }
         self.diagnostics.push(HirDiagnostic {
             span,
@@ -1152,6 +1163,12 @@ impl<'a, 'd> Lowerer<'a, 'd> {
             PatternKind::Some { value } => HirPatternKind::Some {
                 value: Box::new(self.lower_binding_pattern(value, mutable)),
             },
+            PatternKind::Ok { value } => HirPatternKind::Ok {
+                value: Box::new(self.lower_binding_pattern(value, mutable)),
+            },
+            PatternKind::Err { value } => HirPatternKind::Err {
+                value: Box::new(self.lower_binding_pattern(value, mutable)),
+            },
             PatternKind::Struct { path, fields } => HirPatternKind::Struct {
                 path: self.lower_type_ref(path, pattern.span),
                 fields: fields
@@ -1292,7 +1309,9 @@ fn collect_ast_pattern_names(pattern: &ast::Pattern, out: &mut Vec<String>) {
             }
         }
         PatternKind::Map { entries, .. } => out.extend(entries.iter().map(|e| e.binding.clone())),
-        PatternKind::Some { value } => collect_ast_pattern_names(value, out),
+        PatternKind::Some { value } | PatternKind::Ok { value } | PatternKind::Err { value } => {
+            collect_ast_pattern_names(value, out)
+        }
         PatternKind::As { name, pattern } => {
             out.push(name.clone());
             collect_ast_pattern_names(pattern, out);
@@ -1355,6 +1374,10 @@ fn collect_pattern_local_map(
         (PatternKind::Some { value: a }, HirPatternKind::Some { value: h }) => {
             collect_pattern_local_map(a, h, out)
         }
+        (PatternKind::Ok { value: a }, HirPatternKind::Ok { value: h })
+        | (PatternKind::Err { value: a }, HirPatternKind::Err { value: h }) => {
+            collect_pattern_local_map(a, h, out)
+        }
         (PatternKind::As { name, pattern: a }, HirPatternKind::As { local, pattern: h }) => {
             out.insert(name.clone(), *local);
             collect_pattern_local_map(a, h, out);
@@ -1399,7 +1422,9 @@ fn remap_pattern_locals(pattern: &mut HirPattern, remap: &BTreeMap<LocalId, Loca
                 }
             }
         }
-        HirPatternKind::Some { value } => remap_pattern_locals(value, remap),
+        HirPatternKind::Some { value }
+        | HirPatternKind::Ok { value }
+        | HirPatternKind::Err { value } => remap_pattern_locals(value, remap),
         HirPatternKind::Or { patterns } => {
             for p in patterns {
                 remap_pattern_locals(p, remap);

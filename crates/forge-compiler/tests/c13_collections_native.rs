@@ -1,5 +1,7 @@
+#[cfg(all(target_arch = "aarch64", target_os = "linux"))]
 use std::path::PathBuf;
 
+#[cfg(all(target_arch = "aarch64", target_os = "linux"))]
 use forge_compiler::{run_file_with_libraries, LibraryInput};
 
 #[test]

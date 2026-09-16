@@ -2,6 +2,9 @@
 
 Goal: make the production Rust Forge compiler and `forge` build system the default implementation for the complete current Forge v1 language surface. CForge remains an independent semantic oracle, not the normal runtime. Forge v1 documentation, conformance fixtures, compiler semantics, native execution, standard-library providers and package/build behavior must describe and implement one language.
 
+The live construct-by-construct implementation audit is maintained in
+`docs/c14-completeness-matrix.md`.
+
 ## Normative basis
 
 C14 is governed by:

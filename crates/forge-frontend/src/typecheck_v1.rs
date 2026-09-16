@@ -9,7 +9,7 @@ use crate::{
         HirPatternKind, HirStmt, HirStmtKind, HirType, HirTypeKind, HirTypeRef,
     },
     hir::{DefId, HirModule, MetadataTable},
-    resolution::{LocalId, ResolvedName},
+    resolution::{LocalId, ResolvedBuiltinValue, ResolvedName},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -137,6 +137,8 @@ pub enum MatchTest {
     },
     OptionNone,
     OptionSome,
+    ResultOk,
+    ResultErr,
     Variant {
         name: String,
     },
@@ -155,6 +157,10 @@ pub enum MatchTest {
 pub enum MatchProjection {
     OptionPayload {
         ty: Ty,
+    },
+    ResultPayload {
+        ty: Ty,
+        ok: bool,
     },
     Field {
         name: String,
@@ -395,6 +401,10 @@ pub enum TypedExprKind {
     },
     ResolvedBitField {
         access: TypedBitFieldAccess,
+        hir: HirExpr,
+    },
+    BuiltinConstructor {
+        constructor: ResolvedBuiltinValue,
         hir: HirExpr,
     },
     OptionalPromote {
@@ -698,6 +708,7 @@ fn typed_expr_hir(kind: &TypedExprKind) -> Option<&HirExpr> {
         | TypedExprKind::ResolvedMatch { hir, .. }
         | TypedExprKind::UnsafeOperation { hir, .. }
         | TypedExprKind::ResolvedBitField { hir, .. }
+        | TypedExprKind::BuiltinConstructor { hir, .. }
         | TypedExprKind::OptionalPromote { hir, .. } => Some(hir),
     }
 }
@@ -1739,6 +1750,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         let mut resolved_try: Option<(Ty, Ty)> = None;
         let mut resolved_match: Option<TypedMatchPlan> = None;
         let mut resolved_unsafe: Option<(UnsafeOperationKind, UnsafeProvenance)> = None;
+        let mut resolved_constructor: Option<ResolvedBuiltinValue> = None;
         let mut ty = match &expr.kind {
             HirExprKind::Integer { text } => integer_literal_ty(text),
             HirExprKind::Float { text } => float_literal_ty(text),
@@ -1834,9 +1846,81 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 self.check_binary(expr.span, *op, left, right, expected, &mut resolved_unsafe)
             }
             HirExprKind::Call { callee, args } => {
-                let (result, call) = self.check_call(expr.span, callee, args);
-                resolved_call = call;
-                result
+                let constructor = match &callee.kind {
+                    HirExprKind::Name { reference }
+                        if reference.tail.is_empty()
+                            && matches!(reference.root, ResolvedName::BuiltinValue(_)) =>
+                    {
+                        match reference.root {
+                            ResolvedName::BuiltinValue(constructor) => Some(constructor),
+                            _ => unreachable!(),
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(constructor) = constructor {
+                    let payload = if args.len() == 1 {
+                        match &args[0] {
+                            HirCallArg::Positional { value } => Some(value),
+                            HirCallArg::Named { .. } => None,
+                        }
+                    } else {
+                        None
+                    };
+                    let expected_payload = match (constructor, expected) {
+                        (ResolvedBuiltinValue::Some, Some(Ty::Optional { inner })) => {
+                            Some((**inner).clone())
+                        }
+                        (ResolvedBuiltinValue::Ok, Some(Ty::Result { ok, .. })) => {
+                            Some((**ok).clone())
+                        }
+                        (ResolvedBuiltinValue::Err, Some(Ty::Result { error, .. })) => {
+                            Some((**error).clone())
+                        }
+                        _ => None,
+                    };
+                    let label = match constructor {
+                        ResolvedBuiltinValue::Some => "Some",
+                        ResolvedBuiltinValue::Ok => "Ok",
+                        ResolvedBuiltinValue::Err => "Err",
+                    };
+                    if args.is_empty() && expected_payload == Some(Ty::Void) {
+                        resolved_constructor = Some(constructor);
+                        expected.expect("constructor expected type").clone()
+                    } else if payload.is_none() {
+                        self.diagnostic(
+                            expr.span,
+                            "constructor/arguments",
+                            format!("{label} requires exactly one positional payload argument"),
+                        );
+                        for arg in args {
+                            self.check_expr(arg_value(arg), None);
+                        }
+                        Ty::Error
+                    } else if let Some(payload_ty) = expected_payload {
+                        let actual = self.check_expr(payload.expect("checked payload"), Some(&payload_ty));
+                        self.require_assignable(
+                            payload.expect("checked payload").span,
+                            &payload_ty,
+                            &actual,
+                            "constructor/payload-type",
+                        );
+                        resolved_constructor = Some(constructor);
+                        expected.expect("constructor expected type").clone()
+                    } else {
+                        self.diagnostic(
+                            expr.span,
+                            "constructor/context",
+                            format!("{label}(...) requires an expected Optional or Result type"),
+                        );
+                        self.check_expr(payload.expect("checked payload"), None);
+                        Ty::Error
+                    }
+                } else {
+                    let (result, call) = self.check_call(expr.span, callee, args);
+                    resolved_call = call;
+                    result
+                }
             }
             HirExprKind::TypeCall { target, args } => {
                 self.check_type_call(expr.span, target, args, &mut resolved_unsafe)
@@ -2118,6 +2202,11 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             TypedExprKind::ResolvedTry {
                 source_error,
                 target_error,
+                hir: expr.clone(),
+            }
+        } else if let Some(constructor) = resolved_constructor {
+            TypedExprKind::BuiltinConstructor {
+                constructor,
                 hir: expr.clone(),
             }
         } else if let Some(call) = resolved_call {
@@ -2476,7 +2565,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 }
             }
             ResolvedName::Error => Ty::Error,
-            ResolvedName::Import(_) | ResolvedName::BuiltinType | ResolvedName::BuiltinValue => {
+            ResolvedName::Import(_) | ResolvedName::BuiltinType | ResolvedName::BuiltinValue(_) => {
                 Ty::Unknown
             }
         }
@@ -2935,7 +3024,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 self.mutable_locals.insert(*local);
                 self.mark_pattern_mutable(pattern);
             }
-            HirPatternKind::Some { value } => self.mark_pattern_mutable(value),
+            HirPatternKind::Some { value } | HirPatternKind::Ok { value } | HirPatternKind::Err { value } => self.mark_pattern_mutable(value),
             HirPatternKind::Sequence { items, rest } => {
                 for item in items {
                     self.mark_pattern_mutable(item);
@@ -3076,7 +3165,9 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             | HirPatternKind::Literal { .. }
             | HirPatternKind::Range { .. }
             | HirPatternKind::None { .. }
-            | HirPatternKind::Some { .. } => false,
+            | HirPatternKind::Some { .. }
+            | HirPatternKind::Ok { .. }
+            | HirPatternKind::Err { .. } => false,
         }
     }
 
@@ -3091,6 +3182,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             | Ty::Str
             | Ty::Int { .. }
             | Ty::Optional { .. }
+            | Ty::Result { .. }
             | Ty::Array { .. }
             | Ty::Slice { .. } => true,
             Ty::Nominal(id) => {
@@ -3222,6 +3314,24 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         })
                         .collect(),
                 )
+            }
+            HirPatternKind::Ok { value } | HirPatternKind::Err { value } => {
+                let Ty::Result { ok, error } = ty else { return None; };
+                let (inner, result_test) = match &pattern.kind {
+                    HirPatternKind::Ok { .. } => (ok.as_ref(), MatchTest::ResultOk),
+                    HirPatternKind::Err { .. } => (error.as_ref(), MatchTest::ResultErr),
+                    _ => unreachable!(),
+                };
+                let mut payload = projections.to_vec();
+                payload.push(MatchProjection::ResultPayload {
+                    ty: inner.clone(),
+                    ok: matches!(&pattern.kind, HirPatternKind::Ok { .. }),
+                });
+                let nested = self.plan_match_pattern_at(value, inner, &payload)?;
+                Some(nested.into_iter().map(|alternative| TypedMatchAlternative {
+                    condition: self.match_condition_all(vec![test(result_test.clone()), alternative.condition]),
+                    bindings: alternative.bindings,
+                }).collect())
             }
             HirPatternKind::Struct { path, fields } => {
                 let expected = self.env.ty_from_ref(path);
@@ -3740,6 +3850,8 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     MatchTest::Bool { value } => Some(value.to_string()),
                     MatchTest::OptionNone => Some("None".to_owned()),
                     MatchTest::OptionSome => Some("Some".to_owned()),
+                    MatchTest::ResultOk => Some("Ok".to_owned()),
+                    MatchTest::ResultErr => Some("Err".to_owned()),
                     MatchTest::Variant { name } => Some(name.clone()),
                     MatchTest::ScalarLiteral { .. }
                     | MatchTest::ScalarRange { .. }
@@ -3809,6 +3921,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             Ty::Optional { .. } => {
                 Some(["None".to_owned(), "Some".to_owned()].into_iter().collect())
             }
+            Ty::Result { .. } => Some(["Ok".to_owned(), "Err".to_owned()].into_iter().collect()),
             Ty::Nominal(id) => match self.env.types.get(id).map(|info| &info.kind) {
                 Some(TypeInfoKind::Enum(variants)) => Some(variants.clone()),
                 Some(TypeInfoKind::Tagged(variants)) => Some(variants.keys().cloned().collect()),
@@ -3843,6 +3956,14 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 Ty::Optional { inner } if self.pattern_is_irrefutable(value, inner) => {
                     ["Some".to_owned()].into_iter().collect()
                 }
+                _ => BTreeSet::new(),
+            },
+            HirPatternKind::Ok { value } => match ty {
+                Ty::Result { ok, .. } if self.pattern_is_irrefutable(value, ok) => ["Ok".to_owned()].into_iter().collect(),
+                _ => BTreeSet::new(),
+            },
+            HirPatternKind::Err { value } => match ty {
+                Ty::Result { error, .. } if self.pattern_is_irrefutable(value, error) => ["Err".to_owned()].into_iter().collect(),
                 _ => BTreeSet::new(),
             },
             HirPatternKind::Variant {
@@ -3931,6 +4052,22 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         "pattern/type",
                         format!("Some(...) pattern requires an optional scrutinee, found {ty:?}"),
                     );
+                    self.collect_pattern_bindings(value, &Ty::Unknown, out);
+                }
+            },
+            HirPatternKind::Ok { value } => match ty {
+                Ty::Result { ok, .. } => self.collect_pattern_bindings(value, ok, out),
+                Ty::Unknown | Ty::Error => self.collect_pattern_bindings(value, &Ty::Unknown, out),
+                _ => {
+                    self.diagnostic(pattern.span, "pattern/result-ok", format!("Ok(...) pattern requires a Result scrutinee, found {ty:?}"));
+                    self.collect_pattern_bindings(value, &Ty::Unknown, out);
+                }
+            },
+            HirPatternKind::Err { value } => match ty {
+                Ty::Result { error, .. } => self.collect_pattern_bindings(value, error, out),
+                Ty::Unknown | Ty::Error => self.collect_pattern_bindings(value, &Ty::Unknown, out),
+                _ => {
+                    self.diagnostic(pattern.span, "pattern/result-err", format!("Err(...) pattern requires a Result scrutinee, found {ty:?}"));
                     self.collect_pattern_bindings(value, &Ty::Unknown, out);
                 }
             },

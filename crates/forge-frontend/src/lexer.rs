@@ -100,6 +100,10 @@ pub enum Token {
     None,
     #[token("Some")]
     Some,
+    #[token("Ok")]
+    Ok,
+    #[token("Err")]
+    Err,
     #[token("xor")]
     Xor,
     #[token("Result")]

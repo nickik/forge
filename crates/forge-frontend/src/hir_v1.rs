@@ -406,7 +406,10 @@ fn collect_pattern_bindings(pattern: &ast::Pattern, output: &mut Vec<String>) {
                 output.push(entry.binding.clone());
             }
         }
-        PatternKind::Some { value } | PatternKind::As { pattern: value, .. } => {
+        PatternKind::Some { value }
+        | PatternKind::Ok { value }
+        | PatternKind::Err { value }
+        | PatternKind::As { pattern: value, .. } => {
             collect_pattern_bindings(value, output);
             if let PatternKind::As { name, .. } = &pattern.kind {
                 output.push(name.clone());

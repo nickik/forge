@@ -979,6 +979,31 @@ fn result_try_is_resolved_and_requires_compatible_enclosing_result() {
 }
 
 #[test]
+fn compiler_defined_sum_constructors_use_contextual_payload_types() {
+    let output = check(
+        r#"
+        module test.sum_constructors;
+        fn some() -> u32? { return Some(7u32); }
+        fn ok() -> Result[u32, u8] { return Ok(9u32); }
+        fn err() -> Result[u32, u8] { return Err(3u8); }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+
+    let missing_context = check(
+        r#"
+        module test.sum_constructor_context;
+        fn bad() -> void { Ok(9u32); }
+        "#,
+    );
+    assert!(
+        has(&missing_context, "constructor/context"),
+        "{:?}",
+        missing_context.diagnostics
+    );
+}
+
+#[test]
 fn constants_feed_array_lengths_and_enum_values() {
     let output = check(
         r#"
@@ -1985,4 +2010,54 @@ fn independent_runtime_globals_keep_source_order() {
         .copied()
         .collect::<Vec<_>>();
     assert_eq!(output.global_init_order, sorted);
+}
+
+#[test]
+fn result_constructors_and_patterns_require_a_compatible_result_context() {
+    let nested = check(
+        r#"
+        module test.result_nested;
+        fn nested() -> Result[Result[u8, u16], u32] {
+            return Ok(Err(7u16));
+        }
+        fn inspect(value: Result[u8, u16]) -> u8 {
+            return match (value) { Ok(payload) => payload, Err(_) => 0u8, };
+        }
+        "#,
+    );
+    assert!(nested.diagnostics.is_empty(), "{:?}", nested.diagnostics);
+
+    let invalid = check(
+        r#"
+        module test.result_invalid;
+        fn bad_constructor() -> void { Ok(1u8); }
+        fn bad_pattern(value: u8) -> u8 {
+            return match (value) { Ok(payload) => payload, _ => 0u8, };
+        }
+        fn bad_propagation(value: Result[u8, u16]) -> Result[u8, u8] { return value?; }
+        "#,
+    );
+    assert!(
+        has(&invalid, "constructor/context"),
+        "{:?}",
+        invalid.diagnostics
+    );
+    assert!(
+        has(&invalid, "pattern/result-ok"),
+        "{:?}",
+        invalid.diagnostics
+    );
+    assert!(has(&invalid, "try/error-type"), "{:?}", invalid.diagnostics);
+
+    let invalid_payloadless = check(
+        r#"
+        module test.result_invalid_payloadless;
+        fn bad() -> Result[u8, u8] { return Ok(); }
+        "#,
+    );
+    assert!(
+        has(&invalid_payloadless, "constructor/arguments"),
+        "{:?}",
+        invalid_payloadless.diagnostics
+    );
 }

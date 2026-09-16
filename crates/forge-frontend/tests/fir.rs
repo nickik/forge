@@ -127,6 +127,68 @@ fn result_try_is_explicit_cfg_with_error_return() {
 }
 
 #[test]
+fn explicit_option_and_result_constructors_reach_fir() {
+    let output = lower(
+        r#"
+        module test.fir_sum_constructors;
+        fn some() -> u32? { return Some(7u32); }
+        fn ok() -> Result[u32, u8] { return Ok(9u32); }
+        fn err() -> Result[u32, u8] { return Err(3u8); }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeSome { .. })));
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeResultOk { .. })));
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeResultErr { .. })));
+}
+
+#[test]
+fn result_patterns_lower_discriminant_tests_and_both_payload_projections() {
+    let output = lower(
+        r#"
+        module test.fir_result_match;
+        fn inspect(value: Result[u8, u8]) -> u8 {
+            return match (value) {
+                Ok(payload) => payload,
+                Err(error) => error,
+            };
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(
+        instructions(&output)
+            .filter(|op| matches!(op, FirInstructionKind::ResultIsOk { .. }))
+            .count()
+            >= 2
+    );
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::ResultUnwrapOk { .. })));
+    assert!(
+        instructions(&output).any(|op| matches!(op, FirInstructionKind::ResultUnwrapErr { .. }))
+    );
+}
+
+#[test]
+fn payloadless_result_constructors_lower_through_unit_payloads() {
+    let output = lower(
+        r#"
+        module test.fir_payloadless_result;
+        fn ok() -> Result[void, u8] { return Ok(); }
+        fn err() -> Result[u8, void] { return Err(); }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert_eq!(
+        instructions(&output)
+            .filter(|op| matches!(op, FirInstructionKind::Unit))
+            .count(),
+        2
+    );
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeResultOk { .. })));
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeResultErr { .. })));
+}
+
+#[test]
 fn optional_promotion_is_retained_and_lowered_to_some() {
     let parsed = parse_source(
         r#"

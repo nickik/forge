@@ -1,0 +1,15 @@
+module c14.result_payloadless;
+
+fn success() -> Result[void, u8] {
+    return Ok();
+}
+
+fn failure() -> Result[u8, void] {
+    return Err();
+}
+
+fn main() -> i32 {
+    success();
+    failure();
+    return 0i32;
+}

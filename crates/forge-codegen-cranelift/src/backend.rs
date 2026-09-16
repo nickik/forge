@@ -160,11 +160,14 @@ fn validate_c4_scalar_contract(
                 }
                 FirInstructionKind::Unary {
                     op: forge_fir::FirUnaryOp::Neg,
-                    ..
+                    value,
                 } => {
-                    return Err(BackendError::UnsupportedInstruction {
-                        kind: "integer negation requires explicit FIR overflow semantics",
-                    });
+                    let input_ty = value_type(fir, *value, "unary operand")?;
+                    if !matches!(input_ty, forge_fir::Ty::Float { .. }) {
+                        return Err(BackendError::UnsupportedInstruction {
+                            kind: "integer negation requires explicit FIR overflow semantics",
+                        });
+                    }
                 }
                 FirInstructionKind::Unary { op, value } => {
                     let input_ty = value_type(fir, *value, "unary operand")?;
@@ -334,6 +337,7 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
             | FirInstructionKind::ResultIsOk { value }
             | FirInstructionKind::ResultUnwrapOk { value }
             | FirInstructionKind::ResultUnwrapErr { value }
+            | FirInstructionKind::MakeResultOk { value }
             | FirInstructionKind::OptionIsSome { value }
             | FirInstructionKind::OptionUnwrap { value } => available.contains(value),
 
