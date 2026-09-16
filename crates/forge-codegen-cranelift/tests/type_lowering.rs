@@ -12,6 +12,10 @@ fn assert_scalar_mappings(backend: &CraneliftBackend) {
     let cases = [
         (Ty::Bool, types::I8),
         (Ty::Byte, types::I8),
+        (Ty::Char, types::I32),
+        (Ty::Float { bits: 32 }, types::F32),
+        (Ty::Float { bits: 64 }, types::F64),
+        (Ty::Duration, types::I64),
         (int(false, IntWidth::W8), types::I8),
         (int(true, IntWidth::W8), types::I8),
         (int(false, IntWidth::W16), types::I16),
@@ -66,14 +70,14 @@ fn assert_scalar_mappings(backend: &CraneliftBackend) {
 }
 
 #[test]
-fn aarch64_maps_every_c2_scalar_representation() {
+fn aarch64_maps_every_scalar_representation() {
     let backend = CraneliftBackend::aarch64().expect("AArch64 backend");
     assert_eq!(backend.target_layout().pointer_bits, 64);
     assert_scalar_mappings(&backend);
 }
 
 #[test]
-fn riscv64_maps_every_c2_scalar_representation() {
+fn riscv64_maps_every_scalar_representation() {
     let backend = CraneliftBackend::riscv64().expect("RISC-V 64 backend");
     assert_eq!(backend.target_layout().pointer_bits, 64);
     assert_scalar_mappings(&backend);
@@ -132,6 +136,26 @@ fn pointer_sized_values_are_target_layout_driven() {
 }
 
 #[test]
+fn scalar_layouts_follow_the_authoritative_c9_layout() {
+    let layout = TargetLayout::new(64);
+    let lowering = TypeLowering::new(&layout);
+    let cases = [
+        (Ty::Char, 4, 4),
+        (Ty::Float { bits: 32 }, 4, 4),
+        (Ty::Float { bits: 64 }, 8, 8),
+        (Ty::Duration, 8, 8),
+    ];
+
+    for (ty, size_bytes, align_bytes) in cases {
+        let scalar = lowering
+            .scalar_layout(&ty)
+            .expect("authoritative scalar layout");
+        assert_eq!(scalar.size_bytes, size_bytes, "size for {ty:?}");
+        assert_eq!(scalar.align_bytes, align_bytes, "alignment for {ty:?}");
+    }
+}
+
+#[test]
 fn pointer_representation_does_not_depend_on_pointee_or_signature() {
     let layout = TargetLayout::new(64);
     let lowering = TypeLowering::new(&layout);
@@ -160,15 +184,13 @@ fn pointer_representation_does_not_depend_on_pointee_or_signature() {
 }
 
 #[test]
-fn aggregates_and_non_c2_values_are_rejected_instead_of_flattened() {
+fn aggregates_and_non_scalar_values_are_rejected_instead_of_flattened() {
     let layout = TargetLayout::new(64);
     let lowering = TypeLowering::new(&layout);
     let cases = [
         (Ty::Never, "never"),
         (Ty::Void, "void"),
-        (Ty::Char, "char"),
         (Ty::Str, "str"),
-        (Ty::Duration, "duration"),
         (
             Ty::Array {
                 element: Box::new(int(false, IntWidth::W8)),
@@ -182,9 +204,16 @@ fn aggregates_and_non_c2_values_are_rejected_instead_of_flattened() {
         assert_eq!(
             lowering.value_type(&ty),
             Err(BackendError::UnsupportedType { kind }),
-            "C2 must not invent a representation for {ty:?}"
+            "scalar lowering must not flatten {ty:?}"
         );
     }
+
+    assert_eq!(
+        lowering.value_type(&Ty::Float { bits: 16 }),
+        Err(BackendError::UnsupportedType {
+            kind: "floating-point width"
+        })
+    );
 }
 
 #[test]

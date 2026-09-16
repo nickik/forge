@@ -58,7 +58,10 @@ impl<'a> TypeLowering<'a> {
         match ty {
             Ty::Bool
             | Ty::Byte
+            | Ty::Char
             | Ty::Int { .. }
+            | Ty::Float { .. }
+            | Ty::Duration
             | Ty::Pointer { .. }
             | Ty::Reference { .. }
             | Ty::Function { .. } => self.authoritative_scalar_layout(ty),
@@ -73,10 +76,7 @@ impl<'a> TypeLowering<'a> {
 
             Ty::Never => unsupported("never"),
             Ty::Void => unsupported("void"),
-            Ty::Char => unsupported("char"),
             Ty::Str => unsupported("str"),
-            Ty::Float { .. } => unsupported("float"),
-            Ty::Duration => unsupported("duration"),
             Ty::ContextSlot { .. } => unsupported("context slot"),
             Ty::Nominal(_) => unsupported("nominal/aggregate"),
             Ty::Optional { .. } => unsupported("optional"),
@@ -96,6 +96,7 @@ impl<'a> TypeLowering<'a> {
         match ty {
             // Forge bool has a canonical one-byte value/storage representation.
             Ty::Bool | Ty::Byte => Ok(types::I8),
+            Ty::Char => Ok(types::I32),
 
             Ty::Int { width, .. } => match width {
                 IntWidth::W8 => Ok(types::I8),
@@ -105,6 +106,11 @@ impl<'a> TypeLowering<'a> {
                 IntWidth::Pointer => self.pointer_type(),
             },
 
+            Ty::Float { bits: 32 } => Ok(types::F32),
+            Ty::Float { bits: 64 } => Ok(types::F64),
+            Ty::Float { .. } => unsupported("floating-point width"),
+            Ty::Duration => Ok(types::I64),
+
             Ty::Pointer { .. }
             | Ty::Reference { .. }
             | Ty::Function { .. }
@@ -112,10 +118,7 @@ impl<'a> TypeLowering<'a> {
 
             Ty::Never => unsupported("never"),
             Ty::Void => unsupported("void"),
-            Ty::Char => unsupported("char"),
             Ty::Str => unsupported("str"),
-            Ty::Float { .. } => unsupported("float"),
-            Ty::Duration => unsupported("duration"),
             Ty::ContextSlot { .. } => unsupported("context slot"),
             Ty::Nominal(_) => unsupported("nominal/aggregate"),
             Ty::Optional { .. } => unsupported("optional"),
