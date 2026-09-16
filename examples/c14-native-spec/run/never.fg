@@ -1,0 +1,12 @@
+module examples.c14_native_spec.never;
+
+fn stop() -> never {
+    return stop();
+}
+
+fn main() -> i32 {
+    if (false) {
+        stop();
+    }
+    return 0;
+}
