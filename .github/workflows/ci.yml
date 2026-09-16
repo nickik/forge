@@ -30,6 +30,6 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add Cargo.lock crates/forge-codegen-cranelift/Cargo.toml crates/forge-codegen-cranelift/src/sia32_object.rs crates/forge-codegen-cranelift/src/sia32_image.rs crates/forge-codegen-cranelift/src/lib.rs crates/forge-codegen-cranelift/tests/sia32_m8_relocations.rs crates/forge-codegen-cranelift/tests/sia32_m8_object_link.rs crates/forge-codegen-cranelift/tests/sia32_m8_image.rs crates/forge-codegen-cranelift/tests/sia32_m8_runtime.rs M8_DIAG.txt M8_STATUS.txt
+          git add -A
           git commit -m "Capture exact M8.3/M8.4 generated state"
           git push
