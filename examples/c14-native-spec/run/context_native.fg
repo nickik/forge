@@ -5,21 +5,21 @@ struct Service {
 }
 
 fn override_and_return(service: &Service) -> i32 {
-    with context {
-        :logger service
-    } {
+    with context(
+        :logger = service
+    ) {
         val current = context.logger;
         return current.value;
     }
 }
 
 fn main() -> i32 {
-    val outer = Service { value: 17 };
-    val inner = Service { value: 42 };
+    val outer = Service{value: 17};
+    val inner = Service{value: 42};
 
-    with context {
-        :logger &outer
-    } {
+    with context(
+        :logger = &outer
+    ) {
         val before = context.logger;
         if (before.value != 17) {
             return 1;
