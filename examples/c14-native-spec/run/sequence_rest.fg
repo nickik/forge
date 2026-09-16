@@ -1,0 +1,14 @@
+module examples.c14.sequence_rest;
+
+fn check(values: [u32; 5]) -> i32 {
+    return match (values) {
+        [3u32, 5u32, ..rest] when rest[0] == 8u32 && rest[1] == 13u32 && rest[2] == 21u32 => 0,
+        [3u32, 5u32, ..rest] => 1,
+        _ => 2,
+    };
+}
+
+fn main() -> i32 {
+    val values: [u32; 5] = [3u32, 5u32, 8u32, 13u32, 21u32];
+    return check(values);
+}

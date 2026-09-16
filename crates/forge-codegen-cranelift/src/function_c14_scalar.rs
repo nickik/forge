@@ -219,7 +219,7 @@ fn lower_c14_scalar_instruction(
         _ => {}
     }
 
-    lower_c11c_instruction(
+    lower_c14_pattern_instruction(
         fir,
         all_functions,
         all_globals,
