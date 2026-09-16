@@ -20,7 +20,9 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: Materialize captured closure ABI
-        run: python3 scripts/c14e-captured-closure-materialize.py
+        run: |
+          python3 scripts/c14e-captured-closure-materialize.py
+          python3 scripts/c14e-captured-closure-route.py
       - name: Format materialized Rust
         run: cargo fmt --all
       - name: Formatting
@@ -44,6 +46,7 @@ jobs:
             crates/forge-codegen-cranelift/src/completion.rs \
             crates/forge-codegen-cranelift/src/backend_c11d_legacy.rs \
             crates/forge-codegen-cranelift/src/function_c14_closure.rs \
+            crates/forge-codegen-cranelift/src/function_c14_scalar.rs \
             examples/c14-native-spec/run/captured_closure_abi.fg
           git commit -m "C14e: add cross-function captured closure ABI [closure-materialized] [skip ci]"
           git push origin HEAD:agent/c14e-captured-closure-helper
