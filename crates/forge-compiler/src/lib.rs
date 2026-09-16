@@ -21,6 +21,8 @@ use forge_frontend::{
 };
 use module_linker::{link_modules, ParsedLibrary};
 
+const CHECK_ENTRY: &str = "__forge_c12c_c14_check_entry";
+
 #[derive(Debug)]
 pub struct CompilerError(String);
 
@@ -129,6 +131,19 @@ pub fn compile_source_with_library_sources(
     source: &str,
     libraries: &[(String, String)],
 ) -> Result<CompiledProgram, CompilerError> {
+    compile_source_with_library_sources_and_entry(source, libraries, "main")
+}
+
+pub fn compile_source_with_library_sources_and_entry(
+    source: &str,
+    libraries: &[(String, String)],
+    entry: &str,
+) -> Result<CompiledProgram, CompilerError> {
+    if entry.is_empty() {
+        return Err(CompilerError::message(
+            "native entry point name must not be empty",
+        ));
+    }
     let root = parse_ast("root source", source)?;
     let mut parsed_libraries = Vec::with_capacity(libraries.len());
     for (name, source) in libraries {
@@ -139,7 +154,7 @@ pub fn compile_source_with_library_sources(
     }
     let ast = link_modules(root, parsed_libraries)
         .map_err(|error| CompilerError::message(format!("module linking failed: {error}")))?;
-    compile_ast(ast)
+    compile_ast(ast, entry)
 }
 
 fn parse_ast(label: &str, source: &str) -> Result<SourceFile, CompilerError> {
@@ -153,7 +168,7 @@ fn parse_ast(label: &str, source: &str) -> Result<SourceFile, CompilerError> {
     Ok(parsed.ast.expect("checked above"))
 }
 
-fn compile_ast(ast: SourceFile) -> Result<CompiledProgram, CompilerError> {
+fn compile_ast(ast: SourceFile, entry_name: &str) -> Result<CompiledProgram, CompilerError> {
     let provider_names = ast
         .declarations
         .iter()
@@ -219,14 +234,16 @@ fn compile_ast(ast: SourceFile) -> Result<CompiledProgram, CompilerError> {
     let main_owner = hir
         .module
         .symbols
-        .get("main")
+        .get(entry_name)
         .and_then(|symbols| symbols.value_def)
-        .ok_or_else(|| CompilerError::message("native executable requires fn main() -> i32"))?;
-    let main = fir
-        .module
-        .functions
-        .get(&main_owner)
-        .ok_or_else(|| CompilerError::message("main did not lower to a FIR function"))?;
+        .ok_or_else(|| {
+            CompilerError::message(format!(
+                "native executable requires entry function `{entry_name}`"
+            ))
+        })?;
+    let main = fir.module.functions.get(&main_owner).ok_or_else(|| {
+        CompilerError::message(format!("entry `{entry_name}` did not lower to FIR"))
+    })?;
     if !main.params.is_empty()
         || main.return_type
             != (Ty::Int {
@@ -234,9 +251,9 @@ fn compile_ast(ast: SourceFile) -> Result<CompiledProgram, CompilerError> {
                 width: IntWidth::W32,
             })
     {
-        return Err(CompilerError::message(
-            "hosted C12 entry point must have signature fn main() -> i32",
-        ));
+        return Err(CompilerError::message(format!(
+            "hosted C14 entry point `{entry_name}` must have signature fn {entry_name}() -> i32"
+        )));
     }
 
     let backend = CraneliftBackend::aarch64()?;
@@ -258,7 +275,7 @@ fn compile_ast(ast: SourceFile) -> Result<CompiledProgram, CompilerError> {
     )?;
     let main_symbol = plan
         .symbol(main_owner)
-        .ok_or_else(|| CompilerError::message("object plan omitted main"))?
+        .ok_or_else(|| CompilerError::message("object plan omitted selected entry"))?
         .name()
         .to_owned();
     let initializer_symbol = initializer_owner
@@ -552,17 +569,9 @@ fn materialize_string_literals(
     Ok(static_initializers)
 }
 
-pub fn compile_file(path: &Path) -> Result<CompiledProgram, CompilerError> {
-    compile_file_with_libraries(path, &[])
-}
-
-pub fn compile_file_with_libraries(
-    path: &Path,
+fn read_library_sources(
     libraries: &[LibraryInput],
-) -> Result<CompiledProgram, CompilerError> {
-    let source = fs::read_to_string(path).map_err(|error| {
-        CompilerError::message(format!("cannot read {}: {error}", path.display()))
-    })?;
+) -> Result<Vec<(String, String)>, CompilerError> {
     let mut sources = Vec::with_capacity(libraries.len());
     for library in libraries {
         let library_source = fs::read_to_string(library.path()).map_err(|error| {
@@ -574,7 +583,33 @@ pub fn compile_file_with_libraries(
         })?;
         sources.push((library.name().to_owned(), library_source));
     }
-    compile_source_with_library_sources(&source, &sources)
+    Ok(sources)
+}
+
+fn read_source(path: &Path) -> Result<String, CompilerError> {
+    fs::read_to_string(path)
+        .map_err(|error| CompilerError::message(format!("cannot read {}: {error}", path.display())))
+}
+
+pub fn compile_file(path: &Path) -> Result<CompiledProgram, CompilerError> {
+    compile_file_with_libraries(path, &[])
+}
+
+pub fn compile_file_with_libraries(
+    path: &Path,
+    libraries: &[LibraryInput],
+) -> Result<CompiledProgram, CompilerError> {
+    compile_file_with_libraries_and_entry(path, libraries, "main")
+}
+
+pub fn compile_file_with_libraries_and_entry(
+    path: &Path,
+    libraries: &[LibraryInput],
+    entry: &str,
+) -> Result<CompiledProgram, CompilerError> {
+    let source = read_source(path)?;
+    let sources = read_library_sources(libraries)?;
+    compile_source_with_library_sources_and_entry(&source, &sources, entry)
 }
 
 pub fn check_file(path: &Path) -> Result<(), CompilerError> {
@@ -585,7 +620,12 @@ pub fn check_file_with_libraries(
     path: &Path,
     libraries: &[LibraryInput],
 ) -> Result<(), CompilerError> {
-    compile_file_with_libraries(path, libraries).map(|_| ())
+    let mut source = read_source(path)?;
+    source.push_str("\nfn ");
+    source.push_str(CHECK_ENTRY);
+    source.push_str("() -> i32 { return 0; }\n");
+    let sources = read_library_sources(libraries)?;
+    compile_source_with_library_sources_and_entry(&source, &sources, CHECK_ENTRY).map(|_| ())
 }
 
 pub fn emit_object_file(path: &Path, output: &Path) -> Result<(), CompilerError> {
@@ -597,7 +637,16 @@ pub fn emit_object_file_with_libraries(
     output: &Path,
     libraries: &[LibraryInput],
 ) -> Result<(), CompilerError> {
-    let compiled = compile_file_with_libraries(path, libraries)?;
+    emit_object_file_with_libraries_and_entry(path, output, libraries, "main")
+}
+
+pub fn emit_object_file_with_libraries_and_entry(
+    path: &Path,
+    output: &Path,
+    libraries: &[LibraryInput],
+    entry: &str,
+) -> Result<(), CompilerError> {
+    let compiled = compile_file_with_libraries_and_entry(path, libraries, entry)?;
     fs::write(output, compiled.object()).map_err(|error| {
         CompilerError::message(format!("cannot write {}: {error}", output.display()))
     })
@@ -612,8 +661,17 @@ pub fn build_executable_with_libraries(
     output: &Path,
     libraries: &[LibraryInput],
 ) -> Result<(), CompilerError> {
+    build_executable_with_libraries_and_entry(path, output, libraries, "main")
+}
+
+pub fn build_executable_with_libraries_and_entry(
+    path: &Path,
+    output: &Path,
+    libraries: &[LibraryInput],
+    entry: &str,
+) -> Result<(), CompilerError> {
     require_native_aarch64_linux()?;
-    let compiled = compile_file_with_libraries(path, libraries)?;
+    let compiled = compile_file_with_libraries_and_entry(path, libraries, entry)?;
     link_hosted(&compiled, output)
 }
 
@@ -626,11 +684,20 @@ pub fn run_file_with_libraries(
     args: &[String],
     libraries: &[LibraryInput],
 ) -> Result<Output, CompilerError> {
+    run_file_with_libraries_and_entry(path, args, libraries, "main")
+}
+
+pub fn run_file_with_libraries_and_entry(
+    path: &Path,
+    args: &[String],
+    libraries: &[LibraryInput],
+    entry: &str,
+) -> Result<Output, CompilerError> {
     require_native_aarch64_linux()?;
     let dir = temporary_directory("run")?;
     let executable = dir.join("program");
     let result = (|| {
-        let compiled = compile_file_with_libraries(path, libraries)?;
+        let compiled = compile_file_with_libraries_and_entry(path, libraries, entry)?;
         link_hosted(&compiled, &executable)?;
         Command::new(&executable)
             .args(args)
@@ -693,7 +760,7 @@ fn hosted_startup_source(program: &CompiledProgram) -> String {
              abort();\n\
          }}\n\n\
          int main(void) {{\n\
-         {initialize}\
+         {initialize}\n\
              return (int){main_symbol}();\n\
          }}\n",
         main_symbol = program.main_symbol(),
@@ -705,7 +772,7 @@ fn require_native_aarch64_linux() -> Result<(), CompilerError> {
         Ok(())
     } else {
         Err(CompilerError::message(
-            "C12 hosted linking/execution currently requires native AArch64 Linux",
+            "C14 hosted linking/execution currently requires native AArch64 Linux",
         ))
     }
 }
@@ -714,7 +781,7 @@ fn temporary_directory(label: &str) -> Result<PathBuf, CompilerError> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let serial = NEXT.fetch_add(1, Ordering::Relaxed);
     let path =
-        std::env::temp_dir().join(format!("forge-c12-{label}-{}-{serial}", std::process::id()));
+        std::env::temp_dir().join(format!("forge-c14-{label}-{}-{serial}", std::process::id()));
     if path.exists() {
         fs::remove_dir_all(&path)?;
     }
@@ -733,6 +800,18 @@ fn main() -> i32 {
     if (x == 42) { return 0; }
     return 1;
 }
+"#;
+
+    const CUSTOM_ENTRY: &str = r#"
+module test.custom_entry;
+fn start() -> i32 {
+    return 0;
+}
+"#;
+
+    const LIBRARY_ONLY: &str = r#"
+module test.library_only;
+pub fn forty_two() -> i32 { return 42; }
 "#;
 
     const LIBRARY: &str = r#"
@@ -758,6 +837,23 @@ fn main() -> i32 {
         assert_eq!(&compiled.object()[..4], b"\x7fELF");
         assert!(compiled.main_symbol().starts_with("__forge_fn_"));
         assert!(compiled.initializer_symbol().is_none());
+    }
+
+    #[test]
+    fn custom_entry_compiles_without_main() {
+        let compiled = compile_source_with_library_sources_and_entry(CUSTOM_ENTRY, &[], "start")
+            .expect("compile custom entry");
+        assert_eq!(&compiled.object()[..4], b"\x7fELF");
+        assert!(compiled.main_symbol().starts_with("__forge_fn_"));
+    }
+
+    #[test]
+    fn check_accepts_library_without_main() {
+        let dir = temporary_directory("library-check").expect("temp directory");
+        let source = dir.join("lib.fg");
+        fs::write(&source, LIBRARY_ONLY).expect("write source");
+        check_file(&source).expect("check library source");
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -815,6 +911,18 @@ fn hidden() -> i32 { return 0; }
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
+    fn custom_entry_links_and_executes_natively() {
+        let dir = temporary_directory("entry-test").expect("temp directory");
+        let source = dir.join("entry.fg");
+        fs::write(&source, CUSTOM_ENTRY).expect("write source");
+        let output = run_file_with_libraries_and_entry(&source, &[], &[], "start")
+            .expect("run custom entry");
+        assert!(output.status.success(), "status={}", output.status);
         let _ = fs::remove_dir_all(dir);
     }
 
