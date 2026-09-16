@@ -47,6 +47,9 @@ jobs:
           forge build --manifest-path examples/c14-build-system/forge.fdn --target kernel
           test -s examples/c14-build-system/build/kernel.o
           forge check --manifest-path examples/c14-build-system/forge.fdn --target lib
+      - name: C14 native executable specification
+        timeout-minutes: 5
+        run: scripts/run-c14-native-spec.sh
       - name: Generated native collections snapshot
         timeout-minutes: 3
         run: |
