@@ -2,7 +2,7 @@
 
 ## Philosophy
 
-Forge does not require green threads or a language scheduler. Concurrency builds on operating-system threads/processes, explicit synchronization, CSP channels, and optional data-owning agents.
+Forge v1 does not require green threads or a language scheduler. Its required concurrency foundation is deliberately small: operating-system threads/processes where available and explicit synchronization primitives. Higher-level communication and scheduling abstractions are library/version evolution rather than requirements of the v1 language or runtime ABI.
 
 ## Threads
 
@@ -18,47 +18,27 @@ A convenience `update` operation may apply a non-escaping function repeatedly us
 
 ```forge
 counter.update(
-    [](x: u32) -> u32 { return x + 1; }
+    (x: u32) -> u32 { return x + 1; }
 )?;
 ```
 
 The update function may execute more than once and therefore must not perform externally visible side effects.
 
-## CSP channels
+## Future work: channels and `select`
 
-Channels are typed standard-library objects. Implementation may use shared-memory queues, OS pipes/message primitives or sockets depending on endpoint kind.
+Typed channels, `send`/`recv`, and multi-wait `select` are **not part of Forge v1**. They are explicitly deferred to future language/library work.
 
-Conceptual usage:
+Earlier design sketches showed CSP-style channels and language-level `select` syntax. Those sketches are non-normative and must not be treated as C14/C14e implementation requirements. Forge v1 therefore defines no:
 
-```forge
-val jobs = channel.create_Job(
-    :mode = :thread,
-    :capacity = 256
-)?;
+- `Channel[T]` representation or standard-library channel API;
+- channel creation, send, receive, close, buffering, or cross-process semantics;
+- `select`, `recv`, or `timeout` source syntax;
+- channel/select FIR or native runtime ABI requirement;
+- fairness, wakeup, ordering, cancellation, or timeout rules for multi-wait operations.
 
-jobs.send(job)?;
-val next = jobs.recv()?;
-```
+A future Forge version may add channels and/or a selector facility after their semantics, ownership model, runtime boundary, freestanding implications, and interaction with Cosmic have been designed deliberately. Such a design must not be inferred from currently retained parser/compiler experiments.
 
-`select` is language syntax because multi-channel waiting is sufficiently fundamental:
-
-```forge
-select {
-    recv jobs -> job => {
-        process(job);
-    }
-
-    recv shutdown -> _ => {
-        return;
-    }
-
-    timeout #duration "100ms" => {
-        maintenance();
-    }
-}
-```
-
-Across OS processes, values are copied/serialized or transferred through explicit shared-memory handles. Raw function pointers are never process-portable messages.
+Compiler code that already recognizes or models experimental `select` forms may remain temporarily as dormant implementation scaffolding, but it is outside the Forge v1 compatibility surface and does not need native lowering for C14 completion.
 
 ## Agents: move work to data
 
