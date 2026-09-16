@@ -44,23 +44,15 @@ impl CraneliftTarget {
     }
 
     pub(crate) fn isa(self) -> Result<OwnedTargetIsa, BackendError> {
-        // Let Cranelift's own SIA-enabled target-lexicon type be inferred here.
-        // Forge deliberately does not depend on a second target-lexicon crate.
+        // Type inference deliberately selects Cranelift's SIA-enabled Triple,
+        // avoiding a second target-lexicon type in Forge's dependency graph.
         let triple = self
             .triple()
             .parse()
-            .map_err(|error: cranelift_codegen::isa::LookupError| BackendError::InvalidTarget {
+            .map_err(|error| BackendError::InvalidTarget {
                 triple: self.triple(),
-                message: error.to_string(),
-            });
-        let triple = match triple {
-            Ok(triple) => triple,
-            Err(_) => {
-                // Parsing and ISA lookup use different error types, so parse in
-                // the lookup call below where the expected Triple is known.
-                return self.isa_from_inferred_triple();
-            }
-        };
+                message: format!("{error:?}"),
+            })?;
         let flags = settings::Flags::new(settings::builder());
         let builder = isa::lookup(triple).map_err(|error| BackendError::InvalidTarget {
             triple: self.triple(),
@@ -69,23 +61,6 @@ impl CraneliftTarget {
         builder.finish(flags).map_err(|error| BackendError::Cranelift {
             message: error.to_string(),
         })
-    }
-
-    fn isa_from_inferred_triple(self) -> Result<OwnedTargetIsa, BackendError> {
-        let triple = self.triple().parse().map_err(|error| BackendError::InvalidTarget {
-            triple: self.triple(),
-            message: format!("{error:?}"),
-        })?;
-        let flags = settings::Flags::new(settings::builder());
-        isa::lookup(triple)
-            .map_err(|error| BackendError::InvalidTarget {
-                triple: self.triple(),
-                message: error.to_string(),
-            })?
-            .finish(flags)
-            .map_err(|error| BackendError::Cranelift {
-                message: error.to_string(),
-            })
     }
 }
 
