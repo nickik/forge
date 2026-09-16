@@ -38,382 +38,279 @@ jobs:
 
           replace_one(
               "crates/forge-frontend/src/resolution_v1.rs",
-              '''        if matches!(name, "Some") {
-                  self.record_use(name, span, ResolvedName::BuiltinValue);
-                  return;
-              }
-          ''',
-              '''        if matches!(name, "Some" | "Ok" | "Err") {
-                  self.record_use(name, span, ResolvedName::BuiltinValue);
-                  return;
-              }
-          ''',
+              'if matches!(name, "Some") {',
+              'if matches!(name, "Some" | "Ok" | "Err") {',
               "resolution constructors",
           )
-
           replace_one(
               "crates/forge-frontend/src/body_hir_v1.rs",
-              '''        if matches!(name, "Some") {
-                  return ResolvedName::BuiltinValue;
-              }
-          ''',
-              '''        if matches!(name, "Some" | "Ok" | "Err") {
-                  return ResolvedName::BuiltinValue;
-              }
-          ''',
+              'if matches!(name, "Some") {',
+              'if matches!(name, "Some" | "Ok" | "Err") {',
               "body HIR constructors",
           )
-
           replace_one(
               "crates/forge-frontend/src/body_hir_v1.rs",
-              '''    fn lower_value_path(&mut self, path: &ast::Path, span: Span) -> HirValueRef {
-                  let first = path.segments.first().cloned().unwrap_or_default();
-                  let root = self.resolve_value(&first, span);
-                  HirValueRef {
-                      root,
-                      tail: path.segments.iter().skip(1).cloned().collect(),
-                  }
-              }
-          ''',
-              '''    fn lower_value_path(&mut self, path: &ast::Path, span: Span) -> HirValueRef {
-                  let first = path.segments.first().cloned().unwrap_or_default();
-                  let root = self.resolve_value(&first, span);
-                  let tail = if root == ResolvedName::BuiltinValue {
-                      vec![first]
-                  } else {
-                      path.segments.iter().skip(1).cloned().collect()
-                  };
-                  HirValueRef { root, tail }
-              }
-          ''',
+              'tail: path.segments.iter().skip(1).cloned().collect(),',
+              '''tail: if root == ResolvedName::BuiltinValue {
+          vec![first]
+          } else {
+          path.segments.iter().skip(1).cloned().collect()
+          },''',
               "body HIR builtin identity",
           )
-
           replace_one(
               "crates/forge-frontend/src/typecheck_v1.rs",
-              '''            HirExprKind::Call { callee, args } => {
-                  let (result, call) = self.check_call(expr.span, callee, args);
-                  resolved_call = call;
-                  result
-              }
-          ''',
-              '''            HirExprKind::Call { callee, args } => {
-                  if let Some(result) =
-                      self.check_builtin_constructor(expr.span, callee, args, expected)
-                  {
-                      result
-                  } else {
-                      let (result, call) = self.check_call(expr.span, callee, args);
-                      resolved_call = call;
-                      result
-                  }
-              }
-          ''',
+              '''let (result, call) = self.check_call(expr.span, callee, args);
+          resolved_call = call;
+          result''',
+              '''if let Some(result) = self.check_builtin_constructor(expr.span, callee, args, expected) {
+          result
+          } else {
+          let (result, call) = self.check_call(expr.span, callee, args);
+          resolved_call = call;
+          result
+          }''',
               "typecheck call dispatch",
           )
-
           replace_one(
               "crates/forge-frontend/src/typecheck_v1.rs",
-              '''        ty
-              }
+              '    fn authorize_unsafe(',
+              '''    fn check_builtin_constructor(
+          &mut self,
+          span: Span,
+          callee: &HirExpr,
+          args: &[HirCallArg],
+          expected: Option<&Ty>,
+          ) -> Option<Ty> {
+          let HirExprKind::Name { reference } = &callee.kind else {
+          return None;
+          };
+          if reference.root != ResolvedName::BuiltinValue || reference.tail.len() != 1 {
+          return None;
+          }
+          let name = reference.tail[0].as_str();
+          if !matches!(name, "Some" | "Ok" | "Err") {
+          return None;
+          }
+          let payload = match args {
+          [HirCallArg::Positional { value }] => value,
+          _ => {
+          for arg in args {
+          let value = match arg {
+          HirCallArg::Positional { value } | HirCallArg::Named { value, .. } => value,
+          };
+          self.check_expr(value, None);
+          }
+          self.diagnostic(
+          span,
+          "type/constructor-arguments",
+          format!("`{name}` requires exactly one positional argument"),
+          );
+          return Some(Ty::Error);
+          }
+          };
+          match name {
+          "Some" => match expected {
+          Some(Ty::Optional { inner }) => {
+          let actual = self.check_expr(payload, Some(inner));
+          self.require_assignable(payload.span, inner, &actual, "type/constructor-payload");
+          Some(expected.expect("optional expected type").clone())
+          }
+          _ => {
+          let actual = self.check_expr(payload, None);
+          let inner = self.materialize_literal(payload.span, actual);
+          Some(Ty::Optional { inner: Box::new(inner) })
+          }
+          },
+          "Ok" => match expected {
+          Some(Ty::Result { ok, .. }) => {
+          let actual = self.check_expr(payload, Some(ok));
+          self.require_assignable(payload.span, ok, &actual, "type/constructor-payload");
+          Some(expected.expect("Result expected type").clone())
+          }
+          _ => {
+          self.check_expr(payload, None);
+          self.diagnostic(
+          span,
+          "type/result-constructor-context",
+          "`Ok` requires a contextual Result[T, E] type",
+          );
+          Some(Ty::Error)
+          }
+          },
+          "Err" => match expected {
+          Some(Ty::Result { error, .. }) => {
+          let actual = self.check_expr(payload, Some(error));
+          self.require_assignable(payload.span, error, &actual, "type/constructor-payload");
+          Some(expected.expect("Result expected type").clone())
+          }
+          _ => {
+          self.check_expr(payload, None);
+          self.diagnostic(
+          span,
+          "type/result-constructor-context",
+          "`Err` requires a contextual Result[T, E] type",
+          );
+          Some(Ty::Error)
+          }
+          },
+          _ => None,
+          }
+          }
 
-              fn authorize_unsafe(
-          ''',
-              '''        ty
-              }
-
-              fn check_builtin_constructor(
-                  &mut self,
-                  span: Span,
-                  callee: &HirExpr,
-                  args: &[HirCallArg],
-                  expected: Option<&Ty>,
-              ) -> Option<Ty> {
-                  let HirExprKind::Name { reference } = &callee.kind else {
-                      return None;
-                  };
-                  if reference.root != ResolvedName::BuiltinValue || reference.tail.len() != 1 {
-                      return None;
-                  }
-                  let name = reference.tail[0].as_str();
-                  if !matches!(name, "Some" | "Ok" | "Err") {
-                      return None;
-                  }
-
-                  let payload = match args {
-                      [HirCallArg::Positional { value }] => value,
-                      _ => {
-                          for arg in args {
-                              let value = match arg {
-                                  HirCallArg::Positional { value }
-                                  | HirCallArg::Named { value, .. } => value,
-                              };
-                              self.check_expr(value, None);
-                          }
-                          self.diagnostic(
-                              span,
-                              "type/constructor-arguments",
-                              format!("`{name}` requires exactly one positional argument"),
-                          );
-                          return Some(Ty::Error);
-                      }
-                  };
-
-                  match name {
-                      "Some" => match expected {
-                          Some(Ty::Optional { inner }) => {
-                              let actual = self.check_expr(payload, Some(inner));
-                              self.require_assignable(
-                                  payload.span,
-                                  inner,
-                                  &actual,
-                                  "type/constructor-payload",
-                              );
-                              Some(expected.expect("optional expected type").clone())
-                          }
-                          _ => {
-                              let actual = self.check_expr(payload, None);
-                              let inner = self.materialize_literal(payload.span, actual);
-                              Some(Ty::Optional {
-                                  inner: Box::new(inner),
-                              })
-                          }
-                      },
-                      "Ok" => match expected {
-                          Some(Ty::Result { ok, .. }) => {
-                              let actual = self.check_expr(payload, Some(ok));
-                              self.require_assignable(
-                                  payload.span,
-                                  ok,
-                                  &actual,
-                                  "type/constructor-payload",
-                              );
-                              Some(expected.expect("Result expected type").clone())
-                          }
-                          _ => {
-                              self.check_expr(payload, None);
-                              self.diagnostic(
-                                  span,
-                                  "type/result-constructor-context",
-                                  "`Ok` requires a contextual Result[T, E] type",
-                              );
-                              Some(Ty::Error)
-                          }
-                      },
-                      "Err" => match expected {
-                          Some(Ty::Result { error, .. }) => {
-                              let actual = self.check_expr(payload, Some(error));
-                              self.require_assignable(
-                                  payload.span,
-                                  error,
-                                  &actual,
-                                  "type/constructor-payload",
-                              );
-                              Some(expected.expect("Result expected type").clone())
-                          }
-                          _ => {
-                              self.check_expr(payload, None);
-                              self.diagnostic(
-                                  span,
-                                  "type/result-constructor-context",
-                                  "`Err` requires a contextual Result[T, E] type",
-                              );
-                              Some(Ty::Error)
-                          }
-                      },
-                      _ => None,
-                  }
-              }
-
-              fn authorize_unsafe(
-          ''',
+          fn authorize_unsafe(''',
               "typecheck constructor semantics",
           )
-
           replace_one(
               "crates/forge-frontend/src/fir_v1.rs",
-              '''    ResultUnwrapErr {
-                  value: FirValueId,
-              },
-              MakeResultErr {
-                  error: FirValueId,
-              },
-          ''',
-              '''    ResultUnwrapErr {
-                  value: FirValueId,
-              },
-              MakeResultOk {
-                  value: FirValueId,
-              },
-              MakeResultErr {
-                  error: FirValueId,
-              },
-          ''',
+              '''    MakeResultErr {
+          error: FirValueId,
+          },''',
+              '''    MakeResultOk {
+          value: FirValueId,
+          },
+          MakeResultErr {
+          error: FirValueId,
+          },''',
               "FIR Result Ok instruction",
           )
-
           replace_one(
               "crates/forge-frontend/src/fir_v1.rs",
-              '''            HirExprKind::Call { .. } => self.lower_call_expression(expr, false),
-          ''',
-              '''            HirExprKind::Call { callee, args } => {
-                  if let Some(value) =
-                      self.lower_builtin_constructor(expr.span, callee, args, ty.clone())
-                  {
-                      value
-                  } else {
-                      self.lower_call_expression(expr, false)
-                  }
-              }
-          ''',
+              'HirExprKind::Call { .. } => self.lower_call_expression(expr, false),',
+              '''HirExprKind::Call { callee, args } => {
+          if let Some(value) = self.lower_builtin_constructor(expr.span, callee, args, ty.clone()) {
+          value
+          } else {
+          self.lower_call_expression(expr, false)
+          }
+          },''',
               "FIR constructor dispatch",
           )
-
           replace_one(
               "crates/forge-frontend/src/fir_v1.rs",
-              '''    fn lower_source_expr(&mut self, expr: &HirExpr, ty: Ty) -> FirValueId {
-          ''',
+              '    fn lower_source_expr(&mut self, expr: &HirExpr, ty: Ty) -> FirValueId {',
               '''    fn lower_builtin_constructor(
-                  &mut self,
-                  span: Span,
-                  callee: &HirExpr,
-                  args: &[HirCallArg],
-                  ty: Ty,
-              ) -> Option<FirValueId> {
-                  let HirExprKind::Name { reference } = &callee.kind else {
-                      return None;
-                  };
-                  if reference.root != ResolvedName::BuiltinValue || reference.tail.len() != 1 {
-                      return None;
-                  }
-                  let name = reference.tail[0].as_str();
-                  if !matches!(name, "Some" | "Ok" | "Err") {
-                      return None;
-                  }
-                  let payload = match args {
-                      [HirCallArg::Positional { value }] => value,
-                      _ => {
-                          self.diagnostic(
-                              span,
-                              "fir/constructor-arguments",
-                              format!("`{name}` reached FIR without one positional argument"),
-                          );
-                          return Some(self.poison(span, ty));
-                      }
-                  };
-                  let payload = self.lower_expr(payload);
-                  let kind = match name {
-                      "Some" => FirInstructionKind::MakeSome { value: payload },
-                      "Ok" => FirInstructionKind::MakeResultOk { value: payload },
-                      "Err" => FirInstructionKind::MakeResultErr { error: payload },
-                      _ => unreachable!("builtin constructor checked above"),
-                  };
-                  Some(self.emit_value(span, ty, kind))
-              }
+          &mut self,
+          span: Span,
+          callee: &HirExpr,
+          args: &[HirCallArg],
+          ty: Ty,
+          ) -> Option<FirValueId> {
+          let HirExprKind::Name { reference } = &callee.kind else {
+          return None;
+          };
+          if reference.root != ResolvedName::BuiltinValue || reference.tail.len() != 1 {
+          return None;
+          }
+          let name = reference.tail[0].as_str();
+          if !matches!(name, "Some" | "Ok" | "Err") {
+          return None;
+          }
+          let payload = match args {
+          [HirCallArg::Positional { value }] => value,
+          _ => {
+          self.diagnostic(
+          span,
+          "fir/constructor-arguments",
+          format!("`{name}` reached FIR without one positional argument"),
+          );
+          return Some(self.poison(span, ty));
+          }
+          };
+          let payload = self.lower_expr(payload);
+          let kind = match name {
+          "Some" => FirInstructionKind::MakeSome { value: payload },
+          "Ok" => FirInstructionKind::MakeResultOk { value: payload },
+          "Err" => FirInstructionKind::MakeResultErr { error: payload },
+          _ => unreachable!("builtin constructor checked above"),
+          };
+          Some(self.emit_value(span, ty, kind))
+          }
 
-              fn lower_source_expr(&mut self, expr: &HirExpr, ty: Ty) -> FirValueId {
-          ''',
+          fn lower_source_expr(&mut self, expr: &HirExpr, ty: Ty) -> FirValueId {''',
               "FIR constructor lowering",
           )
-
           replace_one(
               "crates/forge-codegen-cranelift/src/function_c9c_impl.rs",
-              '''                | FirInstructionKind::ResultUnwrapOk { .. }
-                  | FirInstructionKind::ResultUnwrapErr { .. }
-                  | FirInstructionKind::MakeResultErr { .. }
-          ''',
-              '''                | FirInstructionKind::ResultUnwrapOk { .. }
-                  | FirInstructionKind::ResultUnwrapErr { .. }
-                  | FirInstructionKind::MakeResultOk { .. }
-                  | FirInstructionKind::MakeResultErr { .. }
-          ''',
+              '| FirInstructionKind::MakeResultErr { .. }',
+              '''| FirInstructionKind::MakeResultOk { .. }
+          | FirInstructionKind::MakeResultErr { .. }''',
               "aggregate Result Ok detection",
           )
-
           replace_one(
               "crates/forge-codegen-cranelift/src/function_c9c_impl.rs",
-              '''        FirInstructionKind::MakeResultErr { error } => {
-          ''',
+              '        FirInstructionKind::MakeResultErr { error } => {',
               '''        FirInstructionKind::MakeResultOk { value } => {
-                  let id = result_id.ok_or_else(|| shape("make-result-ok has no result"))?;
-                  lower_make_result_ok(
-                      fir,
-                      id,
-                      result_ty.expect("result-ok result type"),
-                      *value,
-                      flags.stack,
-                      scalars,
-                      aggregates,
-                      layouts,
-                      types,
-                      cursor,
-                  )?;
-                  return Ok(());
-              }
-              FirInstructionKind::MakeResultErr { error } => {
-          ''',
+          let id = result_id.ok_or_else(|| shape("make-result-ok has no result"))?;
+          lower_make_result_ok(
+          fir,
+          id,
+          result_ty.expect("result-ok result type"),
+          *value,
+          flags.stack,
+          scalars,
+          aggregates,
+          layouts,
+          types,
+          cursor,
+          )?;
+          return Ok(());
+          }
+          FirInstructionKind::MakeResultErr { error } => {''',
               "Cranelift Result Ok dispatch",
           )
-
           replace_one(
               "crates/forge-codegen-cranelift/src/function_c9c_impl.rs",
               '''#[allow(clippy::too_many_arguments)]
-              fn lower_make_result_err(
-          ''',
+          fn lower_make_result_err(''',
               '''#[allow(clippy::too_many_arguments)]
-              fn lower_make_result_ok(
-                  fir: &FirFunction,
-                  id: FirValueId,
-                  ty: &Ty,
-                  value: FirValueId,
-                  stack_flags: MemFlags,
-                  scalars: &BTreeMap<FirValueId, Value>,
-                  aggregates: &mut BTreeMap<FirValueId, AggregateValue>,
-                  layouts: &mut LayoutEngine<'_>,
-                  types: &TypeLowering<'_>,
-                  cursor: &mut FuncCursor<'_>,
-              ) -> Result<(), BackendError> {
-                  let Ty::Result { ok: ok_ty, .. } = ty else {
-                      return Err(shape("result-ok result is not Result"));
-                  };
-                  if value_type(fir, value)? != ok_ty.as_ref() {
-                      return Err(shape("Result Ok payload type mismatch"));
-                  }
-                  let result = new_aggregate(ty, layouts, types, cursor)?;
-                  let layout = layouts.layout_of(ty).map_err(layout_error)?;
-                  if layouts.layout_of(ok_ty).map_err(layout_error)?.size != 0 {
-                      store_typed_value(
-                          value,
-                          ok_ty,
-                          payload_address_for_variant(&layout, 0, result.address, cursor)?,
-                          stack_flags,
-                          stack_flags,
-                          scalars,
-                          aggregates,
-                          layouts,
-                          cursor,
-                      )?;
-                  }
-                  write_variant(&layout, 0, result.address, stack_flags, cursor)?;
-                  aggregates.insert(id, result);
-                  Ok(())
-              }
+          fn lower_make_result_ok(
+          fir: &FirFunction,
+          id: FirValueId,
+          ty: &Ty,
+          value: FirValueId,
+          stack_flags: MemFlags,
+          scalars: &BTreeMap<FirValueId, Value>,
+          aggregates: &mut BTreeMap<FirValueId, AggregateValue>,
+          layouts: &mut LayoutEngine<'_>,
+          types: &TypeLowering<'_>,
+          cursor: &mut FuncCursor<'_>,
+          ) -> Result<(), BackendError> {
+          let Ty::Result { ok: ok_ty, .. } = ty else {
+          return Err(shape("result-ok result is not Result"));
+          };
+          if value_type(fir, value)? != ok_ty.as_ref() {
+          return Err(shape("Result Ok payload type mismatch"));
+          }
+          let result = new_aggregate(ty, layouts, types, cursor)?;
+          let layout = layouts.layout_of(ty).map_err(layout_error)?;
+          if layouts.layout_of(ok_ty).map_err(layout_error)?.size != 0 {
+          store_typed_value(
+          value,
+          ok_ty,
+          payload_address_for_variant(&layout, 0, result.address, cursor)?,
+          stack_flags,
+          stack_flags,
+          scalars,
+          aggregates,
+          layouts,
+          cursor,
+          )?;
+          }
+          write_variant(&layout, 0, result.address, stack_flags, cursor)?;
+          aggregates.insert(id, result);
+          Ok(())
+          }
 
-              #[allow(clippy::too_many_arguments)]
-              fn lower_make_result_err(
-          ''',
+          #[allow(clippy::too_many_arguments)]
+          fn lower_make_result_err(''',
               "Cranelift Result Ok lowering",
           )
-
           replace_one(
               "crates/forge-codegen-cranelift/src/function.rs",
-              '''        FirInstructionKind::ResultUnwrapErr { .. } => "result unwrap err",
-                  FirInstructionKind::MakeResultErr { .. } => "make result err",
-          ''',
-              '''        FirInstructionKind::ResultUnwrapErr { .. } => "result unwrap err",
-                  FirInstructionKind::MakeResultOk { .. } => "make result ok",
-                  FirInstructionKind::MakeResultErr { .. } => "make result err",
-          ''',
+              'FirInstructionKind::MakeResultErr { .. } => "make result err",',
+              '''FirInstructionKind::MakeResultOk { .. } => "make result ok",
+          FirInstructionKind::MakeResultErr { .. } => "make result err",''',
               "legacy instruction name",
           )
 
@@ -446,7 +343,6 @@ jobs:
               if (extracted != 42i32) {
                   return 1;
               }
-
               use_ok();
               use_err();
               return 0;
