@@ -77,7 +77,8 @@ s = replace_once(s, old, new, p)
 write(p, s)
 
 # Explicitly prove that the stack-backed ABI does not accidentally permit a
-# captured environment to escape its creating activation.
+# captured environment to escape its creating activation. The frontend already
+# owns this Forge v1 rule; codegen keeps a defensive rejection as well.
 write(
     "examples/c14-native-spec/reject_escaping_closure.fg",
     '''module examples.c14_native_spec.reject_escaping_closure;
@@ -108,7 +109,8 @@ if "$FORGEC" "${common[@]}" --run \\
   rm -f "$escape_error"
   exit 1
 fi
-if ! grep -q "escaping closure return requires heap/lifetime support" "$escape_error"; then
+if ! grep -q 'code: "closure/escape"' "$escape_error" || \
+   ! grep -q "closure values are non-escaping" "$escape_error"; then
   echo "escaping captured closure failed for the wrong reason:" >&2
   cat "$escape_error" >&2
   rm -f "$escape_error"
