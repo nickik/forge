@@ -1,0 +1,35 @@
+module examples.c14.char_native;
+
+fn echo(value: char) -> char {
+    return value;
+}
+
+fn before(left: char, right: char) -> bool {
+    return left < right;
+}
+
+fn main() -> i32 {
+    var value: char = echo('A');
+    if (value != 'A') {
+        return 1;
+    }
+
+    value = echo('Z');
+    if (value != 'Z') {
+        return 2;
+    }
+    if (!before('A', value)) {
+        return 3;
+    }
+    if (!(value > 'M')) {
+        return 4;
+    }
+    if (!('A' <= 'A')) {
+        return 5;
+    }
+    if (!('Z' >= value)) {
+        return 6;
+    }
+
+    return 0;
+}
