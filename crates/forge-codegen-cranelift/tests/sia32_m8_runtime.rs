@@ -10,14 +10,7 @@ fn words(words: &[u16]) -> Vec<u8> {
 fn m8_4_links_loads_and_executes_cross_object_call_and_data_access() {
     // Object 1: canonical external-call literal. LDPC.W at PC 0 uses aligned
     // PC+4 as its base, so the literal at byte 8 is displacement +1 word.
-    let mut caller = Sia32Object::new(words(&[
-        ldpc_w(12, 1),
-        callr(12),
-        trap(0),
-        NOP,
-        0,
-        0,
-    ]));
+    let mut caller = Sia32Object::new(words(&[ldpc_w(12, 1), callr(12), trap(0), NOP, 0, 0]));
     caller.define_symbol("entry", 0).expect("entry");
     caller
         .add_abs32_relocation(8, "callee", 0)

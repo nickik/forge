@@ -1,6 +1,4 @@
-use forge_codegen_cranelift::{
-    build_sia32_flat_image, BackendError, Sia32Object, Sia32Section,
-};
+use forge_codegen_cranelift::{build_sia32_flat_image, BackendError, Sia32Object, Sia32Section};
 
 #[test]
 fn m8_3_builds_deterministic_text_rodata_data_bss_image() {
@@ -50,8 +48,7 @@ fn m8_3_relocates_against_final_image_addresses() {
     text.add_abs32_relocation(0, "external_data", 4)
         .expect("relocation");
 
-    let mut data =
-        Sia32Object::with_sections(Vec::new(), Vec::new(), vec![1, 2, 3, 4, 5, 6, 7, 8]);
+    let mut data = Sia32Object::with_sections(Vec::new(), Vec::new(), vec![1, 2, 3, 4, 5, 6, 7, 8]);
     data.define_section_symbol("external_data", Sia32Section::Data, 0)
         .expect("data symbol");
 

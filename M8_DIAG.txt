@@ -1,0 +1,27 @@
+[1m[92m    Updating[0m crates.io index
+[1m[92m    Updating[0m git repository `https://github.com/nickik/crainlift`
+[1m[92m    Updating[0m git repository `https://github.com/nickik/LightingSimulation`
+[1m[91merror[0m: failed to get `lighting-simulation` as a dependency of package `forge-codegen-cranelift v0.1.0 (/home/runner/work/forge/forge/crates/forge-codegen-cranelift)`
+
+Caused by:
+  failed to load source for dependency `lighting-simulation`
+
+Caused by:
+  unable to update https://github.com/nickik/LightingSimulation?rev=bc12467e106695f49f60e4cf2ac7a6cfe5d74480
+
+Caused by:
+  failed to clone into: /home/runner/.cargo/git/db/lightingsimulation-e6cc3cff7a74f2a8
+
+Caused by:
+  revision bc12467e106695f49f60e4cf2ac7a6cfe5d74480 not found
+
+Caused by:
+  failed to authenticate when downloading repository
+
+  * attempted to find username/password via git's `credential.helper` support, but failed
+
+  if the git CLI succeeds then `net.git-fetch-with-cli` may help here
+  https://doc.rust-lang.org/cargo/reference/config.html#netgit-fetch-with-cli
+
+Caused by:
+  failed to acquire username/password from local configuration

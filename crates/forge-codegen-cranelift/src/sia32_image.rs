@@ -69,7 +69,14 @@ pub fn build_sia32_flat_image(
     }
 
     let text_address = cursor;
-    let mut bases = vec![Sia32SectionBases { text: 0, rodata: 0, data: 0 }; objects.len()];
+    let mut bases = vec![
+        Sia32SectionBases {
+            text: 0,
+            rodata: 0,
+            data: 0
+        };
+        objects.len()
+    ];
     for (index, object) in objects.iter().enumerate() {
         cursor = align_address(cursor, SIA32_TEXT_ALIGNMENT)?;
         bases[index].text = cursor;
@@ -117,9 +124,12 @@ pub fn build_sia32_flat_image(
     let image_len = image_end
         .checked_sub(load_address)
         .ok_or_else(|| image_error("SIA32 image end precedes load address"))?;
-    let mut bytes = vec![0; usize::try_from(image_len).map_err(|_| {
-        image_error("SIA32 image length does not fit host address space")
-    })?];
+    let mut bytes = vec![
+        0;
+        usize::try_from(image_len).map_err(|_| {
+            image_error("SIA32 image length does not fit host address space")
+        })?
+    ];
 
     for (index, object) in linked.iter().enumerate() {
         copy_section(&mut bytes, load_address, bases[index].text, &object.text)?;
@@ -152,7 +162,11 @@ pub fn build_sia32_flat_image(
         },
     };
 
-    Ok(Sia32ExecutableImage { bytes, entry, layout })
+    Ok(Sia32ExecutableImage {
+        bytes,
+        entry,
+        layout,
+    })
 }
 
 fn resolve_symbol(
