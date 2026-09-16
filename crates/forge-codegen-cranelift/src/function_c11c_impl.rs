@@ -5,6 +5,7 @@ mod implementation {
     include!("function_c11c_extension.rs");
     include!("function_c11d_extension.rs");
     include!("function_c14_closure.rs");
+    include!("function_c14_duration.rs");
     include!("function_c14_patterns.rs");
     include!("function_c14_scalar.rs");
 }

@@ -1,0 +1,12 @@
+module examples.c14.duration;
+
+fn main() -> i32 {
+    val short = #duration "100ms";
+    val long = #duration "2s";
+
+    if (short < long && short == #duration "100ms" && long == #duration "2s") {
+        return 0;
+    } else {
+        return 42;
+    }
+}

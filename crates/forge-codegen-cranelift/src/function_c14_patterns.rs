@@ -30,7 +30,7 @@ fn lower_c14_pattern_instruction(
         );
     }
 
-    lower_c11c_instruction(
+    lower_c14_duration_instruction(
         fir,
         all_functions,
         all_globals,
