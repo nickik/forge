@@ -138,7 +138,8 @@ fn needs_aggregate_lowering(fir: &FirFunction) -> bool {
                 | FirInstructionKind::ResultIsOk { .. }
                 | FirInstructionKind::ResultUnwrapOk { .. }
                 | FirInstructionKind::ResultUnwrapErr { .. }
-                | FirInstructionKind::MakeResultErr { .. }
+                | FirInstructionKind::MakeResultOk { .. }
+            | FirInstructionKind::MakeResultErr { .. }
                 | FirInstructionKind::OptionIsSome { .. }
                 | FirInstructionKind::OptionUnwrap { .. }
         ) || matches!(
@@ -602,6 +603,22 @@ fn lower_mixed_instruction(
                 result_ty,
                 address,
                 flags.stack,
+                flags.stack,
+                scalars,
+                aggregates,
+                layouts,
+                types,
+                cursor,
+            )?;
+            return Ok(());
+        }
+        FirInstructionKind::MakeResultOk { value } => {
+            let id = result_id.ok_or_else(|| shape("make-result-ok has no result"))?;
+            lower_make_result_ok(
+                fir,
+                id,
+                result_ty.expect("result-ok result type"),
+                *value,
                 flags.stack,
                 scalars,
                 aggregates,
@@ -1130,6 +1147,45 @@ fn lower_make_some(
         cursor,
     )?;
     write_variant(&layout, 1, result.address, stack_flags, cursor)?;
+    aggregates.insert(id, result);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_make_result_ok(
+    fir: &FirFunction,
+    id: FirValueId,
+    ty: &Ty,
+    value: FirValueId,
+    stack_flags: MemFlags,
+    scalars: &BTreeMap<FirValueId, Value>,
+    aggregates: &mut BTreeMap<FirValueId, AggregateValue>,
+    layouts: &mut LayoutEngine<'_>,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<(), BackendError> {
+    let Ty::Result { ok: ok_ty, .. } = ty else {
+        return Err(shape("result-ok result is not Result"));
+    };
+    if value_type(fir, value)? != ok_ty.as_ref() {
+        return Err(shape("Result Ok payload type mismatch"));
+    }
+    let result = new_aggregate(ty, layouts, types, cursor)?;
+    let layout = layouts.layout_of(ty).map_err(layout_error)?;
+    if layouts.layout_of(ok_ty).map_err(layout_error)?.size != 0 {
+        store_typed_value(
+            value,
+            ok_ty,
+            payload_address_for_variant(&layout, 0, result.address, cursor)?,
+            stack_flags,
+            stack_flags,
+            scalars,
+            aggregates,
+            layouts,
+            cursor,
+        )?;
+    }
+    write_variant(&layout, 0, result.address, stack_flags, cursor)?;
     aggregates.insert(id, result);
     Ok(())
 }

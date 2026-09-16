@@ -1,0 +1,33 @@
+module examples.c14_native_spec.constructors;
+
+fn make_ok(value: i32) -> Result[i32, i32] {
+    return Ok(value);
+}
+
+fn make_err(error: i32) -> Result[i32, i32] {
+    return Err(error);
+}
+
+fn use_ok() -> Result[i32, i32] {
+    val value: i32 = make_ok(41i32)?;
+    return Ok(value + 1i32);
+}
+
+fn use_err() -> Result[i32, i32] {
+    val value: i32 = make_err(7i32)?;
+    return Ok(value);
+}
+
+fn main() -> i32 {
+    val maybe: i32? = Some(42i32);
+    val extracted = match (maybe) {
+        Some(value) => value,
+        None => 0i32,
+    };
+    if (extracted != 42i32) {
+        return 1;
+    }
+    use_ok();
+    use_err();
+    return 0;
+}

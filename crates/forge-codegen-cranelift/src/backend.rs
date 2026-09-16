@@ -374,7 +374,8 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
             FirInstructionKind::CallIndirect { callee, args, .. } => {
                 available.contains(callee) && args.iter().all(|value| available.contains(value))
             }
-            FirInstructionKind::MakeResultErr { error } => available.contains(error),
+            FirInstructionKind::MakeResultOk { value } => available.contains(value),
+  FirInstructionKind::MakeResultErr { error } => available.contains(error),
         };
         if !ready {
             return false;

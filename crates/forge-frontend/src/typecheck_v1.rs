@@ -1834,9 +1834,13 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 self.check_binary(expr.span, *op, left, right, expected, &mut resolved_unsafe)
             }
             HirExprKind::Call { callee, args } => {
-                let (result, call) = self.check_call(expr.span, callee, args);
-                resolved_call = call;
-                result
+                if let Some(result) = self.check_builtin_constructor(expr.span, callee, args, expected) {
+            result
+        } else {
+            let (result, call) = self.check_call(expr.span, callee, args);
+            resolved_call = call;
+            result
+        }
             }
             HirExprKind::TypeCall { target, args } => {
                 self.check_type_call(expr.span, target, args, &mut resolved_unsafe)
@@ -2163,6 +2167,91 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         });
         ty
     }
+
+    fn check_builtin_constructor(
+    &mut self,
+    span: Span,
+    callee: &HirExpr,
+    args: &[HirCallArg],
+    expected: Option<&Ty>,
+) -> Option<Ty> {
+    let HirExprKind::Name { reference } = &callee.kind else {
+        return None;
+    };
+    if reference.root != ResolvedName::BuiltinValue || reference.tail.len() != 1 {
+        return None;
+    }
+    let name = reference.tail[0].as_str();
+    if !matches!(name, "Some" | "Ok" | "Err") {
+        return None;
+    }
+
+    let payload = match args {
+        [HirCallArg::Positional { value }] => value,
+        _ => {
+            for arg in args {
+                let value = match arg {
+                    HirCallArg::Positional { value } | HirCallArg::Named { value, .. } => value,
+                };
+                self.check_expr(value, None);
+            }
+            self.diagnostic(
+                span,
+                "type/constructor-arguments",
+                format!("`{name}` requires exactly one positional argument"),
+            );
+            return Some(Ty::Error);
+        }
+    };
+
+    match name {
+        "Some" => match expected {
+            Some(Ty::Optional { inner }) => {
+                let actual = self.check_expr(payload, Some(inner));
+                self.require_assignable(payload.span, inner, &actual, "type/constructor-payload");
+                Some(expected.expect("optional expected type").clone())
+            }
+            _ => {
+                let actual = self.check_expr(payload, None);
+                let inner = self.materialize_literal(payload.span, actual);
+                Some(Ty::Optional { inner: Box::new(inner) })
+            }
+        },
+        "Ok" => match expected {
+            Some(Ty::Result { ok, .. }) => {
+                let actual = self.check_expr(payload, Some(ok));
+                self.require_assignable(payload.span, ok, &actual, "type/constructor-payload");
+                Some(expected.expect("Result expected type").clone())
+            }
+            _ => {
+                self.check_expr(payload, None);
+                self.diagnostic(
+                    span,
+                    "type/result-constructor-context",
+                    "`Ok` requires a contextual Result[T, E] type",
+                );
+                Some(Ty::Error)
+            }
+        },
+        "Err" => match expected {
+            Some(Ty::Result { error, .. }) => {
+                let actual = self.check_expr(payload, Some(error));
+                self.require_assignable(payload.span, error, &actual, "type/constructor-payload");
+                Some(expected.expect("Result expected type").clone())
+            }
+            _ => {
+                self.check_expr(payload, None);
+                self.diagnostic(
+                    span,
+                    "type/result-constructor-context",
+                    "`Err` requires a contextual Result[T, E] type",
+                );
+                Some(Ty::Error)
+            }
+        },
+        _ => None,
+    }
+}
 
     fn authorize_unsafe(
         &mut self,
