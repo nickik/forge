@@ -156,9 +156,16 @@ fn result_patterns_lower_discriminant_tests_and_both_payload_projections() {
         "#,
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).filter(|op| matches!(op, FirInstructionKind::ResultIsOk { .. })).count() >= 2);
+    assert!(
+        instructions(&output)
+            .filter(|op| matches!(op, FirInstructionKind::ResultIsOk { .. }))
+            .count()
+            >= 2
+    );
     assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::ResultUnwrapOk { .. })));
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::ResultUnwrapErr { .. })));
+    assert!(
+        instructions(&output).any(|op| matches!(op, FirInstructionKind::ResultUnwrapErr { .. }))
+    );
 }
 
 #[test]
@@ -171,7 +178,12 @@ fn payloadless_result_constructors_lower_through_unit_payloads() {
         "#,
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert_eq!(instructions(&output).filter(|op| matches!(op, FirInstructionKind::Unit)).count(), 2);
+    assert_eq!(
+        instructions(&output)
+            .filter(|op| matches!(op, FirInstructionKind::Unit))
+            .count(),
+        2
+    );
     assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeResultOk { .. })));
     assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeResultErr { .. })));
 }

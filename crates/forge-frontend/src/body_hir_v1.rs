@@ -1309,7 +1309,9 @@ fn collect_ast_pattern_names(pattern: &ast::Pattern, out: &mut Vec<String>) {
             }
         }
         PatternKind::Map { entries, .. } => out.extend(entries.iter().map(|e| e.binding.clone())),
-        PatternKind::Some { value } | PatternKind::Ok { value } | PatternKind::Err { value } => collect_ast_pattern_names(value, out),
+        PatternKind::Some { value } | PatternKind::Ok { value } | PatternKind::Err { value } => {
+            collect_ast_pattern_names(value, out)
+        }
         PatternKind::As { name, pattern } => {
             out.push(name.clone());
             collect_ast_pattern_names(pattern, out);
@@ -1420,7 +1422,9 @@ fn remap_pattern_locals(pattern: &mut HirPattern, remap: &BTreeMap<LocalId, Loca
                 }
             }
         }
-        HirPatternKind::Some { value } | HirPatternKind::Ok { value } | HirPatternKind::Err { value } => remap_pattern_locals(value, remap),
+        HirPatternKind::Some { value }
+        | HirPatternKind::Ok { value }
+        | HirPatternKind::Err { value } => remap_pattern_locals(value, remap),
         HirPatternKind::Or { patterns } => {
             for p in patterns {
                 remap_pattern_locals(p, remap);

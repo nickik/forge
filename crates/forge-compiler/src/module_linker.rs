@@ -848,9 +848,9 @@ fn rewrite_pattern_types(
                 rewrite_pattern_types(item, context)?;
             }
         }
-        PatternKind::Some { value }
-        | PatternKind::Ok { value }
-        | PatternKind::Err { value } => rewrite_pattern_types(value, context)?,
+        PatternKind::Some { value } | PatternKind::Ok { value } | PatternKind::Err { value } => {
+            rewrite_pattern_types(value, context)?
+        }
         PatternKind::As { pattern, .. } => rewrite_pattern_types(pattern, context)?,
         PatternKind::Wildcard
         | PatternKind::Binding { .. }
@@ -885,9 +885,9 @@ fn collect_pattern_bindings(pattern: &Pattern, out: &mut Vec<String>) {
         PatternKind::Map { entries, .. } => {
             out.extend(entries.iter().map(|entry| entry.binding.clone()));
         }
-        PatternKind::Some { value }
-        | PatternKind::Ok { value }
-        | PatternKind::Err { value } => collect_pattern_bindings(value, out),
+        PatternKind::Some { value } | PatternKind::Ok { value } | PatternKind::Err { value } => {
+            collect_pattern_bindings(value, out)
+        }
         PatternKind::Or { patterns } => {
             if let Some(first) = patterns.first() {
                 collect_pattern_bindings(first, out);
@@ -945,9 +945,9 @@ fn rename_top_pattern(pattern: &mut Pattern, values: &BTreeMap<String, Symbol>) 
                 }
             }
         }
-        PatternKind::Some { value }
-        | PatternKind::Ok { value }
-        | PatternKind::Err { value } => rename_top_pattern(value, values),
+        PatternKind::Some { value } | PatternKind::Ok { value } | PatternKind::Err { value } => {
+            rename_top_pattern(value, values)
+        }
         PatternKind::Or { patterns } => {
             for pattern in patterns {
                 rename_top_pattern(pattern, values);

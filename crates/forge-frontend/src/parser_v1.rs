@@ -474,8 +474,18 @@ where
                 .delimited_by(just(Token::LParen), just(Token::RParen)),
         )
         .map_with(|(tag, value), e| match tag {
-            Token::Ok => Node::new(PatternKind::Ok { value: Box::new(value) }, span(e.span())),
-            Token::Err => Node::new(PatternKind::Err { value: Box::new(value) }, span(e.span())),
+            Token::Ok => Node::new(
+                PatternKind::Ok {
+                    value: Box::new(value),
+                },
+                span(e.span()),
+            ),
+            Token::Err => Node::new(
+                PatternKind::Err {
+                    value: Box::new(value),
+                },
+                span(e.span()),
+            ),
             _ => unreachable!("result-pattern parser only produces Ok or Err"),
         });
     let sequence_rest = just(Token::DotDot)
@@ -622,7 +632,12 @@ where
             Token::Err => "Err",
             _ => unreachable!("result-expression parser only produces Ok or Err"),
         };
-        Node::new(ExprKind::Path { path: Path::new(vec![name.into()]) }, span(e.span()))
+        Node::new(
+            ExprKind::Path {
+                path: Path::new(vec![name.into()]),
+            },
+            span(e.span()),
+        )
     });
     let keyword_expr = just(Token::Colon)
         .ignore_then(fdn_name())
@@ -1707,9 +1722,7 @@ fn validate_pattern(pattern: &Pattern, diagnostics: &mut Vec<Diagnostic>) {
         PatternKind::Some { value }
         | PatternKind::Ok { value }
         | PatternKind::Err { value }
-        | PatternKind::As { pattern: value, .. } => {
-            validate_pattern(value, diagnostics)
-        }
+        | PatternKind::As { pattern: value, .. } => validate_pattern(value, diagnostics),
         PatternKind::Or { patterns } => {
             for pattern in patterns {
                 validate_pattern(pattern, diagnostics);

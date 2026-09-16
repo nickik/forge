@@ -2037,8 +2037,16 @@ fn result_constructors_and_patterns_require_a_compatible_result_context() {
         fn bad_propagation(value: Result[u8, u16]) -> Result[u8, u8] { return value?; }
         "#,
     );
-    assert!(has(&invalid, "constructor/context"), "{:?}", invalid.diagnostics);
-    assert!(has(&invalid, "pattern/result-ok"), "{:?}", invalid.diagnostics);
+    assert!(
+        has(&invalid, "constructor/context"),
+        "{:?}",
+        invalid.diagnostics
+    );
+    assert!(
+        has(&invalid, "pattern/result-ok"),
+        "{:?}",
+        invalid.diagnostics
+    );
     assert!(has(&invalid, "try/error-type"), "{:?}", invalid.diagnostics);
 
     let invalid_payloadless = check(
@@ -2047,5 +2055,9 @@ fn result_constructors_and_patterns_require_a_compatible_result_context() {
         fn bad() -> Result[u8, u8] { return Ok(); }
         "#,
     );
-    assert!(has(&invalid_payloadless, "constructor/arguments"), "{:?}", invalid_payloadless.diagnostics);
+    assert!(
+        has(&invalid_payloadless, "constructor/arguments"),
+        "{:?}",
+        invalid_payloadless.diagnostics
+    );
 }

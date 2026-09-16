@@ -542,7 +542,9 @@ impl<'a, 'd> Resolver<'a, 'd> {
                     self.define_local(&entry.binding, pattern.span, mutable, parameter);
                 }
             }
-            PatternKind::Some { value } | PatternKind::Ok { value } | PatternKind::Err { value } => self.bind_pattern(value, mutable, parameter),
+            PatternKind::Some { value }
+            | PatternKind::Ok { value }
+            | PatternKind::Err { value } => self.bind_pattern(value, mutable, parameter),
             PatternKind::As {
                 name,
                 pattern: inner,
