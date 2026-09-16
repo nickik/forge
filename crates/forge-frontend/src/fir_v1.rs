@@ -3274,11 +3274,21 @@ impl<'a> FunctionLowerer<'a> {
                     self.bind_irrefutable_pattern(item, item_value, &element);
                 }
                 if let Some(rest) = rest {
-                    self.diagnostic(
+                    let rest_ty = self
+                        .typed
+                        .local_types
+                        .get(rest)
+                        .cloned()
+                        .unwrap_or(Ty::Unknown);
+                    let rest_value = self.emit_value(
                         pattern.span,
-                        "fir/rest-pattern",
-                        format!("irrefutable rest binding {rest:?} needs slice-view lowering"),
+                        rest_ty,
+                        FirInstructionKind::Subsequence {
+                            base: value,
+                            start: items.len() as u64,
+                        },
                     );
+                    self.store_local(pattern.span, *rest, rest_value);
                 }
             }
             HirPatternKind::Variant { fields, .. } => {
