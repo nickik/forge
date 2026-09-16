@@ -317,6 +317,9 @@ fn c10b_c_object_is_deterministic_and_contains_real_relocations() {
         match target {
             CraneliftTarget::Aarch64 => assert!(report.contains("AArch64"), "{report}"),
             CraneliftTarget::Riscv64 => assert!(report.contains("RISC-V"), "{report}"),
+            CraneliftTarget::Sia32 => {
+                panic!("SIA32 uses SIAO32/flat-image emission, not the legacy ELF64 C10 path")
+            }
         }
         for symbol in [
             "__forge_fn_0000000a",
@@ -436,21 +439,18 @@ fail:
     let _ = fs::remove_dir_all(dir);
 }
 
-fn tool_available(program: &str) -> bool {
-    Command::new(program)
-        .arg("--version")
-        .output()
-        .is_ok_and(|output| output.status.success())
+fn tool_available(tool: &str) -> bool {
+    Command::new(tool).arg("--version").output().is_ok()
 }
 
-fn successful_output(command: &mut Command, label: &str) -> Output {
+fn successful_output(command: &mut Command, context: &str) -> Output {
     let output = command
         .output()
-        .unwrap_or_else(|error| panic!("{label}: failed to start: {error}"));
+        .unwrap_or_else(|error| panic!("{context}: {error}"));
     assert!(
         output.status.success(),
-        "{label}: status={}\nstdout:\n{}\nstderr:\n{}",
-        output.status,
+        "{context} failed with {:?}\nstdout:\n{}\nstderr:\n{}",
+        output.status.code(),
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -459,12 +459,13 @@ fn successful_output(command: &mut Command, label: &str) -> Output {
 
 fn temporary_directory(label: &str) -> PathBuf {
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    let serial = NEXT.fetch_add(1, Ordering::Relaxed);
-    let path =
-        std::env::temp_dir().join(format!("forge-c10-{label}-{}-{serial}", std::process::id()));
-    if path.exists() {
-        fs::remove_dir_all(&path).expect("remove stale C10 temp directory");
-    }
-    fs::create_dir_all(&path).expect("create C10 temp directory");
+    let nonce = NEXT.fetch_add(1, Ordering::Relaxed);
+    let mut path = std::env::temp_dir();
+    path.push(format!(
+        "forge-{label}-{}-{nonce}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&path);
+    fs::create_dir_all(&path).expect("create temporary directory");
     path
 }
