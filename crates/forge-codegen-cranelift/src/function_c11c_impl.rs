@@ -9,8 +9,9 @@ mod implementation {
     include!("function_c14_duration.rs");
     include!("function_c14_patterns.rs");
     include!("function_c14_scalar.rs");
+    include!("function_c14_completion.rs");
 }
 
-pub(crate) use implementation::lower_function_c14_scalar as lower_function_with_globals;
+pub(crate) use implementation::lower_function_c14_complete as lower_function_with_globals;
 pub(crate) use implementation::lower_function_c9d as lower_function;
 pub(crate) use implementation::lower_module_initializer_c11d as lower_module_initializer;
