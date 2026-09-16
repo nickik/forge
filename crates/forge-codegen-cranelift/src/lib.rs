@@ -22,6 +22,7 @@ mod machine;
 #[allow(clippy::too_many_arguments)]
 #[path = "object_c11c.rs"]
 mod object;
+mod sia32_object;
 mod target;
 mod types;
 
@@ -33,5 +34,6 @@ pub use globals::{
 };
 pub use machine::MachineCode;
 pub use object::{NativeObject, ObjectLinkage, ObjectModulePlan, ObjectSymbol};
+pub use sia32_object::{link_sia32_objects, Sia32Object, Sia32Relocation};
 pub use target::{CraneliftTarget, TargetLayout};
 pub use types::{ScalarLayout, TypeLowering};
