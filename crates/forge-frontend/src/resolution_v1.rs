@@ -288,7 +288,7 @@ impl<'a, 'd> Resolver<'a, 'd> {
             self.record_use(name, span, ResolvedName::Import(index));
             return;
         }
-        if matches!(name, "Some") {
+        if matches!(name, "Some" | "Ok" | "Err") {
             self.record_use(name, span, ResolvedName::BuiltinValue);
             return;
         }

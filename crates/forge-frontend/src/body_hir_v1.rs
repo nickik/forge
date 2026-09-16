@@ -635,7 +635,7 @@ impl<'a, 'd> Lowerer<'a, 'd> {
         if let Some(index) = self.imports.get(name).copied() {
             return ResolvedName::Import(index);
         }
-        if matches!(name, "Some") {
+        if matches!(name, "Some" | "Ok" | "Err") {
             return ResolvedName::BuiltinValue;
         }
         self.diagnostics.push(HirDiagnostic {
@@ -650,7 +650,11 @@ impl<'a, 'd> Lowerer<'a, 'd> {
         let root = self.resolve_value(&first, span);
         HirValueRef {
             root,
-            tail: path.segments.iter().skip(1).cloned().collect(),
+            tail: if root == ResolvedName::BuiltinValue {
+                vec![first.clone()]
+            } else {
+                path.segments.iter().skip(1).cloned().collect()
+            },
         }
     }
 

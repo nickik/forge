@@ -277,6 +277,9 @@ pub enum FirInstructionKind {
     ResultUnwrapErr {
         value: FirValueId,
     },
+    MakeResultOk {
+        value: FirValueId,
+    },
     MakeResultErr {
         error: FirValueId,
     },
@@ -1376,6 +1379,44 @@ impl<'a> FunctionLowerer<'a> {
         }
     }
 
+    fn lower_builtin_constructor(
+        &mut self,
+        span: Span,
+        callee: &HirExpr,
+        args: &[HirCallArg],
+        ty: Ty,
+    ) -> Option<FirValueId> {
+        let HirExprKind::Name { reference } = &callee.kind else {
+            return None;
+        };
+        if reference.root != ResolvedName::BuiltinValue || reference.tail.len() != 1 {
+            return None;
+        }
+        let name = reference.tail[0].as_str();
+        if !matches!(name, "Some" | "Ok" | "Err") {
+            return None;
+        }
+        let payload = match args {
+            [HirCallArg::Positional { value }] => value,
+            _ => {
+                self.diagnostic(
+                    span,
+                    "fir/constructor-arguments",
+                    format!("`{name}` reached FIR without one positional argument"),
+                );
+                return Some(self.poison(span, ty));
+            }
+        };
+        let payload = self.lower_expr(payload);
+        let kind = match name {
+            "Some" => FirInstructionKind::MakeSome { value: payload },
+            "Ok" => FirInstructionKind::MakeResultOk { value: payload },
+            "Err" => FirInstructionKind::MakeResultErr { error: payload },
+            _ => unreachable!("builtin constructor checked above"),
+        };
+        Some(self.emit_value(span, ty, kind))
+    }
+
     fn lower_source_expr(&mut self, expr: &HirExpr, ty: Ty) -> FirValueId {
         match &expr.kind {
             HirExprKind::Integer { text } => self.emit_value(
@@ -1494,7 +1535,15 @@ impl<'a> FunctionLowerer<'a> {
                     )
                 }
             }
-            HirExprKind::Call { .. } => self.lower_call_expression(expr, false),
+            HirExprKind::Call { callee, args } => {
+                if let Some(value) =
+                    self.lower_builtin_constructor(expr.span, callee, args, ty.clone())
+                {
+                    value
+                } else {
+                    self.lower_call_expression(expr, false)
+                }
+            }
             HirExprKind::TypeCall { args, .. } => {
                 let Some(source_expr) = first_positional(args) else {
                     self.diagnostic(
