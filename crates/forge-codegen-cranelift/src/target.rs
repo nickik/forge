@@ -1,5 +1,8 @@
+use std::str::FromStr;
+
 use cranelift_codegen::isa::{self, OwnedTargetIsa};
 use cranelift_codegen::settings;
+use target_lexicon::Triple;
 
 use crate::BackendError;
 
@@ -44,23 +47,21 @@ impl CraneliftTarget {
     }
 
     pub(crate) fn isa(self) -> Result<OwnedTargetIsa, BackendError> {
-        // Type inference deliberately selects Cranelift's SIA-enabled Triple,
-        // avoiding a second target-lexicon type in Forge's dependency graph.
-        let triple = self
-            .triple()
-            .parse()
-            .map_err(|error| BackendError::InvalidTarget {
+        let triple =
+            Triple::from_str(self.triple()).map_err(|error| BackendError::InvalidTarget {
                 triple: self.triple(),
-                message: format!("{error:?}"),
+                message: error.to_string(),
             })?;
         let flags = settings::Flags::new(settings::builder());
         let builder = isa::lookup(triple).map_err(|error| BackendError::InvalidTarget {
             triple: self.triple(),
             message: error.to_string(),
         })?;
-        builder.finish(flags).map_err(|error| BackendError::Cranelift {
-            message: error.to_string(),
-        })
+        builder
+            .finish(flags)
+            .map_err(|error| BackendError::Cranelift {
+                message: error.to_string(),
+            })
     }
 }
 
