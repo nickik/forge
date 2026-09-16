@@ -34,23 +34,6 @@ for source in \
   fi
 done
 
-echo "native-spec expected rejection: anonymous closure to function pointer"
-closure_error="$(mktemp)"
-if "$FORGEC" "${common[@]}" --run \
-  "$ROOT/examples/c14-native-spec/reject_closure_fn_pointer.fg" \
-  >/dev/null 2>"$closure_error"; then
-  echo "anonymous closure unexpectedly coerced to a function pointer" >&2
-  rm -f "$closure_error"
-  exit 1
-fi
-if ! grep -q "capture-free anonymous function values" "$closure_error"; then
-  echo "anonymous closure failed for the wrong reason:" >&2
-  cat "$closure_error" >&2
-  rm -f "$closure_error"
-  exit 1
-fi
-rm -f "$closure_error"
-
 echo "native-spec: Game of Life"
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT

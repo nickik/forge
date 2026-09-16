@@ -65,6 +65,12 @@ impl CraneliftBackend {
             Some(allocate_internal_owner(&mut used, &mut next_internal)?)
         };
 
+        crate::completion::lift_capture_free_function_values(
+            &mut all_functions,
+            &mut used,
+            &mut next_internal,
+        )?;
+
         let lowering = self.type_lowering();
         let mut functions = BTreeMap::new();
         for (owner, fir) in &all_functions {

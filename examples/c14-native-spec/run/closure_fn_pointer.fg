@@ -1,8 +1,11 @@
-module examples.c14.reject_closure_fn_pointer;
+module examples.c14_native_spec.closure_fn_pointer;
 
 fn main() -> i32 {
     val op: fn(u32) -> u32 = (x: u32) -> u32 {
         return x + 1u32;
     };
+    if (op(41u32) != 42u32) {
+        return 1;
+    }
     return 0;
 }

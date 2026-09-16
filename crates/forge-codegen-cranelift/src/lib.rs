@@ -12,6 +12,7 @@ mod backend_c11a;
 #[path = "backend_c11d_legacy.rs"]
 mod backend_legacy;
 mod c9_memory_checks;
+mod completion;
 mod context;
 mod diagnostic;
 #[allow(clippy::too_many_arguments, dead_code)]
