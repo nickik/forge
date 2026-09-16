@@ -27,9 +27,7 @@ pub(crate) fn install_context_storage(module: &mut FirModule) -> Result<(), Back
             }
             next -= 1;
         };
-        if next > 0 {
-            next -= 1;
-        }
+        next = next.saturating_sub(1);
         module.globals.insert(
             owner,
             FirGlobal {
