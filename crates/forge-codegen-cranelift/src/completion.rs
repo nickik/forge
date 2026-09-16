@@ -1,10 +1,240 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use forge_fir::{
-    DefId, FirBasicBlock, FirBlockId, FirFunction, FirInstructionKind, FirSelectCase, FirTerminator,
+    DefId, ExprId, FirBasicBlock, FirBlockId, FirFunction, FirInstruction, FirInstructionKind,
+    FirLocal, FirLocalId, FirSelectCase, FirTerminator, FirValueId, Ty,
 };
 
 use crate::BackendError;
+
+/// Lift non-escaping captured closures into deterministic synthetic module
+/// functions using the C14 environment-pointer ABI.
+///
+/// The caller retains lexical ownership of the stack environment. The lifted
+/// function receives that environment pointer as its hidden first parameter;
+/// returning a closure or storing one globally remains rejected until Forge has
+/// an explicit owned-callable allocation/lifetime model.
+pub(crate) fn lift_captured_closure_values(
+    functions: &mut BTreeMap<DefId, FirFunction>,
+    used: &mut BTreeSet<DefId>,
+    next_internal: &mut u32,
+) -> Result<(), BackendError> {
+    let originals = functions.values().cloned().collect::<Vec<_>>();
+    let mut additions = Vec::new();
+
+    for original in originals {
+        if matches!(original.return_type, Ty::Closure { .. }) {
+            return Err(BackendError::UnsupportedFir {
+                component: "escaping closure return requires heap/lifetime support",
+            });
+        }
+
+        let candidates = original
+            .closures
+            .iter()
+            .filter_map(|(id, closure)| {
+                (!closure.function_pointer && !closure.captures.is_empty()).then_some(*id)
+            })
+            .collect::<Vec<_>>();
+
+        for closure_id in candidates {
+            let closure = original
+                .closures
+                .get(&closure_id)
+                .ok_or_else(|| shape("captured closure metadata disappeared"))?;
+            if matches!(closure.return_type, Ty::Closure { .. }) {
+                return Err(BackendError::UnsupportedFir {
+                    component: "escaping captured closure return requires heap/lifetime support",
+                });
+            }
+
+            let owner = allocate_internal_owner(used, next_internal)?;
+            let lifted = lift_one_captured_closure(&original, closure_id, owner)?;
+            let code_ty = captured_closure_code_type(&original, closure_id)?;
+            additions.push((owner, lifted));
+
+            let rewritten = functions.get_mut(&original.owner).ok_or_else(|| {
+                shape("enclosing function disappeared during captured closure lifting")
+            })?;
+            let mut next_value = rewritten
+                .value_types
+                .keys()
+                .map(|id| id.0)
+                .max()
+                .unwrap_or(0)
+                .checked_add(1)
+                .ok_or_else(|| shape("captured closure value id overflow"))?;
+            let mut rewrites = 0usize;
+
+            for block in &mut rewritten.blocks {
+                let mut materialized = Vec::with_capacity(block.instructions.len() + 1);
+                for mut instruction in std::mem::take(&mut block.instructions) {
+                    let matches = matches!(
+                        &instruction.kind,
+                        FirInstructionKind::MakeClosure { closure, .. } if *closure == closure_id
+                    );
+                    if matches {
+                        let code = FirValueId(next_value);
+                        next_value = next_value
+                            .checked_add(1)
+                            .ok_or_else(|| shape("captured closure value id overflow"))?;
+                        rewritten.value_types.insert(code, code_ty.clone());
+                        materialized.push(FirInstruction {
+                            span: instruction.span.clone(),
+                            result: Some(code),
+                            kind: FirInstructionKind::FunctionRef { target: owner },
+                        });
+                        let FirInstructionKind::MakeClosure { captures, .. } =
+                            &mut instruction.kind
+                        else {
+                            unreachable!();
+                        };
+                        captures.insert(0, code);
+                        rewrites += 1;
+                    }
+                    materialized.push(instruction);
+                }
+                block.instructions = materialized;
+            }
+
+            if rewrites == 0 {
+                return Err(shape(format!(
+                    "captured closure {closure_id:?} has no construction site"
+                )));
+            }
+        }
+    }
+
+    for (owner, function) in additions {
+        if functions.insert(owner, function).is_some() {
+            return Err(shape(format!(
+                "synthetic captured closure owner {owner:?} collided"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn captured_closure_signature(
+    enclosing: &FirFunction,
+    closure_id: ExprId,
+) -> Result<(Ty, Vec<Ty>), BackendError> {
+    let closure = enclosing
+        .closures
+        .get(&closure_id)
+        .ok_or_else(|| shape("missing captured closure metadata"))?;
+    let params = closure
+        .params
+        .iter()
+        .map(|local| {
+            enclosing
+                .locals
+                .get(local)
+                .map(|local| local.ty.clone())
+                .ok_or_else(|| shape(format!("missing captured closure parameter {local:?}")))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let closure_ty = Ty::Closure {
+        params: params.clone(),
+        result: Box::new(closure.return_type.clone()),
+    };
+    Ok((closure_ty, params))
+}
+
+fn captured_closure_code_type(
+    enclosing: &FirFunction,
+    closure_id: ExprId,
+) -> Result<Ty, BackendError> {
+    let closure = enclosing
+        .closures
+        .get(&closure_id)
+        .ok_or_else(|| shape("missing captured closure metadata"))?;
+    let (closure_ty, params) = captured_closure_signature(enclosing, closure_id)?;
+    let mut code_params = Vec::with_capacity(params.len() + 1);
+    code_params.push(closure_ty);
+    code_params.extend(params);
+    Ok(Ty::Function {
+        params: code_params,
+        result: Box::new(closure.return_type.clone()),
+        named_arguments: false,
+    })
+}
+
+fn lift_one_captured_closure(
+    enclosing: &FirFunction,
+    closure_id: ExprId,
+    owner: DefId,
+) -> Result<FirFunction, BackendError> {
+    let closure = enclosing
+        .closures
+        .get(&closure_id)
+        .ok_or_else(|| shape("missing captured closure metadata while lifting"))?
+        .clone();
+    let blocks = enclosing
+        .blocks
+        .iter()
+        .filter(|block| block.closure == Some(closure_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    if blocks.is_empty() {
+        return Err(shape("captured closure has no FIR blocks"));
+    }
+    if !blocks.iter().any(|block| block.id == closure.entry) {
+        return Err(shape("captured closure entry block is missing"));
+    }
+
+    let env_id = enclosing
+        .locals
+        .keys()
+        .map(|id| id.0)
+        .max()
+        .unwrap_or(0)
+        .checked_add(1)
+        .map(FirLocalId)
+        .ok_or_else(|| shape("captured closure hidden environment local overflow"))?;
+    let (closure_ty, _) = captured_closure_signature(enclosing, closure_id)?;
+
+    let mut locals = enclosing.locals.clone();
+    for local in locals.values_mut() {
+        local.parameter = false;
+    }
+    locals.insert(
+        env_id,
+        FirLocal {
+            id: env_id,
+            source: None,
+            ty: closure_ty,
+            mutable: false,
+            parameter: true,
+            synthetic: true,
+        },
+    );
+    for parameter in &closure.params {
+        let local = locals.get_mut(parameter).ok_or_else(|| {
+            shape(format!(
+                "missing lifted captured closure parameter {parameter:?}"
+            ))
+        })?;
+        local.parameter = true;
+    }
+
+    let mut params = Vec::with_capacity(closure.params.len() + 1);
+    params.push(env_id);
+    params.extend(closure.params.iter().copied());
+    let mut closures = BTreeMap::new();
+    closures.insert(closure_id, closure.clone());
+
+    Ok(FirFunction {
+        owner,
+        params,
+        return_type: closure.return_type.clone(),
+        locals,
+        closures,
+        entry: closure.entry,
+        blocks,
+        value_types: enclosing.value_types.clone(),
+    })
+}
 
 /// Lift capture-free anonymous functions marked as first-class `fn(...)`
 /// values into deterministic synthetic module functions.

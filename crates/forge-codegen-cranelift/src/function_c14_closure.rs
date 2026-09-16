@@ -9,29 +9,17 @@ struct C14ClosureFieldLayout {
 #[derive(Clone)]
 struct C14ClosureEnvironment {
     slot: StackSlot,
-    tag: u64,
     fields: Vec<C14ClosureFieldLayout>,
 }
 
-struct C14ClosureCandidate {
-    closure: ExprId,
-    setup: Block,
-    blocks: BTreeMap<FirBlockId, Block>,
-}
-
-#[derive(Clone)]
-struct C14ClosureResult {
-    id: FirValueId,
-    ty: Ty,
-    slot: StackSlot,
-}
-
-/// C14 lowers Forge v1 captured closures as strictly function-local values.
+/// C14 lowers Forge v1 captured closures as non-escaping environment pointers.
 ///
-/// A closure value is a pointer to a stack environment owned by the enclosing
-/// native function. Calls dispatch to cloned closure FIR blocks inside that
-/// same CLIF function. No closure environment is heap allocated and no
-/// closure calling convention or externally visible closure symbol exists.
+/// A closure value points at lexical stack storage whose first word is the
+/// lifted closure code pointer and whose remaining fields are captures. A call
+/// loads that code pointer and performs an indirect native call with the
+/// environment pointer as the hidden first argument. No environment is heap
+/// allocated, so the value may cross synchronous call boundaries but may not
+/// outlive the creating activation.
 pub(crate) fn lower_function_c14(
     fir: &FirFunction,
     all_functions: &BTreeMap<DefId, FirFunction>,
@@ -40,7 +28,33 @@ pub(crate) fn lower_function_c14(
     types: &TypeLowering<'_>,
     isa: &dyn TargetIsa,
 ) -> Result<Function, BackendError> {
-    if fir.closures.is_empty() {
+    if let Some(closure_id) = fir
+        .blocks
+        .iter()
+        .find(|block| block.id == fir.entry)
+        .and_then(|block| block.closure)
+    {
+        return lower_c14_lifted_closure(
+            fir,
+            closure_id,
+            all_functions,
+            all_globals,
+            definitions,
+            types,
+            isa,
+        );
+    }
+
+    let has_closure_value = fir
+        .locals
+        .values()
+        .any(|local| matches!(&local.ty, Ty::Closure { .. }));
+    let has_closure_call = fir
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .any(|instruction| matches!(&instruction.kind, FirInstructionKind::CallClosure { .. }));
+    if fir.closures.is_empty() && !has_closure_value && !has_closure_call {
         return lower_function_c11c(fir, all_functions, all_globals, definitions, types, isa);
     }
 
@@ -159,6 +173,141 @@ pub(crate) fn lower_function_c14(
     Ok(function)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn lower_c14_lifted_closure(
+    fir: &FirFunction,
+    closure_id: ExprId,
+    all_functions: &BTreeMap<DefId, FirFunction>,
+    all_globals: &BTreeMap<DefId, FirGlobal>,
+    definitions: &TypeDefinitionTable,
+    types: &TypeLowering<'_>,
+    isa: &dyn TargetIsa,
+) -> Result<Function, BackendError> {
+    let closure = fir
+        .closures
+        .get(&closure_id)
+        .ok_or_else(|| shape("lifted closure metadata is missing"))?;
+    if fir.params.len() != closure.params.len() + 1 {
+        return Err(shape("lifted closure hidden environment parameter is missing"));
+    }
+
+    let call_conv = CallConv::triple_default(isa.triple());
+    let signature_plan = lower_c9_fir_signature(fir, definitions, types, call_conv)?;
+    let entry_types = signature_plan
+        .signature
+        .params
+        .iter()
+        .map(|param| param.value_type)
+        .collect::<Vec<_>>();
+    let mut function = Function::with_name_signature(
+        UserFuncName::user(0, fir.owner.0),
+        signature_plan.signature.clone(),
+    );
+    let mut layouts = LayoutEngine::new(LayoutTarget::new(types.target().pointer_bits), definitions);
+    let local_slots = c14_allocate_local_slots(fir, &mut layouts, types, &mut function)?;
+    let environments = c14_allocate_closure_environments(fir, &mut layouts, types, &mut function)?;
+    let flags = MemoryFlags {
+        stack: MemFlagsData::trusted(),
+        deref: MemFlagsData::new(),
+    };
+
+    let mut blocks = BTreeMap::new();
+    for fir_block in fir.blocks.iter().filter(|block| block.closure == Some(closure_id)) {
+        let block = function.dfg.make_block();
+        function.layout.append_block(block);
+        if blocks.insert(fir_block.id, block).is_some() {
+            return Err(shape(format!("duplicate lifted closure FIR block {:?}", fir_block.id)));
+        }
+    }
+    let entry = *blocks
+        .get(&fir.entry)
+        .ok_or_else(|| shape(format!("missing lifted closure entry block {:?}", fir.entry)))?;
+    let entry_values = entry_types
+        .into_iter()
+        .map(|ty| function.dfg.append_block_param(entry, ty))
+        .collect::<Vec<_>>();
+
+    let mut scalars = BTreeMap::<FirValueId, Value>::new();
+    let mut aggregates = BTreeMap::<FirValueId, AggregateValue>::new();
+    let mut direct_functions = BTreeMap::<DefId, FuncRef>::new();
+    let hidden_return = initialize_c9d_parameters(
+        fir,
+        &signature_plan,
+        &entry_values,
+        &local_slots,
+        flags,
+        types,
+        &mut layouts,
+        &mut function,
+    )?;
+
+    let env_local = *fir
+        .params
+        .first()
+        .ok_or_else(|| shape("lifted closure has no hidden environment local"))?;
+    let env_slot = *local_slots
+        .get(&env_local)
+        .ok_or_else(|| shape("lifted closure environment local has no stack slot"))?;
+    let environment = {
+        let mut cursor = FuncCursor::new(&mut function);
+        cursor.goto_bottom(entry);
+        let address = cursor.ins().stack_addr(types.pointer_type()?, env_slot, 0);
+        cursor
+            .ins()
+            .load(types.pointer_type()?, flags.stack, address, 0)
+    };
+
+    for fir_block in fir.blocks.iter().filter(|block| block.closure == Some(closure_id)) {
+        let clif_block = *blocks
+            .get(&fir_block.id)
+            .ok_or_else(|| shape(format!("missing lifted closure CLIF block for {:?}", fir_block.id)))?;
+        let mut cursor = FuncCursor::new(&mut function);
+        cursor.goto_bottom(clif_block);
+        for instruction in &fir_block.instructions {
+            lower_c14_instruction(
+                fir,
+                all_functions,
+                all_globals,
+                definitions,
+                instruction,
+                &local_slots,
+                &environments,
+                Some((closure_id, environment)),
+                flags,
+                call_conv,
+                &mut direct_functions,
+                &mut scalars,
+                &mut aggregates,
+                types,
+                &mut layouts,
+                &mut cursor,
+            )?;
+        }
+        let terminator = fir_block
+            .terminator
+            .as_ref()
+            .ok_or_else(|| shape(format!("lifted closure block {:?} has no terminator", fir_block.id)))?;
+        lower_c9d_terminator(
+            fir,
+            terminator,
+            &signature_plan.result,
+            hidden_return,
+            &blocks,
+            flags,
+            &scalars,
+            &aggregates,
+            types,
+            &mut layouts,
+            &mut cursor,
+        )?;
+    }
+
+    verify_function(&function, isa).map_err(|errors| BackendError::Cranelift {
+        message: format!("CLIF verifier rejected lifted C14 closure {:?}: {errors}", fir.owner),
+    })?;
+    Ok(function)
+}
+
 fn c14_allocate_local_slots(
     fir: &FirFunction,
     layouts: &mut LayoutEngine<'_>,
@@ -189,7 +338,7 @@ fn c14_allocate_closure_environments(
     let pointer_bytes = u64::from(types.target().pointer_bits / 8);
     let mut result = BTreeMap::new();
 
-    for (tag_index, (id, closure)) in fir.closures.iter().enumerate() {
+    for (id, closure) in &fir.closures {
         if closure.function_pointer {
             continue;
         }
@@ -229,11 +378,7 @@ fn c14_allocate_closure_environments(
         ));
         result.insert(
             *id,
-            C14ClosureEnvironment {
-                slot,
-                tag: u64::try_from(tag_index + 1).map_err(|_| shape("too many local closures"))?,
-                fields,
-            },
+            C14ClosureEnvironment { slot, fields },
         );
     }
 
@@ -310,17 +455,12 @@ fn lower_c14_instruction(
             }
             return lower_c14_call_closure(
                 fir,
-                all_functions,
-                all_globals,
                 definitions,
                 instruction,
                 *closure,
                 args,
-                local_slots,
-                environments,
                 flags,
                 call_conv,
-                direct_functions,
                 scalars,
                 aggregates,
                 types,
@@ -439,19 +579,22 @@ fn lower_c14_make_closure(
     let environment = environments
         .get(&closure_id)
         .ok_or_else(|| shape(format!("missing local closure environment {closure_id:?}")))?;
-    if captures.len() != environment.fields.len() {
-        return Err(shape("closure capture count differs from environment layout"));
+    if captures.len() != environment.fields.len() + 1 {
+        return Err(shape("closure code/capture count differs from environment layout"));
     }
 
     let base = cursor
         .ins()
         .stack_addr(types.pointer_type()?, environment.slot, 0);
-    let tag = cursor
+    let code = captures[0];
+    if !matches!(value_type(fir, code)?, Ty::Function { .. }) {
+        return Err(shape("captured closure code value is not function typed"));
+    }
+    cursor
         .ins()
-        .iconst(types.pointer_type()?, environment.tag as i64);
-    cursor.ins().store(flags.stack, tag, base, 0);
+        .store(flags.stack, scalar(scalars, code)?, base, 0);
 
-    for (capture, field) in captures.iter().zip(&environment.fields) {
+    for (capture, field) in captures[1..].iter().zip(&environment.fields) {
         let actual = value_type(fir, *capture)?;
         if actual != &field.stored_ty {
             return Err(shape(format!(
@@ -480,17 +623,12 @@ fn lower_c14_make_closure(
 #[allow(clippy::too_many_arguments)]
 fn lower_c14_call_closure(
     fir: &FirFunction,
-    all_functions: &BTreeMap<DefId, FirFunction>,
-    all_globals: &BTreeMap<DefId, FirGlobal>,
     definitions: &TypeDefinitionTable,
     instruction: &FirInstruction,
     callee: FirValueId,
     args: &[FirValueId],
-    local_slots: &BTreeMap<FirLocalId, StackSlot>,
-    environments: &BTreeMap<ExprId, C14ClosureEnvironment>,
     flags: MemoryFlags,
     call_conv: CallConv,
-    direct_functions: &mut BTreeMap<DefId, FuncRef>,
     scalars: &mut BTreeMap<FirValueId, Value>,
     aggregates: &mut BTreeMap<FirValueId, AggregateValue>,
     types: &TypeLowering<'_>,
@@ -517,278 +655,49 @@ fn lower_c14_call_closure(
         }
     }
 
-    let candidates = fir
-        .closures
-        .iter()
-        .filter(|(_, closure)| {
-            !closure.function_pointer
-                && closure.return_type == **result_ty
-                && closure.params.len() == params.len()
-                && closure
-                    .params
-                    .iter()
-                    .zip(params)
-                    .all(|(local, expected)| {
-                        fir.locals
-                            .get(local)
-                            .is_some_and(|local| &local.ty == expected)
-                    })
-        })
-        .map(|(id, _)| *id)
-        .collect::<Vec<_>>();
-    if candidates.is_empty() {
-        return Err(shape("closure call has no compatible local closure body"));
-    }
-
-    let closure_value = scalar(scalars, callee)?;
-    let continuation = cursor.func.dfg.make_block();
-    cursor.func.layout.append_block(continuation);
-
-    let result = if **result_ty == Ty::Void {
-        if instruction.result.is_some() {
-            return Err(shape("void closure call unexpectedly has a result"));
-        }
-        None
-    } else {
-        let id = instruction
-            .result
-            .ok_or_else(|| shape("non-void closure call has no result"))?;
-        if value_type(fir, id)? != result_ty.as_ref() {
-            return Err(shape("closure call result type mismatch"));
-        }
-        let (size, align) = c14_size_align(result_ty, layouts, types)?;
-        let size = u32::try_from(size.max(1))
-            .map_err(|_| shape("closure result exceeds CLIF stack-slot size"))?;
-        let slot = cursor.func.create_sized_stack_slot(StackSlotData::new(
-            StackSlotKind::ExplicitSlot,
-            size,
-            align_shift(align)?,
-        ));
-        Some(C14ClosureResult {
-            id,
-            ty: result_ty.as_ref().clone(),
-            slot,
-        })
+    let mut code_params = Vec::with_capacity(params.len() + 1);
+    code_params.push(callee_ty.clone());
+    code_params.extend(params.iter().cloned());
+    let code_ty = Ty::Function {
+        params: code_params,
+        result: result_ty.clone(),
+        named_arguments: false,
     };
+    let plan = lower_c9_function_type_signature(&code_ty, definitions, types, call_conv)?;
+    let mut call_args = Vec::with_capacity(args.len() + 1);
+    call_args.push(callee);
+    call_args.extend(args.iter().copied());
+    let (lowered_args, indirect_result) = lower_c9d_call_arguments(
+        fir,
+        &call_args,
+        &plan,
+        scalars,
+        aggregates,
+        flags,
+        types,
+        layouts,
+        cursor,
+    )?;
 
-    let mut lowered_candidates = Vec::with_capacity(candidates.len());
-    for closure_id in candidates {
-        let closure = fir
-            .closures
-            .get(&closure_id)
-            .ok_or_else(|| shape(format!("missing closure {closure_id:?}")))?;
-        let setup = cursor.func.dfg.make_block();
-        cursor.func.layout.append_block(setup);
-        let mut blocks = BTreeMap::new();
-        for source in fir
-            .blocks
-            .iter()
-            .filter(|block| block.closure == Some(closure_id))
-        {
-            let block = cursor.func.dfg.make_block();
-            cursor.func.layout.append_block(block);
-            blocks.insert(source.id, block);
-        }
-        if !blocks.contains_key(&closure.entry) {
-            return Err(shape(format!(
-                "closure {closure_id:?} is missing its entry block {:?}",
-                closure.entry
-            )));
-        }
-        lowered_candidates.push(C14ClosureCandidate {
-            closure: closure_id,
-            setup,
-            blocks,
-        });
-    }
-
-    let tag = cursor
+    let environment = scalar(scalars, callee)?;
+    let code = cursor
         .ins()
-        .load(types.pointer_type()?, flags.stack, closure_value, 0);
-    for (index, candidate) in lowered_candidates.iter().enumerate() {
-        if index + 1 == lowered_candidates.len() {
-            cursor.ins().jump(candidate.setup, &[]);
-        } else {
-            let next = cursor.func.dfg.make_block();
-            cursor.func.layout.append_block(next);
-            let expected = environments
-                .get(&candidate.closure)
-                .ok_or_else(|| shape("missing closure environment during dispatch"))?
-                .tag;
-            let expected = cursor
-                .ins()
-                .iconst(types.pointer_type()?, expected as i64);
-            let matches = cursor.ins().icmp(IntCC::Equal, tag, expected);
-            cursor
-                .ins()
-                .brif(matches, candidate.setup, &[], next, &[]);
-            cursor.goto_bottom(next);
-        }
-    }
-
-    for candidate in &lowered_candidates {
-        let closure = fir
-            .closures
-            .get(&candidate.closure)
-            .ok_or_else(|| shape("closure disappeared during lowering"))?;
-        cursor.goto_bottom(candidate.setup);
-        for (arg, param) in args.iter().zip(&closure.params) {
-            let local = fir
-                .locals
-                .get(param)
-                .ok_or_else(|| shape(format!("missing closure parameter {param:?}")))?;
-            let slot = *local_slots
-                .get(param)
-                .ok_or_else(|| shape(format!("missing closure parameter slot {param:?}")))?;
-            let destination = cursor.ins().stack_addr(types.pointer_type()?, slot, 0);
-            store_typed_value(
-                *arg,
-                &local.ty,
-                destination,
-                flags.stack,
-                flags.stack,
-                scalars,
-                aggregates,
-                layouts,
-                cursor,
-            )?;
-        }
-        cursor.ins().jump(
-            *candidate
-                .blocks
-                .get(&closure.entry)
-                .ok_or_else(|| shape("missing cloned closure entry"))?,
-            &[],
-        );
-
-        let mut closure_scalars = scalars.clone();
-        let mut closure_aggregates = aggregates.clone();
-
-        for source in fir
-            .blocks
-            .iter()
-            .filter(|block| block.closure == Some(candidate.closure))
-        {
-            let block = *candidate
-                .blocks
-                .get(&source.id)
-                .ok_or_else(|| shape("missing cloned closure block"))?;
-            cursor.goto_bottom(block);
-            for nested in &source.instructions {
-                lower_c14_instruction(
-                    fir,
-                    all_functions,
-                    all_globals,
-                    definitions,
-                    nested,
-                    local_slots,
-                    environments,
-                    Some((candidate.closure, closure_value)),
-                    flags,
-                    call_conv,
-                    direct_functions,
-                    &mut closure_scalars,
-                    &mut closure_aggregates,
-                    types,
-                    layouts,
-                    cursor,
-                )?;
-            }
-            let terminator = source
-                .terminator
-                .as_ref()
-                .ok_or_else(|| shape(format!("closure block {:?} has no terminator", source.id)))?;
-            lower_c14_closure_terminator(
-                fir,
-                terminator,
-                closure,
-                result.as_ref(),
-                continuation,
-                &candidate.blocks,
-                flags,
-                &closure_scalars,
-                &closure_aggregates,
-                types,
-                layouts,
-                cursor,
-            )?;
-        }
-    }
-
-    cursor.goto_bottom(continuation);
-    if let Some(result) = result {
-        let address = cursor
-            .ins()
-            .stack_addr(types.pointer_type()?, result.slot, 0);
-        if c14_is_scalar_value(&result.ty) {
-            let value = cursor
-                .ins()
-                .load(types.value_type(&result.ty)?, flags.stack, address, 0);
-            scalars.insert(result.id, value);
-        } else {
-            aggregates.insert(
-                result.id,
-                AggregateValue {
-                    address,
-                    ty: result.ty,
-                },
-            );
-        }
-    }
-
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn lower_c14_closure_terminator(
-    fir: &FirFunction,
-    terminator: &FirTerminator,
-    closure: &forge_fir::FirClosure,
-    result: Option<&C14ClosureResult>,
-    continuation: Block,
-    blocks: &BTreeMap<FirBlockId, Block>,
-    flags: MemoryFlags,
-    scalars: &BTreeMap<FirValueId, Value>,
-    aggregates: &BTreeMap<FirValueId, AggregateValue>,
-    types: &TypeLowering<'_>,
-    layouts: &mut LayoutEngine<'_>,
-    cursor: &mut FuncCursor<'_>,
-) -> Result<(), BackendError> {
-    match terminator {
-        FirTerminator::Return { value } => {
-            match (value, result) {
-                (None, None) if closure.return_type == Ty::Void => {}
-                (Some(value), Some(result)) => {
-                    if value_type(fir, *value)? != &result.ty
-                        || closure.return_type != result.ty
-                    {
-                        return Err(shape("closure return type mismatch"));
-                    }
-                    let destination = cursor
-                        .ins()
-                        .stack_addr(types.pointer_type()?, result.slot, 0);
-                    store_typed_value(
-                        *value,
-                        &result.ty,
-                        destination,
-                        flags.stack,
-                        flags.stack,
-                        scalars,
-                        aggregates,
-                        layouts,
-                        cursor,
-                    )?;
-                }
-                _ => return Err(shape("closure return value does not match closure result")),
-            }
-            cursor.ins().jump(continuation, &[]);
-            Ok(())
-        }
-        FirTerminator::Select { .. } => Err(BackendError::UnsupportedInstruction {
-            kind: "select terminator before C14 select/channel stage",
-        }),
-        _ => legacy::lower_scalar_terminator(fir, terminator, blocks, scalars, cursor),
-    }
+        .load(types.pointer_type()?, flags.deref, environment, 0);
+    let sig_ref = cursor.func.import_signature(plan.signature.clone());
+    let inst = cursor.ins().call_indirect(sig_ref, code, &lowered_args);
+    record_c9d_call_result(
+        fir,
+        instruction,
+        &plan.result,
+        indirect_result,
+        inst,
+        scalars,
+        aggregates,
+        flags,
+        types,
+        layouts,
+        cursor,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -952,11 +861,11 @@ fn lower_c14_capture_place_address(
                 .ok_or_else(|| shape("closure capture layout is missing"))?;
             let field_address = add_offset(environment, layout.offset, cursor)?;
             match field.mode {
-                CaptureMode::Value => Ok((field_address, field.ty.clone(), flags.stack)),
+                CaptureMode::Value => Ok((field_address, field.ty.clone(), flags.deref)),
                 CaptureMode::SharedReference | CaptureMode::MutableReference => {
                     let address = cursor
                         .ins()
-                        .load(types.pointer_type()?, flags.stack, field_address, 0);
+                        .load(types.pointer_type()?, flags.deref, field_address, 0);
                     Ok((address, field.ty.clone(), flags.deref))
                 }
             }
