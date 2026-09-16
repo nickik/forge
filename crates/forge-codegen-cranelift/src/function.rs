@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use cranelift_codegen::cursor::{Cursor, FuncCursor};
-use cranelift_codegen::ir::condcodes::IntCC;
+use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::{
     Block, ExtFuncData, ExternalName, FuncRef, Function, Inst, InstBuilder, MemFlagsData,
     StackSlot, StackSlotData, StackSlotKind, TrapCode, UserExternalName, UserFuncName, Value,
@@ -375,7 +375,7 @@ fn lower_instruction(
             value,
         } => lower_boolean_not(fir, *value, values, cursor)?,
         FirInstructionKind::Unary { op, value } => {
-            lower_integer_unary(fir, *op, *value, values, cursor)?
+            lower_scalar_unary(fir, *op, *value, values, cursor)?
         }
         FirInstructionKind::Binary {
             op,
@@ -389,7 +389,7 @@ fn lower_instruction(
             ) {
                 lower_boolean_binary(fir, *op, *left, *right, *overflow, values, cursor)?
             } else {
-                lower_integer_binary(fir, *op, *left, *right, *overflow, values, cursor)?
+                lower_scalar_binary(fir, *op, *left, *right, *overflow, values, cursor)?
             }
         }
         FirInstructionKind::Convert { value, target } => {
@@ -398,7 +398,7 @@ fn lower_instruction(
                     "FIR convert target {target:?} does not match result type {result_ty:?}"
                 )));
             }
-            lower_integer_convert(fir, *value, target, values, types, cursor)?
+            lower_scalar_convert(fir, *value, target, values, types, cursor)?
         }
         _ => {
             return Err(BackendError::UnsupportedInstruction {
@@ -946,6 +946,18 @@ fn lower_integer_unary(
     })
 }
 
+fn lower_scalar_unary(
+    fir: &FirFunction, op: FirUnaryOp, input: FirValueId,
+    values: &BTreeMap<FirValueId, Value>, cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    let ty = fir.value_types.get(&input).ok_or_else(|| shape("missing unary operand"))?;
+    if let Ty::Float { .. } = ty {
+        if op != FirUnaryOp::Neg { return Err(BackendError::UnsupportedInstruction { kind: "non-negating float unary operation" }); }
+        return Ok(cursor.ins().fneg(lookup_value(values, input)?));
+    }
+    lower_integer_unary(fir, op, input, values, cursor)
+}
+
 fn lower_boolean_binary(
     fir: &FirFunction,
     op: BinaryOp,
@@ -1062,6 +1074,32 @@ fn lower_integer_binary(
     }
 }
 
+fn lower_scalar_binary(
+    fir: &FirFunction, op: BinaryOp, left: FirValueId, right: FirValueId,
+    overflow: Option<OverflowMode>, values: &BTreeMap<FirValueId, Value>, cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    let lt = fir.value_types.get(&left).ok_or_else(|| shape("missing left operand"))?;
+    let rt = fir.value_types.get(&right).ok_or_else(|| shape("missing right operand"))?;
+    if matches!(lt, Ty::Float { .. }) || matches!(rt, Ty::Float { .. }) {
+        if lt != rt { return Err(shape("float operands have different types")); }
+        let l = lookup_value(values, left)?; let r = lookup_value(values, right)?;
+        return match op {
+            BinaryOp::Add => Ok(cursor.ins().fadd(l, r)), BinaryOp::Sub => Ok(cursor.ins().fsub(l, r)),
+            BinaryOp::Mul => Ok(cursor.ins().fmul(l, r)), BinaryOp::Div => Ok(cursor.ins().fdiv(l, r)),
+            _ if is_comparison(op) => Ok(cursor.ins().fcmp(float_comparison_condition(op)?, l, r)),
+            _ => Err(BackendError::UnsupportedInstruction { kind: "unsupported float binary operation" }),
+        };
+    }
+    lower_integer_binary(fir, op, left, right, overflow, values, cursor)
+}
+
+fn float_comparison_condition(op: BinaryOp) -> Result<FloatCC, BackendError> {
+    Ok(match op { BinaryOp::Eq => FloatCC::Equal, BinaryOp::NotEq => FloatCC::NotEqual,
+        BinaryOp::Less => FloatCC::LessThan, BinaryOp::LessEq => FloatCC::LessThanOrEqual,
+        BinaryOp::Greater => FloatCC::GreaterThan, BinaryOp::GreaterEq => FloatCC::GreaterThanOrEqual,
+        _ => return Err(BackendError::UnsupportedInstruction { kind: "invalid float comparison" }) })
+}
+
 fn lower_add_sub_mul(
     op: BinaryOp,
     ty: &Ty,
@@ -1139,6 +1177,24 @@ fn lower_integer_convert(
         types,
         cursor,
     )
+}
+
+fn lower_scalar_convert(
+    fir: &FirFunction, input: FirValueId, target: &Ty, values: &BTreeMap<FirValueId, Value>,
+    types: &TypeLowering<'_>, cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    let source = fir.value_types.get(&input).ok_or_else(|| shape("missing conversion input"))?;
+    let value = lookup_value(values, input)?;
+    match (source, target) {
+        (Ty::Int { signed, .. }, Ty::Float { .. }) => {
+            let dst = types.value_type(target)?; Ok(if *signed { cursor.ins().fcvt_from_sint(dst, value) } else { cursor.ins().fcvt_from_uint(dst, value) })
+        }
+        (Ty::Byte, Ty::Float { .. }) => {
+            let dst = types.value_type(target)?; Ok(cursor.ins().fcvt_from_uint(dst, value))
+        }
+        (Ty::Float { .. }, Ty::Float { .. }) => Ok(value),
+        _ => lower_integer_convert(fir, input, target, values, types, cursor),
+    }
 }
 
 fn matching_integer_operands<'a>(
@@ -1246,6 +1302,20 @@ fn lower_const(
         }
         FirConst::Bool { value } if *ty == Ty::Bool => {
             Ok(cursor.ins().iconst(clif_ty, i64::from(*value)))
+        }
+        FirConst::Float { text } => {
+            let value = text
+                .trim_end_matches("f32")
+                .trim_end_matches("f64")
+                .parse::<f64>()
+                .map_err(|_| BackendError::InvalidConstant { text: text.clone() })?;
+            match ty {
+                Ty::Float { bits: 32 } => Ok(cursor.ins().f32const(value as f32)),
+                Ty::Float { bits: 64 } => Ok(cursor.ins().f64const(value)),
+                _ => Err(BackendError::UnsupportedInstruction {
+                    kind: "float constant with non-float type",
+                }),
+            }
         }
         _ => Err(BackendError::UnsupportedInstruction {
             kind: "non-integer scalar constant",

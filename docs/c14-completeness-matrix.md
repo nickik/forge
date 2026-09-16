@@ -21,7 +21,7 @@ Legend:
 | Integer, bool, byte scalars | 1 | Checked/wrapping arithmetic, comparisons, shifts, conversions and ABI tests. |
 | `char` | 1 | Native constants, locals, comparison, argument and return fixture. |
 | `duration` | 4 | Layout and scalar representation exist; reader/type/FIR tests exist. Add executable argument/return/load/store coverage. |
-| `f32`, `f64` | 3 | Parser/type/layout and Cranelift scalar types exist, but native operations and ABI execution remain incomplete. |
+| `f32`, `f64` | 4 | Native scalar constants, arithmetic, negation, comparisons, integer-to-float conversion, and AArch64 object lowering are implemented; executable ARM64 and full ABI coverage remain. |
 | Structs and enums | 1 | Construction, projection, layout, ABI and matching tests. |
 | Tagged unions | 1 | Construction, payload extraction, nested match and ABI basics execute; expand mixed-payload ABI coverage. |
 | `Option[T]` | 1 | `None`, explicit `Some(value)`, implicit promotion, patterns and native layout/lowering. |
