@@ -18,6 +18,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Materialize captured closure ABI
         run: python3 scripts/c14e-captured-closure-materialize.py
+      - name: Format materialized Rust
+        run: cargo fmt --all
       - name: Formatting
         run: cargo fmt --all -- --check
       - name: Focused FIR closure ABI
