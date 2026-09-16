@@ -22,6 +22,7 @@ mod machine;
 #[allow(clippy::too_many_arguments)]
 #[path = "object_c11c.rs"]
 mod object;
+mod sia32_image;
 mod sia32_object;
 mod target;
 mod types;
@@ -34,6 +35,10 @@ pub use globals::{
 };
 pub use machine::MachineCode;
 pub use object::{NativeObject, ObjectLinkage, ObjectModulePlan, ObjectSymbol};
+pub use sia32_image::{
+    build_sia32_flat_image, Sia32ExecutableImage, Sia32ImageLayout, Sia32ImageRange,
+    SIA32_DATA_ALIGNMENT, SIA32_TEXT_ALIGNMENT,
+};
 pub use sia32_object::{
     link_sia32_objects, link_sia32_sectioned_objects, LinkedSia32Object, Sia32Object,
     Sia32Relocation, Sia32Section, Sia32SectionBases, Sia32Symbol,
