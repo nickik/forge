@@ -1,0 +1,92 @@
+name: C14e source edit
+
+on:
+  push:
+    branches:
+      - agent/c14e-integer-completeness
+
+permissions:
+  contents: write
+
+jobs:
+  edit:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/c14e-integer-completeness
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Patch sequence rest
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("crates/forge-frontend/src/fir_v1.rs")
+          text = path.read_text()
+          old = """                if let Some(rest) = rest {
+                    self.diagnostic(
+                        pattern.span,
+                        \"fir/rest-pattern\",
+                        format!(\"irrefutable rest binding {rest:?} needs slice-view lowering\"),
+                    );
+                }
+"""
+          new = """                if let Some(rest) = rest {
+                    let rest_ty = self
+                        .typed
+                        .local_types
+                        .get(rest)
+                        .cloned()
+                        .unwrap_or(Ty::Unknown);
+                    let rest_value = self.emit_value(
+                        pattern.span,
+                        rest_ty,
+                        FirInstructionKind::Subsequence {
+                            base: value,
+                            start: items.len() as u64,
+                        },
+                    );
+                    self.store_local(pattern.span, *rest, rest_value);
+                }
+"""
+          if text.count(old) != 1:
+              raise SystemExit(f"expected one rest block, found {text.count(old)}")
+          path.write_text(text.replace(old, new))
+          fixture = Path("examples/c14-native-spec/run/irrefutable_sequence_rest.fg")
+          fixture.write_text("""module examples.c14.irrefutable_sequence_rest;
+
+fn main() -> i32 {
+    val values: [u32; 4] = [10u32, 20u32, 30u32, 40u32];
+    val [first, second, ..rest] = values;
+    if (first != 10u32 || second != 20u32 || rest[0] != 30u32 || rest[1] != 40u32) {
+        return 1;
+    }
+
+    val rows: [[u32; 3]; 2] = [[1u32, 2u32, 3u32], [4u32, 5u32, 6u32]];
+    var total: u32 = 0u32;
+    for (val [head, ..tail] in rows) {
+        total = total + head + tail[0] + tail[1];
+    }
+    if (total != 21u32) { return 2; }
+    return 0;
+}
+""")
+          PY
+          cargo fmt --all
+      - name: Verify focused path
+        shell: bash
+        run: |
+          cargo test -p forge-frontend --locked -- --nocapture
+          cargo build -p forge-compiler --bin forgec --locked
+          target/debug/forgec --library core=lib/core.fg --run examples/c14-native-spec/run/irrefutable_sequence_rest.fg
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name "Nick Zbinden"
+          git config user.email "niklaus.zbinden@gmail.com"
+          git rm .github/workflows/c14e-source-edit.yml
+          git add crates/forge-frontend/src/fir_v1.rs examples/c14-native-spec/run/irrefutable_sequence_rest.fg
+          git commit -m "C14e: lower irrefutable sequence rest"
+          git push origin HEAD:agent/c14e-integer-completeness
