@@ -55,8 +55,11 @@ fn unfinished_clif_lowering_is_explicitly_rejected() {
 
     let backend = CraneliftBackend::sia32().unwrap();
     let module = FirModule::default();
-    assert_eq!(
-        backend.prepare_module(&module).unwrap_err(),
-        BackendError::UnfinishedTargetLowering { target: "SIA32" }
-    );
+    match backend.prepare_module(&module) {
+        Err(error) => assert_eq!(
+            error,
+            BackendError::UnfinishedTargetLowering { target: "SIA32" }
+        ),
+        Ok(_) => panic!("SIA32 module preparation unexpectedly succeeded"),
+    }
 }
