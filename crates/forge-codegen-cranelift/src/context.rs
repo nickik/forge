@@ -21,7 +21,9 @@ pub(crate) fn install_context_storage(module: &mut FirModule) -> Result<(), Back
                 break candidate;
             }
             if next == 0 {
-                return Err(shape("no DefId remains for native execution-context storage"));
+                return Err(shape(
+                    "no DefId remains for native execution-context storage",
+                ));
             }
             next -= 1;
         };
@@ -45,9 +47,9 @@ pub(crate) fn storage_owner(
     slot: ContextSlot,
 ) -> Result<DefId, BackendError> {
     let marker = storage_marker_type(slot);
-    let mut matches = globals
-        .iter()
-        .filter_map(|(owner, global)| (global.ty == marker && global.constant.is_none()).then_some(*owner));
+    let mut matches = globals.iter().filter_map(|(owner, global)| {
+        (global.ty == marker && global.constant.is_none()).then_some(*owner)
+    });
     let owner = matches
         .next()
         .ok_or_else(|| shape(format!("missing native storage for context slot {slot:?}")))?;
