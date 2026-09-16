@@ -1,0 +1,28 @@
+module examples.c14_native_spec.collection_pattern;
+
+struct Dict {}
+
+impl Dict {
+    fn pattern_get(self: &Dict, key: str) -> i32? {
+        return 7i32;
+    }
+
+    fn pattern_has_only(self: &Dict, keys: str[]) -> bool {
+        return true;
+    }
+}
+
+fn use_map(map: Dict) -> i32 {
+    return match (map) {
+        {:name name} => name,
+        _ => 0i32,
+    };
+}
+
+fn main() -> i32 {
+    val map = Dict{};
+    if (use_map(map) != 7i32) {
+        return 1;
+    }
+    return 0;
+}
