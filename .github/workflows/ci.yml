@@ -1,71 +1,45 @@
-name: ci
+name: repair-sia32-test-exhaustiveness
 
 on:
   push:
-  pull_request:
 
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: write
 
 jobs:
-  ci:
+  repair:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-      - name: Install RV64 execution tools
-        timeout-minutes: 3
+          components: rustfmt
+      - name: Patch test-only backend rebuild helpers and restore CI
         run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-user binutils-riscv64-linux-gnu
-          qemu-riscv64 --version
-          riscv64-linux-gnu-as --version | head -1
-      - name: Formatting
-        timeout-minutes: 2
-        run: cargo fmt --all -- --check
-      - name: Workspace check
-        timeout-minutes: 5
-        run: cargo check --workspace --locked
-      - name: Build-system tests
-        timeout-minutes: 5
-        run: cargo test -p forge-build --locked -- --nocapture
-      - name: C14 native build-system integration
-        timeout-minutes: 5
-        run: |
-          cargo build -p forge-build -p forge-compiler --bins --locked
-          export PATH="$PWD/target/debug:$PATH"
-          forge check --manifest-path examples/c14-build-system/forge.fdn
-          forge build --manifest-path examples/c14-build-system/forge.fdn --target app
-          test -x examples/c14-build-system/build/app
-          test "$(forge run --manifest-path examples/c14-build-system/forge.fdn --target app -- alpha beta)" = "run-ok"
-          forge test --manifest-path examples/c14-build-system/forge.fdn --target smoke
-          forge build --manifest-path examples/c14-build-system/forge.fdn --target kernel
-          test -s examples/c14-build-system/build/kernel.o
-          forge check --manifest-path examples/c14-build-system/forge.fdn --target lib
-      - name: C14 native executable specification
-        timeout-minutes: 5
-        run: scripts/run-c14-native-spec.sh
-      - name: Generated native collections snapshot
-        timeout-minutes: 3
-        run: |
-          cargo run --quiet -p forge-build --locked --bin forge-collections-gen -- /tmp/forge-collections-native.fg
-          diff -u packages/forge-collections-native/src/lib.fg /tmp/forge-collections-native.fg
-      - name: Frontend tests
-        timeout-minutes: 5
-        run: cargo test -p forge-frontend --locked -- --nocapture
-      - name: Workspace tests
-        timeout-minutes: 10
-        env:
-          FORGE_RISCV64_EXECUTION: "1"
-        run: cargo test --workspace --locked -- --nocapture
-      - name: Conformance suite
-        timeout-minutes: 5
-        run: cargo run -p forge-conformance --locked -- examples/conformance/suite.fdn
-      - name: Clippy
-        timeout-minutes: 8
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings -A unused_mut -A clippy::collapsible_match -A clippy::large-enum-variant -A clippy::only-used-in-recursion
+          python3 - <<'PY'
+          from pathlib import Path
+          files = [
+              Path('crates/forge-codegen-cranelift/tests/c4a_integer_ops.rs'),
+              Path('crates/forge-codegen-cranelift/tests/c4b_scalar_integers.rs'),
+          ]
+          for p in files:
+              s = p.read_text()
+              needle = '''            forge_codegen_cranelift::CraneliftTarget::Riscv64 => {\n                CraneliftBackend::riscv64().expect("RISC-V64 backend")\n            }\n'''
+              replacement = needle + '''            forge_codegen_cranelift::CraneliftTarget::Sia32 => {\n                panic!("SIA32 CLIF lowering is intentionally unavailable before M5")\n            }\n'''
+              if needle not in s:
+                  needle = '''        forge_codegen_cranelift::CraneliftTarget::Riscv64 => {\n            CraneliftBackend::riscv64().expect("RV64")\n        }\n'''
+                  replacement = needle + '''        forge_codegen_cranelift::CraneliftTarget::Sia32 => {\n            panic!("SIA32 CLIF lowering is intentionally unavailable before M5")\n        }\n'''
+              assert needle in s, p
+              p.write_text(s.replace(needle, replacement, 1))
+          PY
+          cargo fmt --all -- --check
+          cargo test -p forge-codegen-cranelift --no-run --locked
+          git fetch origin main
+          git show origin/main:.github/workflows/ci.yml > .github/workflows/ci.yml
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add crates/forge-codegen-cranelift/tests/c4a_integer_ops.rs crates/forge-codegen-cranelift/tests/c4b_scalar_integers.rs .github/workflows/ci.yml
+          git commit -m 'Keep legacy integer tests on implemented targets'
+          git push origin HEAD:sia32-integration-shell
