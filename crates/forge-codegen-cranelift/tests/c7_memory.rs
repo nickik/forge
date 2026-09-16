@@ -363,20 +363,26 @@ fn pointer_offset_scales_by_forge_pointee_layout() {
 }
 
 #[test]
-fn volatile_raw_dereference_remains_an_explicit_boundary() {
+fn volatile_raw_load_and_store_are_fenced_on_both_targets() {
     let span = Span::new(0, 0);
     let value_ty = u64_ty();
-    let pointer_ty = pointer(value_ty.clone());
+    let pointer_ty = Ty::Pointer {
+        volatile: true,
+        inner: Box::new(value_ty.clone()),
+    };
     let (pointer_local, pointer_data) = local(0, pointer_ty.clone(), false, true);
+    let (value_local, value_data) = local(1, value_ty.clone(), false, true);
     let pointer_value = FirValueId(0);
-    let loaded = FirValueId(1);
+    let input_value = FirValueId(1);
+    let loaded = FirValueId(2);
     let owner = DefId(4);
+    let provenance = UnsafeProvenance { scope: span };
 
     let function = FirFunction {
         owner,
-        params: vec![pointer_local],
+        params: vec![pointer_local, value_local],
         return_type: value_ty.clone(),
-        locals: BTreeMap::from([(pointer_local, pointer_data)]),
+        locals: BTreeMap::from([(pointer_local, pointer_data), (value_local, value_data)]),
         closures: BTreeMap::new(),
         entry: FirBlockId(0),
         blocks: vec![FirBasicBlock {
@@ -394,12 +400,31 @@ fn volatile_raw_dereference_remains_an_explicit_boundary() {
                 },
                 FirInstruction {
                     span,
+                    result: Some(input_value),
+                    kind: FirInstructionKind::Load {
+                        place: FirPlace::Local { local: value_local },
+                    },
+                },
+                FirInstruction {
+                    span,
+                    result: None,
+                    kind: FirInstructionKind::Store {
+                        place: FirPlace::RawDeref {
+                            address: pointer_value,
+                            volatile: true,
+                            provenance,
+                        },
+                        value: input_value,
+                    },
+                },
+                FirInstruction {
+                    span,
                     result: Some(loaded),
                     kind: FirInstructionKind::Load {
                         place: FirPlace::RawDeref {
                             address: pointer_value,
                             volatile: true,
-                            provenance: UnsafeProvenance { scope: span },
+                            provenance,
                         },
                     },
                 },
@@ -408,15 +433,17 @@ fn volatile_raw_dereference_remains_an_explicit_boundary() {
                 value: Some(loaded),
             }),
         }],
-        value_types: BTreeMap::from([(pointer_value, pointer_ty), (loaded, value_ty)]),
+        value_types: BTreeMap::from([
+            (pointer_value, pointer_ty),
+            (input_value, value_ty.clone()),
+            (loaded, value_ty),
+        ]),
     };
 
-    let error = lower(function, CraneliftTarget::Aarch64)
-        .expect_err("volatile semantics must not silently become an ordinary load");
-    assert_eq!(
-        error,
-        BackendError::UnsupportedInstruction {
-            kind: "volatile raw dereference"
-        }
-    );
+    for target in targets() {
+        let clif = lower(function.clone(), target).expect("volatile raw memory lowering");
+        assert_eq!(clif.matches("fence").count(), 4, "{clif}");
+        assert!(clif.contains("store v"), "{clif}");
+        assert!(clif.contains("load.i64"), "{clif}");
+    }
 }

@@ -1,0 +1,23 @@
+module examples.c14.volatile_mmio;
+
+type Register = *volatile u32;
+
+fn read_register(address: usize) -> u32 {
+    unsafe {
+        val register: Register = Register(address);
+        return *register;
+    }
+}
+
+fn write_register(address: usize, value: u32) {
+    unsafe {
+        val register: Register = Register(address);
+        *register = value;
+    }
+}
+
+fn main() -> i32 {
+    // The MMIO helpers are compiled to native ARM code but deliberately not
+    // executed against an arbitrary userspace address in the host test.
+    return 0;
+}

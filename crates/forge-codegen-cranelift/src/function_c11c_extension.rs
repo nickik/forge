@@ -166,6 +166,21 @@ fn lower_c11c_instruction(
         );
     }
 
+    if c14_instruction_has_volatile_access(instruction) {
+        return lower_c14_volatile_access(
+            fir,
+            definitions,
+            instruction,
+            local_slots,
+            flags,
+            scalars,
+            aggregates,
+            types,
+            layouts,
+            cursor,
+        );
+    }
+
     if lower_c14_projection_instruction(
         fir,
         definitions,
@@ -246,6 +261,114 @@ fn lower_c14_pointer_convert(
 
     scalars.insert(result, value);
     Ok(())
+}
+
+fn c14_instruction_has_volatile_access(instruction: &FirInstruction) -> bool {
+    match &instruction.kind {
+        FirInstructionKind::Load { place } | FirInstructionKind::Store { place, .. } => {
+            c14_place_is_volatile(place)
+        }
+        _ => false,
+    }
+}
+
+fn c14_place_is_volatile(place: &FirPlace) -> bool {
+    match place {
+        FirPlace::RawDeref { volatile, .. } => *volatile,
+        FirPlace::Field { base, .. } | FirPlace::Index { base, .. } => {
+            c14_place_is_volatile(base)
+        }
+        FirPlace::Local { .. }
+        | FirPlace::Deref { .. }
+        | FirPlace::ClosureCapture { .. } => false,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_c14_volatile_access(
+    fir: &FirFunction,
+    definitions: &TypeDefinitionTable,
+    instruction: &FirInstruction,
+    local_slots: &BTreeMap<FirLocalId, StackSlot>,
+    flags: MemoryFlags,
+    scalars: &mut BTreeMap<FirValueId, Value>,
+    aggregates: &mut BTreeMap<FirValueId, AggregateValue>,
+    types: &TypeLowering<'_>,
+    layouts: &mut LayoutEngine<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<(), BackendError> {
+    match &instruction.kind {
+        FirInstructionKind::Load { place } => {
+            let id = instruction
+                .result
+                .ok_or_else(|| shape("volatile load has no result"))?;
+            let ty = value_type(fir, id)?;
+            let (address, stored_ty, src_flags) = lower_c14_place_address(
+                fir,
+                definitions,
+                place,
+                local_slots,
+                flags,
+                scalars,
+                types,
+                layouts,
+                cursor,
+            )?;
+            if ty != &stored_ty {
+                return Err(shape("volatile load result and place types differ"));
+            }
+            cursor.ins().fence();
+            materialize_result(
+                id,
+                ty,
+                address,
+                src_flags,
+                flags.stack,
+                scalars,
+                aggregates,
+                layouts,
+                types,
+                cursor,
+            )?;
+            cursor.ins().fence();
+            Ok(())
+        }
+        FirInstructionKind::Store { place, value } => {
+            if instruction.result.is_some() {
+                return Err(shape("volatile store unexpectedly has a result"));
+            }
+            let ty = value_type(fir, *value)?;
+            let (address, stored_ty, dst_flags) = lower_c14_place_address(
+                fir,
+                definitions,
+                place,
+                local_slots,
+                flags,
+                scalars,
+                types,
+                layouts,
+                cursor,
+            )?;
+            if ty != &stored_ty {
+                return Err(shape("volatile store value and place types differ"));
+            }
+            cursor.ins().fence();
+            store_typed_value(
+                *value,
+                ty,
+                address,
+                dst_flags,
+                flags.stack,
+                scalars,
+                aggregates,
+                layouts,
+                cursor,
+            )?;
+            cursor.ins().fence();
+            Ok(())
+        }
+        _ => Err(shape("volatile lowering reached non-memory instruction")),
+    }
 }
 
 /// C14 completes the frontend's existing auto-dereference rule for field and
@@ -402,14 +525,7 @@ fn lower_c14_place_address(
                 flags.deref,
             ))
         }
-        FirPlace::RawDeref {
-            address, volatile, ..
-        } => {
-            if *volatile {
-                return Err(BackendError::UnsupportedInstruction {
-                    kind: "volatile raw dereference",
-                });
-            }
+        FirPlace::RawDeref { address, .. } => {
             let Ty::Pointer { inner, .. } = value_type(fir, *address)? else {
                 return Err(shape("raw dereference has non-pointer address"));
             };
