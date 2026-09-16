@@ -1,8 +1,9 @@
+use cranelift_codegen::ir::types;
 use forge_codegen_cranelift::{
     BackendError, CraneliftBackend, CraneliftTarget, ExecutableFormat, Sia32IntegrationShell,
     Sia32Object, TargetAbi,
 };
-use forge_fir::FirModule;
+use forge_fir::{FirModule, IntWidth, Ty};
 
 #[test]
 fn sia32_configuration_reaches_real_target_contract() {
@@ -18,6 +19,21 @@ fn sia32_configuration_reaches_real_target_contract() {
     assert_eq!(backend.target(), CraneliftTarget::Sia32);
     assert_eq!(backend.target_layout().pointer_bits, 32);
     assert_eq!(backend.target_triple().architecture.to_string(), "sia32");
+}
+
+#[test]
+fn sia32_pointer_sized_values_are_32_bit_before_general_lowering() {
+    let backend = CraneliftBackend::sia32().unwrap();
+    let lowering = backend.type_lowering();
+    let usize_ty = Ty::Int {
+        signed: false,
+        width: IntWidth::Pointer,
+    };
+
+    assert_eq!(lowering.pointer_type().unwrap(), types::I32);
+    assert_eq!(lowering.value_type(&usize_ty).unwrap(), types::I32);
+    assert_eq!(lowering.scalar_layout(&usize_ty).unwrap().size_bytes, 4);
+    assert_eq!(lowering.scalar_layout(&usize_ty).unwrap().align_bytes, 4);
 }
 
 #[test]
