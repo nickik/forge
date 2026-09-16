@@ -220,12 +220,21 @@ Actual dereference/access remains subject to `unsafe` rules.
 
 C ABI syntax is deliberately **deferred from v1**. `extern "C"` blocks/declarations and C varargs (`...`) are reserved and must be rejected by a v1 parser. A later version can add a concrete FFI contract without freezing it into the bootstrap language.
 
+## Channels and selectors
+
+Channels and selectors are deliberately **deferred from Forge v1**. Earlier `Channel[T]`, `send`/`recv`, and `select { ... }` material is design exploration only and is not part of the v1 language, standard-library, FIR/runtime, or C14 compatibility contract.
+
+The `select`, `recv`, and `timeout` spellings are reserved for future work and must not be required for Forge v1 native execution. A future version may define them only after channel ownership, buffering, closure, wakeup/fairness, timeout, runtime ABI, freestanding, and Cosmic integration semantics are specified.
+
+Existing compiler/parser scaffolding for these forms may remain temporarily, but it is non-normative and does not make the feature part of v1.
+
 ## Reserved syntax
 
 The following spellings are reserved/rejected in v1 so future versions can define them without changing the meaning of accepted v1 programs:
 
 - `internal`;
 - `switch`;
+- `select`, `recv`, and `timeout`;
 - compound-assignment operators;
 - empty closure capture list `[]`;
 - pattern conjunction `&` and pattern negation `!`;
