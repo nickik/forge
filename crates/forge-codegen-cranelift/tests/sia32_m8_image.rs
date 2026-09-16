@@ -15,7 +15,7 @@ fn m8_3_builds_deterministic_text_rodata_data_bss_image() {
     main.define_section_symbol("state", Sia32Section::Data, 0)
         .expect("state");
 
-    let image = build_sia32_flat_image(&[main], 0, "entry", 8).expect("image");
+    let image = build_sia32_flat_image(&[main.clone()], 0, "entry", 8).expect("image");
     let layout = image.layout();
 
     assert_eq!(image.entry(), 0);
@@ -50,7 +50,8 @@ fn m8_3_relocates_against_final_image_addresses() {
     text.add_abs32_relocation(0, "external_data", 4)
         .expect("relocation");
 
-    let mut data = Sia32Object::with_sections(Vec::new(), Vec::new(), vec![1, 2, 3, 4, 5, 6, 7, 8]);
+    let mut data =
+        Sia32Object::with_sections(Vec::new(), Vec::new(), vec![1, 2, 3, 4, 5, 6, 7, 8]);
     data.define_section_symbol("external_data", Sia32Section::Data, 0)
         .expect("data symbol");
 
