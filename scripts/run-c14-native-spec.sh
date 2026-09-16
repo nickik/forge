@@ -34,6 +34,23 @@ for source in \
   fi
 done
 
+echo "native-spec expected capability rejection: required tail call"
+tail_error="$(mktemp)"
+if "$FORGEC" "${common[@]}" --run \
+  "$ROOT/examples/c14-native-spec/reject_required_tail.fg" \
+  >/dev/null 2>"$tail_error"; then
+  echo "required tail call unexpectedly compiled without a constant-stack backend path" >&2
+  rm -f "$tail_error"
+  exit 1
+fi
+if ! grep -q "required tail call" "$tail_error"; then
+  echo "required tail call failed for the wrong reason:" >&2
+  cat "$tail_error" >&2
+  rm -f "$tail_error"
+  exit 1
+fi
+rm -f "$tail_error"
+
 echo "native-spec: Game of Life"
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT

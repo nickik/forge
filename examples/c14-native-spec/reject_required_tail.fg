@@ -1,0 +1,9 @@
+module examples.c14_native_spec.reject_required_tail;
+
+fn recurse(value: u32) -> u32 {
+    return tail recurse(value);
+}
+
+fn main() -> i32 {
+    return 0;
+}
