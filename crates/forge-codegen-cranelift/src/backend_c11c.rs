@@ -79,14 +79,20 @@ impl CraneliftBackend {
         definitions: &TypeDefinitionTable,
         static_initializers: &StaticGlobalInitializerTable,
     ) -> Result<PreparedModule, BackendError> {
+        // Execution-context save/set/load/restore is already explicit FIR. C14
+        // gives those semantic slots real native storage by augmenting only the
+        // backend view of the module with five private zero-fill pointer slots.
+        // Source/FIR identity and public ABI remain unchanged.
+        let mut augmented = module.clone();
+        crate::context::install_context_storage(&mut augmented)?;
         let globals = self.prepare_globals_with_static_initializers(
-            module,
+            &augmented,
             definitions,
             static_initializers,
         )?;
         let functions = self
             .legacy
-            .prepare_functions_with_globals(module, definitions)?;
+            .prepare_functions_with_globals(&augmented, definitions)?;
         Ok(PreparedModule { functions, globals })
     }
 }

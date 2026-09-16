@@ -66,10 +66,10 @@ impl<'a> TypeLowering<'a> {
             | Ty::Reference { .. }
             | Ty::Function { .. } => self.authoritative_scalar_layout(ty),
 
-            // A captured closure is a compiler-local non-escaping handle. It
-            // deliberately has pointer representation only inside the
-            // enclosing native function; this is not a public Forge ABI.
-            Ty::Closure { .. } => {
+            // Execution-context save tokens are compiler-internal opaque
+            // pointer-sized values. They never form part of the public Forge
+            // ABI or source-visible storage model.
+            Ty::ContextSlot { .. } | Ty::Closure { .. } => {
                 let bytes = u32::from(self.target.pointer_bits / 8);
                 Ok(ScalarLayout::new(bytes, bytes))
             }
@@ -77,7 +77,6 @@ impl<'a> TypeLowering<'a> {
             Ty::Never => unsupported("never"),
             Ty::Void => unsupported("void"),
             Ty::Str => unsupported("str"),
-            Ty::ContextSlot { .. } => unsupported("context slot"),
             Ty::Nominal(_) => unsupported("nominal/aggregate"),
             Ty::Optional { .. } => unsupported("optional"),
             Ty::Slice { .. } => unsupported("slice"),
@@ -114,12 +113,12 @@ impl<'a> TypeLowering<'a> {
             Ty::Pointer { .. }
             | Ty::Reference { .. }
             | Ty::Function { .. }
-            | Ty::Closure { .. } => self.pointer_type(),
+            | Ty::Closure { .. }
+            | Ty::ContextSlot { .. } => self.pointer_type(),
 
             Ty::Never => unsupported("never"),
             Ty::Void => unsupported("void"),
             Ty::Str => unsupported("str"),
-            Ty::ContextSlot { .. } => unsupported("context slot"),
             Ty::Nominal(_) => unsupported("nominal/aggregate"),
             Ty::Optional { .. } => unsupported("optional"),
             Ty::Slice { .. } => unsupported("slice"),

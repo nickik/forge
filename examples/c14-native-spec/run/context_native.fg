@@ -1,0 +1,40 @@
+module examples.c14.context_native;
+
+struct Service {
+    value: i32;
+}
+
+fn override_and_return(service: &Service) -> i32 {
+    with context {
+        :logger service
+    } {
+        val current = context.logger;
+        return current.value;
+    }
+}
+
+fn main() -> i32 {
+    val outer = Service { value: 17 };
+    val inner = Service { value: 42 };
+
+    with context {
+        :logger &outer
+    } {
+        val before = context.logger;
+        if (before.value != 17) {
+            return 1;
+        }
+
+        val observed = override_and_return(&inner);
+        if (observed != 42) {
+            return 2;
+        }
+
+        val restored = context.logger;
+        if (restored.value != 17) {
+            return 3;
+        }
+    }
+
+    return 0;
+}
