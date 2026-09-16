@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process;
 
 use forge_compiler::{
@@ -14,6 +15,22 @@ enum Mode {
     Run,
 }
 
+struct TemporarySource {
+    path: PathBuf,
+}
+
+impl TemporarySource {
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TemporarySource {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
 fn usage() -> ! {
     eprintln!(
         "usage: forgec [--target aarch64-unknown-linux-gnu] [--platform host] \
@@ -21,6 +38,43 @@ fn usage() -> ! {
          <--check|--emit-object|--build|--run> FILE [-o OUTPUT]"
     );
     process::exit(64);
+}
+
+fn implicit_provider_source(
+    source: &Path,
+    libraries: &[LibraryInput],
+) -> Result<Option<TemporarySource>, Box<dyn std::error::Error>> {
+    if !libraries
+        .iter()
+        .any(|library| library.name() == "std.string")
+    {
+        return Ok(None);
+    }
+
+    let text = fs::read_to_string(source)?;
+    if text.contains("import std.string;") || text.contains("module std.string;") {
+        return Ok(None);
+    }
+
+    let module_start = text
+        .find("module ")
+        .ok_or("Forge source has no module declaration")?;
+    let module_end = text[module_start..]
+        .find(';')
+        .map(|offset| module_start + offset + 1)
+        .ok_or("Forge module declaration has no terminating semicolon")?;
+
+    let mut rewritten = String::with_capacity(text.len() + 20);
+    rewritten.push_str(&text[..module_end]);
+    rewritten.push_str("\nimport std.string;");
+    rewritten.push_str(&text[module_end..]);
+
+    let path = std::env::temp_dir().join(format!(
+        "forgec-{}-implicit-hosted-providers.fg",
+        process::id()
+    ));
+    fs::write(&path, rewritten)?;
+    Ok(Some(TemporarySource { path }))
 }
 
 fn main() {
@@ -82,23 +136,32 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|spec| LibraryInput::parse(spec))
         .collect::<Result<Vec<_>, _>>()?;
     let entry = entry.as_deref().unwrap_or("main");
+    let implicit_source = implicit_provider_source(&source, &libraries)?;
+    let compile_source = implicit_source
+        .as_ref()
+        .map(TemporarySource::path)
+        .unwrap_or(&source);
 
     match mode {
-        Mode::Check => check_file_with_libraries(&source, &libraries)?,
+        Mode::Check => check_file_with_libraries(compile_source, &libraries)?,
         Mode::EmitObject => {
             let output = output.unwrap_or_else(|| source.with_extension("o"));
-            emit_object_file_with_libraries_and_entry(&source, &output, &libraries, entry)?;
+            emit_object_file_with_libraries_and_entry(compile_source, &output, &libraries, entry)?;
         }
         Mode::Build => {
             let output = output.unwrap_or_else(|| source.with_extension(""));
-            build_executable_with_libraries_and_entry(&source, &output, &libraries, entry)?;
+            build_executable_with_libraries_and_entry(compile_source, &output, &libraries, entry)?;
         }
         Mode::Run => {
             if output.is_some() {
                 return Err("-o/--output is not valid with --run".into());
             }
-            let result =
-                run_file_with_libraries_and_entry(&source, &program_args, &libraries, entry)?;
+            let result = run_file_with_libraries_and_entry(
+                compile_source,
+                &program_args,
+                &libraries,
+                entry,
+            )?;
             use std::io::Write;
             std::io::stdout().write_all(&result.stdout)?;
             std::io::stderr().write_all(&result.stderr)?;
