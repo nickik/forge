@@ -15,6 +15,9 @@ fn backend(target: CraneliftTarget) -> CraneliftBackend {
     match target {
         CraneliftTarget::Aarch64 => CraneliftBackend::aarch64().expect("AArch64 backend"),
         CraneliftTarget::Riscv64 => CraneliftBackend::riscv64().expect("RV64 backend"),
+        CraneliftTarget::Sia32 => {
+            panic!("SIA32 CLIF lowering is intentionally not implemented in the integration shell")
+        }
     }
 }
 
