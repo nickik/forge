@@ -32,8 +32,8 @@ impl CraneliftBackend {
         Self::new(CraneliftTarget::Riscv64)
     }
 
-    /// Configure the real SIA32 target. Construction and target metadata are
-    /// supported before M5; module lowering remains an explicit error.
+    /// Configure the real SIA32 target and its production Cranelift lowering
+    /// path.
     pub fn sia32() -> Result<Self, BackendError> {
         Self::new(CraneliftTarget::Sia32)
     }
@@ -62,15 +62,7 @@ impl CraneliftBackend {
         self.legacy.new_signature()
     }
 
-    fn require_module_lowering(&self) -> Result<(), BackendError> {
-        if self.target() == CraneliftTarget::Sia32 {
-            return Err(BackendError::UnfinishedTargetLowering { target: "SIA32" });
-        }
-        Ok(())
-    }
-
     pub fn prepare_module(&self, module: &FirModule) -> Result<PreparedModule, BackendError> {
-        self.require_module_lowering()?;
         let definitions = TypeDefinitionTable::new();
         self.prepare_module_with_types(module, &definitions)
     }
@@ -80,7 +72,6 @@ impl CraneliftBackend {
         module: &FirModule,
         definitions: &TypeDefinitionTable,
     ) -> Result<PreparedModule, BackendError> {
-        self.require_module_lowering()?;
         self.prepare_module_with_static_initializers(
             module,
             definitions,
@@ -94,7 +85,6 @@ impl CraneliftBackend {
         definitions: &TypeDefinitionTable,
         static_initializers: &StaticGlobalInitializerTable,
     ) -> Result<PreparedModule, BackendError> {
-        self.require_module_lowering()?;
         let globals = self.prepare_globals_with_static_initializers(
             module,
             definitions,

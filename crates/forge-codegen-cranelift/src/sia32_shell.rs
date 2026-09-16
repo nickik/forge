@@ -74,9 +74,9 @@ impl Sia32IntegrationShell {
         build_sia32_flat_image(objects, load_address, entry_symbol, bss_size)
     }
 
-    /// General Forge FIR -> CLIF -> SIA32 compilation remains an explicit
-    /// boundary until M5 lowering is completed.
+    /// General Forge FIR -> CLIF -> SIA32 compilation is available through the
+    /// production Cranelift SIA32 backend.
     pub fn require_clif_lowering(self) -> Result<(), BackendError> {
-        Err(BackendError::UnfinishedTargetLowering { target: "SIA32" })
+        Ok(())
     }
 }

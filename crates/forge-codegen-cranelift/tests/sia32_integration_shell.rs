@@ -1,9 +1,14 @@
+use std::collections::BTreeMap;
+
 use cranelift_codegen::ir::types;
 use forge_codegen_cranelift::{
-    BackendError, CraneliftBackend, CraneliftTarget, ExecutableFormat, Sia32IntegrationShell,
-    Sia32Object, TargetAbi,
+    CraneliftBackend, CraneliftTarget, ExecutableFormat, Sia32IntegrationShell, Sia32Object,
+    TargetAbi,
 };
-use forge_fir::{FirModule, IntWidth, Ty};
+use forge_fir::{
+    DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction, FirInstructionKind,
+    FirModule, FirTerminator, FirValueId, IntWidth, Span, Ty,
+};
 
 #[test]
 fn sia32_configuration_reaches_real_target_contract() {
@@ -62,20 +67,45 @@ fn shell_uses_real_m8_object_writer_and_image_builder() {
 }
 
 #[test]
-fn unfinished_clif_lowering_is_explicitly_rejected() {
+fn sia32_compiles_a_small_forge_function_to_native_bytes() {
     let shell = Sia32IntegrationShell;
-    assert_eq!(
-        shell.require_clif_lowering().unwrap_err(),
-        BackendError::UnfinishedTargetLowering { target: "SIA32" }
-    );
+    shell.require_clif_lowering().unwrap();
 
     let backend = CraneliftBackend::sia32().unwrap();
-    let module = FirModule::default();
-    match backend.prepare_module(&module) {
-        Err(error) => assert_eq!(
-            error,
-            BackendError::UnfinishedTargetLowering { target: "SIA32" }
-        ),
-        Ok(_) => panic!("SIA32 module preparation unexpectedly succeeded"),
-    }
+    let owner = DefId(0);
+    let value = FirValueId(0);
+    let integer = Ty::Int {
+        signed: true,
+        width: IntWidth::W32,
+    };
+    let function = FirFunction {
+        owner,
+        params: vec![],
+        return_type: integer.clone(),
+        locals: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![FirInstruction {
+                span: Span::new(0, 0),
+                result: Some(value),
+                kind: FirInstructionKind::Const {
+                    value: FirConst::Integer { text: "42".into() },
+                },
+            }],
+            terminator: Some(FirTerminator::Return { value: Some(value) }),
+        }],
+        value_types: BTreeMap::from([(value, integer)]),
+    };
+    let mut module = FirModule::default();
+    module.functions.insert(owner, function);
+
+    let prepared = backend.prepare_module(&module).unwrap();
+    let code = backend.emit_machine_code(&prepared, owner).unwrap();
+    assert_eq!(code.target(), CraneliftTarget::Sia32);
+    assert!(!code.bytes().is_empty());
+    assert_eq!(code.bytes().len() % 2, 0);
+    assert_eq!(&code.bytes()[code.bytes().len() - 2..], [0xe0, 0xc0]);
 }
