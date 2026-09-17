@@ -691,10 +691,9 @@ fn explicit_array_reference_slice_view_has_dedicated_fir() {
         "#,
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|op| matches!(
-        op,
-        FirInstructionKind::SliceFromArrayRef { .. }
-    )));
+    assert!(
+        instructions(&output).any(|op| matches!(op, FirInstructionKind::SliceFromArrayRef { .. }))
+    );
 }
 
 #[test]
