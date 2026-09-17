@@ -1,0 +1,12 @@
+module examples.c14.bitstruct_range_trap;
+
+bitstruct Status: u8 {
+    mode: 3;
+    reserved: 5;
+}
+
+fn main() -> i32 {
+    var status: Status = Status(0u8);
+    status.mode = 8u8;
+    return 0i32;
+}

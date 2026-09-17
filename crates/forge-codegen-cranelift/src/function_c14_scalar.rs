@@ -138,6 +138,97 @@ fn lower_c14_scalar_instruction(
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
     match &instruction.kind {
+        FirInstructionKind::BitStructStorage { value, storage } => {
+            let result = instruction
+                .result
+                .ok_or_else(|| shape("bitstruct storage projection has no result"))?;
+            let result_ty = value_type(fir, result)?;
+            let source_ty = value_type(fir, *value)?;
+            let Ty::Nominal(owner) = source_ty else {
+                return Err(shape(
+                    "bitstruct storage projection source is not nominal",
+                ));
+            };
+            if result_ty != storage {
+                return Err(shape(
+                    "bitstruct storage projection result type differs from storage",
+                ));
+            }
+            let Some(definition) = definitions.get(owner) else {
+                return Err(shape(format!(
+                    "bitstruct storage projection has unknown type {owner:?}"
+                )));
+            };
+            let TypeDefinitionKind::BitStruct { storage: declared } = &definition.kind else {
+                return Err(shape(
+                    "bitstruct storage projection source is not a bitstruct",
+                ));
+            };
+            if declared != storage {
+                return Err(shape("bitstruct storage projection uses the wrong storage type"));
+            }
+            let source = aggregate(aggregates, *value)?.address;
+            let value = cursor
+                .ins()
+                .load(types.value_type(storage)?, flags.stack, source, 0);
+            scalars.insert(result, value);
+            return Ok(());
+        }
+        FirInstructionKind::BitStructFromStorage { value, bitstruct } => {
+            let result = instruction
+                .result
+                .ok_or_else(|| shape("bitstruct rebuild has no result"))?;
+            let result_ty = value_type(fir, result)?;
+            if result_ty != &Ty::Nominal(*bitstruct) {
+                return Err(shape(
+                    "bitstruct rebuild result has the wrong nominal type",
+                ));
+            }
+            let Some(definition) = definitions.get(bitstruct) else {
+                return Err(shape(format!(
+                    "bitstruct rebuild has unknown type {bitstruct:?}"
+                )));
+            };
+            let TypeDefinitionKind::BitStruct { storage } = &definition.kind else {
+                return Err(shape("bitstruct rebuild target is not a bitstruct"));
+            };
+            if value_type(fir, *value)? != storage {
+                return Err(shape("bitstruct rebuild input differs from storage type"));
+            }
+            let rebuilt = new_aggregate(result_ty, layouts, types, cursor)?;
+            cursor.ins().store(
+                flags.stack,
+                scalar(scalars, *value)?,
+                rebuilt.address,
+                0,
+            );
+            aggregates.insert(result, rebuilt);
+            return Ok(());
+        }
+        FirInstructionKind::BitFieldCheck { value, width } => {
+            if instruction.result.is_some() {
+                return Err(shape("bitfield range check unexpectedly has a result"));
+            }
+            let field_ty = value_type(fir, *value)?;
+            if !matches!(field_ty, Ty::Byte | Ty::Int { signed: false, .. }) {
+                return Err(shape("bitfield range check requires an unsigned integer value"));
+            }
+            let bits = types.value_type(field_ty)?.bits();
+            if *width == 0 || *width >= bits {
+                return Err(shape("bitfield range check has an invalid field width"));
+            }
+            let maximum = (1u64 << *width) - 1;
+            let maximum = cursor
+                .ins()
+                .iconst(types.value_type(field_ty)?, maximum as i64);
+            let exceeds = cursor.ins().icmp(
+                IntCC::UnsignedGreaterThan,
+                scalar(scalars, *value)?,
+                maximum,
+            );
+            cursor.ins().trapnz(exceeds, TrapCode::INTEGER_OVERFLOW);
+            return Ok(());
+        }
         FirInstructionKind::Const {
             value: FirConst::Char { value },
         } => {
