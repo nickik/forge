@@ -1,0 +1,30 @@
+module examples.c14.distinct_native;
+
+distinct UserId: u32;
+distinct AccountId: u32;
+type Count = u32;
+
+fn advance(user: UserId) -> UserId {
+    val raw: u32 = u32(user);
+    return UserId(raw + 1u32);
+}
+
+fn account_value(account: AccountId) -> u32 {
+    return u32(account);
+}
+
+fn add_count(value: Count) -> Count {
+    return value + 2u32;
+}
+
+fn main() -> i32 {
+    val user: UserId = UserId(40u32);
+    if (u32(advance(user)) != 41u32) { return 1i32; }
+
+    val account: AccountId = AccountId(9u32);
+    if (account_value(account) != 9u32) { return 2i32; }
+
+    val count: Count = 7u32;
+    if (add_count(count) != 9u32) { return 3i32; }
+    return 0i32;
+}

@@ -30,7 +30,7 @@ Legend:
 | Slices | 1 | Explicit array-reference views, mutable indexing, aggregate-contained views, sequence-rest lowering, and pointer/length argument/return ABI execute natively. |
 | References | 1 | Shared/mutable local rules, dereference, projections and ABI covered. |
 | Raw pointers and volatile | 1 | Unsafe authorization, casts, arithmetic, dereference, volatile load/store and barriers covered on AArch64/RISC-V structurally. |
-| Distinct types and aliases | 4 | Static semantics/layout exist; add native conversion and ABI fixtures. |
+| Distinct types and aliases | 1 | Nominal non-mixing diagnostics, explicit conversion, transparent aliases, and value argument/return ABI execute natively. |
 | Bitstructs | 1 | Native storage projection/rebuild, checked writes, explicit field extract/extend, narrow numeric and boolean fields, and `u8`/`u16`/`u32`/`u64` value ABI execute. |
 | `if`, `while`, C-style `for` | 1 | Typed CFG/FIR and executable corpus. |
 | value `for` iteration | 5 | Parsed and represented; protocol/static/native completion remains to be proven. |
@@ -67,9 +67,8 @@ Legend:
 
 ## Next acceptance slices
 
-1. Complete the remaining bitstruct storage-width/ABI matrix.
-2. Complete native `f32`/`f64` call/return, aggregate ABI and exceptional-value
+1. Complete native `f32`/`f64` call/return, aggregate ABI and exceptional-value
    coverage without integer emulation.
-3. Complete defer, map-protocol match and distinct-type executable matrices.
-4. Validate current Cosmic through M18 or later.
-5. Emit and inspect a real freestanding Cosmic kernel object before default cutover.
+2. Complete map-protocol match execution and mixed aggregate payload matrices.
+3. Validate current Cosmic through M18 or later.
+4. Emit and inspect a real freestanding Cosmic kernel object before default cutover.
