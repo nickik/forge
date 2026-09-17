@@ -1499,6 +1499,8 @@ fn instruction_kind_name(kind: &FirInstructionKind) -> &'static str {
         FirInstructionKind::BitStructStorage { .. } => "bitstruct storage",
         FirInstructionKind::BitStructFromStorage { .. } => "bitstruct from storage",
         FirInstructionKind::BitFieldCheck { .. } => "bitfield check",
+        FirInstructionKind::BitFieldExtract { .. } => "bitfield extract",
+        FirInstructionKind::BitFieldExtend { .. } => "bitfield extend",
         FirInstructionKind::PointerOffset { .. } => "pointer offset",
         FirInstructionKind::PointerConvert { .. } => "pointer convert",
         FirInstructionKind::MakeArray { .. } => "make array",
