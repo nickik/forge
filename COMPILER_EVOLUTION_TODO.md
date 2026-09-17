@@ -103,3 +103,14 @@ available on every backend merely because the frontend accepts it.
       entry contract and rejection of hosted dependencies.
 - [ ] Keep package/module visibility and dependency ordering exercised through
       real multi-package builds.
+- [ ] Define the Forge-to-Cosmic kernel/userland compile contract once the
+      target-independent freestanding object path is stable.
+- [ ] Validate each claimed Forge backend against one representative Cosmic
+      component only after its ordinary compiler gate is green.
+
+## Explicitly deferred
+
+- SIA32 floating point before C15 is complete.
+- `select` / channels, escaping closures and tail calls until they receive a
+  separate language and runtime milestone.
+- A second SIA machine-code backend: Forge continues to use Cranelift SIA32.
