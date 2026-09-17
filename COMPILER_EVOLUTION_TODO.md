@@ -60,6 +60,8 @@ available on every backend merely because the frontend accepts it.
       naming for every supported target.
 - [ ] Add malformed-object, unresolved-symbol and relocation-overflow negative
       tests at each object/image boundary.
+  - [x] SIAO32 parsing/linking pins exact diagnostics for malformed objects,
+        unresolved symbols and overflowing `ABS32` relocations.
   - [x] Static function/global pointer relocations reject missing targets before
         object emission on AArch64 and RISC-V.
 
