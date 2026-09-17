@@ -129,7 +129,9 @@ fn sia32_rejects_float_fir_before_isa_lowering() {
                 span: Span::new(0, 0),
                 result: Some(value),
                 kind: FirInstructionKind::Const {
-                    value: FirConst::Float { text: "1.0f32".into() },
+                    value: FirConst::Float {
+                        text: "1.0f32".into(),
+                    },
                 },
             }],
             terminator: Some(FirTerminator::Return { value: Some(value) }),

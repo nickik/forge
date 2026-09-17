@@ -119,7 +119,10 @@ impl CraneliftBackend {
 
 fn reject_sia32_floats(fir: &FirFunction) -> Result<(), BackendError> {
     if ty_contains_float(&fir.return_type)
-        || fir.locals.values().any(|local| ty_contains_float(&local.ty))
+        || fir
+            .locals
+            .values()
+            .any(|local| ty_contains_float(&local.ty))
         || fir.value_types.values().any(ty_contains_float)
     {
         return Err(BackendError::UnsupportedFir {
