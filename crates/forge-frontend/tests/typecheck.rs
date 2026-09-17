@@ -167,12 +167,14 @@ fn explicit_array_reference_slice_views_preserve_mutability() {
     let output = check(
         r#"
         module test.typecheck_slice_view;
-        fn clear(values: u32[] mut) { values[0] = 0u32; }
+        type ReadSlice = u32[];
+        type WriteSlice = u32[] mut;
+        fn clear(values: WriteSlice) { values[0] = 0u32; }
         fn main() -> i32 {
             var values: [u32; 2] = [1u32, 2u32];
-            val read: u32[] = u32[](&values);
-            clear(u32[] mut(&mut values));
-            val invalid: u32[] mut = u32[] mut(&values);
+            val read: ReadSlice = ReadSlice(&values);
+            clear(WriteSlice(&mut values));
+            val invalid: WriteSlice = WriteSlice(&values);
             return i32(read[0]);
         }
         "#,

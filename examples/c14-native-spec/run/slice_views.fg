@@ -1,31 +1,34 @@
 module examples.c14.slice_views;
 
+type ReadSlice = u32[];
+type WriteSlice = u32[] mut;
+
 struct Window {
-    values: u32[];
+    values: ReadSlice;
 }
 
-fn clear_ends(values: u32[] mut) {
+fn clear_ends(values: WriteSlice) {
     values[0] = values[0] + 1u32;
     values[2] = values[2] + 2u32;
 }
 
-fn drop_first(values: u32[]) -> u32[] {
+fn drop_first(values: ReadSlice) -> ReadSlice {
     return match (values) {
         [_, ..rest] => rest,
         _ => values,
     };
 }
 
-fn sum3(values: u32[]) -> u32 {
+fn sum3(values: ReadSlice) -> u32 {
     return values[0] + values[1] + values[2];
 }
 
 fn main() -> i32 {
     var source: [u32; 4] = [5u32, 6u32, 7u32, 8u32];
-    clear_ends(u32[] mut(&mut source));
+    clear_ends(WriteSlice(&mut source));
 
-    val view: u32[] = u32[](&source);
-    val tail_view: u32[] = drop_first(view);
+    val view: ReadSlice = ReadSlice(&source);
+    val tail_view: ReadSlice = drop_first(view);
     val window: Window = Window{values: tail_view};
 
     if (sum3(window.values) == 23u32 && source[0] == 6u32 && source[2] == 9u32) {
