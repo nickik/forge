@@ -79,5 +79,7 @@ object emission on both AArch64 and RISC-V. The implementation head
 mutable field addresses lower through `AddressOfGlobal` plus normal projection;
 their focused frontend tests and the hosted AArch64 fixture passed on
 `36cdea3ef50950ce58af013c305935117bb30cd7` in CI run `35211049973` (job
-`105168369552`). Static aggregate pointer relocation execution is pending its
-focused object and native-harness proof.
+`105168369552`). A read-only aggregate containing a global pointer and
+function pointer passed field-offset, AArch64 native, and RISC-V/QEMU execution
+checks on `fd3c1c8ff1d1429b106213c9d552bde28dc81b4d` in CI run `35211920287`
+(job `105171205233`).

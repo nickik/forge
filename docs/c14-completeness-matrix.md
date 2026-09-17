@@ -40,7 +40,7 @@ Legend:
 | Function pointers | 1 | Named functions cross call boundaries; anonymous closure coercion is rejected. |
 | Local captured closures | 1 | Explicit capture lists and local calls execute. Escaping/cross-function closure ABI is intentionally not part of C14. |
 | `defer` | 4 | Normal and return cleanup lower/execute. Early return, loop exits, `?`, ordering and illegal cleanup-body control flow need a complete matrix. |
-| Globals | 4 | Static data, function/global pointer relocations, ordered runtime initialization, mutable scalar/whole-aggregate stores, shared/mutable addresses, and direct global-rooted field reads/stores/addresses execute. AArch64 native and RISC-V object/QEMU tests cover those paths; static aggregate-pointer initializer execution remains. |
+| Globals | 1 | Static data, function/global pointer relocations, ordered runtime initialization, mutable scalar/whole-aggregate stores, shared/mutable addresses, direct global-rooted field reads/stores/addresses, and static aggregate pointers execute. AArch64 native and RISC-V/QEMU object tests cover the relocation paths. |
 | Overflow and traps | 1 | Checked/wrapping add/sub/mul, div/rem, shifts and divide-by-zero coverage exists. Narrowing policy needs matrix documentation. |
 | FDN readers and metadata | 4 | Parse/preservation and duration boundary tests exist; executable behavior is provider/tool-specific. |
 | Hosted providers/build system | 4 | Build/check/run/test, entries and hosted providers exist. Full current Cosmic/CKV acceptance remains. |
@@ -71,7 +71,6 @@ Legend:
    bitstruct storage-width/ABI matrix.
 2. Complete native `f32`/`f64` call/return, aggregate ABI and exceptional-value
    coverage without integer emulation.
-3. Complete defer, map-protocol match, distinct-type and static aggregate
-   pointer-global executable matrices.
+3. Complete defer, map-protocol match and distinct-type executable matrices.
 4. Validate current Cosmic through M18 or later.
 5. Emit and inspect a real freestanding Cosmic kernel object before default cutover.

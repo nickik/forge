@@ -40,7 +40,8 @@ available on every backend merely because the frontend accepts it.
       and static function/global pointer relocation execution.
 - [x] globals follow-up: direct field places rooted in globals, including
       reads, stores and mutable field addresses.
-- [ ] globals follow-up: static aggregate-pointer initializer execution.
+- [x] globals follow-up: static aggregate-pointer initializer execution on
+      AArch64 and RISC-V.
 - [ ] `defer`: early `return`, loop exits, nested ordering and `?` propagation.
 - [ ] `match`: map-protocol execution and more mixed aggregate payload cases.
 - [ ] distinct types: conversion and ABI execution coverage.
