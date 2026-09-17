@@ -65,6 +65,16 @@ impl CraneliftBackend {
             Some(allocate_internal_owner(&mut used, &mut next_internal)?)
         };
 
+        // SIA32 M5 is intentionally integer-only. Do not let an otherwise
+        // valid Forge float reach an incomplete SIA ISA lowering path and fail
+        // as an opaque ISLE/encoding error. Native AArch64 and RISC-V retain
+        // their normal float support.
+        if self.target == CraneliftTarget::Sia32 {
+            for fir in all_functions.values() {
+                reject_sia32_floats(fir)?;
+            }
+        }
+
         let lowering = self.type_lowering();
         let mut functions = BTreeMap::new();
         for (owner, fir) in &all_functions {
@@ -104,6 +114,33 @@ impl CraneliftBackend {
             initializer_functions,
             module_initializer_owner,
         })
+    }
+}
+
+fn reject_sia32_floats(fir: &FirFunction) -> Result<(), BackendError> {
+    if ty_contains_float(&fir.return_type)
+        || fir.locals.values().any(|local| ty_contains_float(&local.ty))
+        || fir.value_types.values().any(ty_contains_float)
+    {
+        return Err(BackendError::UnsupportedFir {
+            component: "floating point on SIA32 (deferred)",
+        });
+    }
+    Ok(())
+}
+
+fn ty_contains_float(ty: &Ty) -> bool {
+    match ty {
+        Ty::Float { .. } => true,
+        Ty::Pointer { inner, .. } | Ty::Reference { inner, .. } | Ty::Optional { inner } => {
+            ty_contains_float(inner)
+        }
+        Ty::Slice { element, .. } | Ty::Array { element, .. } => ty_contains_float(element),
+        Ty::Result { ok, error } => ty_contains_float(ok) || ty_contains_float(error),
+        Ty::Function { params, result, .. } | Ty::Closure { params, result } => {
+            params.iter().any(ty_contains_float) || ty_contains_float(result)
+        }
+        _ => false,
     }
 }
 

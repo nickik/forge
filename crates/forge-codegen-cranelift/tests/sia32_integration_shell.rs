@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use cranelift_codegen::ir::types;
 use forge_codegen_cranelift::{
-    CraneliftBackend, CraneliftTarget, ExecutableFormat, Sia32IntegrationShell, Sia32Object,
-    TargetAbi,
+    BackendError, CraneliftBackend, CraneliftTarget, ExecutableFormat, Sia32IntegrationShell,
+    Sia32Object, TargetAbi,
 };
 use forge_fir::{
     DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction, FirInstructionKind,
@@ -108,4 +108,42 @@ fn sia32_compiles_a_small_forge_function_to_native_bytes() {
     assert!(!code.bytes().is_empty());
     assert_eq!(code.bytes().len() % 2, 0);
     assert_eq!(&code.bytes()[code.bytes().len() - 2..], [0xe0, 0xc0]);
+}
+
+#[test]
+fn sia32_rejects_float_fir_before_isa_lowering() {
+    let owner = DefId(0);
+    let value = FirValueId(0);
+    let float = Ty::Float { bits: 32 };
+    let function = FirFunction {
+        owner,
+        params: vec![],
+        return_type: float.clone(),
+        locals: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![FirInstruction {
+                span: Span::new(0, 0),
+                result: Some(value),
+                kind: FirInstructionKind::Const {
+                    value: FirConst::Float { text: "1.0f32".into() },
+                },
+            }],
+            terminator: Some(FirTerminator::Return { value: Some(value) }),
+        }],
+        value_types: BTreeMap::from([(value, float)]),
+    };
+    let mut module = FirModule::default();
+    module.functions.insert(owner, function);
+
+    match CraneliftBackend::sia32().unwrap().prepare_module(&module) {
+        Err(BackendError::UnsupportedFir {
+            component: "floating point on SIA32 (deferred)",
+        }) => {}
+        Err(error) => panic!("wrong SIA32 float rejection: {error}"),
+        Ok(_) => panic!("SIA32 unexpectedly accepted float FIR"),
+    }
 }
