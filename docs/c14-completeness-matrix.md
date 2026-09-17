@@ -23,7 +23,7 @@ Legend:
 | `duration` | 1 | Source builtin and reader form lower as signed nanoseconds; native argument, return, local, field load and field store execution is covered. |
 | `f32`, `f64` | 4 | Native AArch64 scalar constants, arithmetic, negation, comparisons, integer-to-float conversion, `f32`/`f64` argument-return calls, aggregate field storage, and executable fixture are implemented. SIA32 deliberately rejects float FIR until C15; see `C15_TODO.md`. Aggregate and exceptional-value ABI coverage remains. |
 | Structs and enums | 1 | Construction, projection, layout, ABI and matching tests. |
-| Tagged unions | 1 | Construction, payload extraction, nested match and ABI basics execute; expand mixed-payload ABI coverage. |
+| Tagged unions | 1 | Construction, payload extraction, nested match, and mixed fieldless/narrow-scalar/multi-field payload argument-return ABI execute. |
 | `Option[T]` | 1 | `None`, explicit `Some(value)`, implicit promotion, patterns and native layout/lowering. |
 | `Result[T,E]` | 1 | Canonical `Ok=0`/`Err=1` layout semantics, contextual and payloadless constructors, nested patterns, `?`, FIR discriminant/payload lowering, AArch64 object emission, and hosted native execution are covered. |
 | Arrays | 1 | Construction, indexing, bounds, aggregate elements and ABI execute. |
@@ -69,6 +69,6 @@ Legend:
 
 1. Complete native `f32`/`f64` call/return, aggregate ABI and exceptional-value
    coverage without integer emulation.
-2. Expand mixed aggregate payload matrices.
+2. Expand cross-target mixed scalar/aggregate call and hidden-return matrices.
 3. Validate current Cosmic through M18 or later.
 4. Emit and inspect a real freestanding Cosmic kernel object before default cutover.

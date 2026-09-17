@@ -46,7 +46,8 @@ available on every backend merely because the frontend accepts it.
       ordering execute natively.
 - [x] `match`: resolved map-protocol lookup/closed-key calls execute natively,
       including required and optional bindings.
-- [ ] `match`: expand mixed aggregate payload cases.
+- [x] `match`: mixed fieldless, narrow-scalar and multi-field tagged payloads
+      execute across argument and return ABI boundaries.
 - [x] distinct types and aliases: explicit conversion and value ABI execution.
 
 ## 3. Harden ABI and object correctness
