@@ -196,6 +196,20 @@ pub enum FirInstructionKind {
         value: FirValueId,
         bitstruct: DefId,
     },
+    /// Reinterpret a value with the declared underlying representation as a
+    /// nominal `distinct` value. This is separate from `Convert` so it cannot
+    /// relax ordinary numeric narrowing rules.
+    DistinctFromUnderlying {
+        value: FirValueId,
+        distinct: DefId,
+    },
+    /// Extract a nominal `distinct` value's declared underlying
+    /// representation. This is separate from `Convert` for the same reason as
+    /// `DistinctFromUnderlying`.
+    DistinctToUnderlying {
+        value: FirValueId,
+        distinct: DefId,
+    },
     BitFieldCheck {
         value: FirValueId,
         width: u32,
@@ -1627,21 +1641,32 @@ impl<'a> FunctionLowerer<'a> {
                             },
                         );
                     }
-                    self.emit_value(
+                    return self.emit_value(
                         expr.span,
                         Ty::Nominal(id),
-                        FirInstructionKind::Convert {
+                        FirInstructionKind::DistinctFromUnderlying {
                             value,
-                            target: Ty::Nominal(id),
+                            distinct: id,
                         },
-                    )
-                } else {
-                    self.emit_value(
-                        expr.span,
-                        ty.clone(),
-                        FirInstructionKind::Convert { value, target: ty },
-                    )
+                    );
                 }
+                if let Ty::Nominal(id) = source_ty {
+                    if !self.all_typed.bitstructs.contains_key(&id) {
+                        return self.emit_value(
+                            expr.span,
+                            ty.clone(),
+                            FirInstructionKind::DistinctToUnderlying {
+                                value,
+                                distinct: id,
+                            },
+                        );
+                    }
+                }
+                self.emit_value(
+                    expr.span,
+                    ty.clone(),
+                    FirInstructionKind::Convert { value, target: ty },
+                )
             }
             HirExprKind::Index { base, index } => {
                 let base_ty = self.expr_ty(base);

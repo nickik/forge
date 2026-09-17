@@ -1501,6 +1501,8 @@ fn instruction_kind_name(kind: &FirInstructionKind) -> &'static str {
         FirInstructionKind::SliceFromArrayRef { .. } => "slice from array reference",
         FirInstructionKind::BitStructStorage { .. } => "bitstruct storage",
         FirInstructionKind::BitStructFromStorage { .. } => "bitstruct from storage",
+        FirInstructionKind::DistinctFromUnderlying { .. } => "distinct from underlying",
+        FirInstructionKind::DistinctToUnderlying { .. } => "distinct to underlying",
         FirInstructionKind::BitFieldCheck { .. } => "bitfield check",
         FirInstructionKind::BitFieldExtract { .. } => "bitfield extract",
         FirInstructionKind::BitFieldExtend { .. } => "bitfield extend",
