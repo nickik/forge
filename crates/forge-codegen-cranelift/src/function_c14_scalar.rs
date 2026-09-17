@@ -262,7 +262,7 @@ fn lower_c14_scalar_instruction(
             }
             let source = scalar(scalars, *value)?;
             let extended = if source_ty == &Ty::Bool {
-                cursor.ins().bint(result_clif, source)
+                cursor.ins().uextend(result_clif, source)
             } else if source_clif == result_clif {
                 source
             } else {
