@@ -184,6 +184,17 @@ pub enum FirInstructionKind {
         value: FirValueId,
         width: u32,
     },
+    /// Convert a masked storage value into its declared unsigned bit-field
+    /// type. Unlike `Convert`, this is safe to reduce because the mask is a
+    /// preceding Forge bit-field operation, not an arbitrary source cast.
+    BitFieldExtract {
+        value: FirValueId,
+    },
+    /// Zero-extend a checked numeric field into its declared bitstruct
+    /// storage type. This is the inverse of `BitFieldExtract` for insertion.
+    BitFieldExtend {
+        value: FirValueId,
+    },
     PointerOffset {
         pointer: FirValueId,
         offset: FirValueId,
@@ -2019,10 +2030,7 @@ impl<'a> FunctionLowerer<'a> {
             self.emit_value(
                 expr.span,
                 result_ty.clone(),
-                FirInstructionKind::Convert {
-                    value: masked,
-                    target: result_ty,
-                },
+                FirInstructionKind::BitFieldExtract { value: masked },
             )
         }
     }
@@ -2075,10 +2083,7 @@ impl<'a> FunctionLowerer<'a> {
             self.emit_value(
                 value.span,
                 access.storage.clone(),
-                FirInstructionKind::Convert {
-                    value: field_value,
-                    target: access.storage.clone(),
-                },
+                FirInstructionKind::BitFieldExtend { value: field_value },
             )
         };
         let mask = bit_mask(access.field.width);

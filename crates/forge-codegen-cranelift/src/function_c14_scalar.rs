@@ -229,6 +229,48 @@ fn lower_c14_scalar_instruction(
             cursor.ins().trapnz(exceeds, TrapCode::INTEGER_OVERFLOW);
             return Ok(());
         }
+        FirInstructionKind::BitFieldExtract { value } => {
+            let result = instruction
+                .result
+                .ok_or_else(|| shape("bitfield extract has no result"))?;
+            let source_ty = value_type(fir, *value)?;
+            let result_ty = value_type(fir, result)?;
+            let source_clif = types.value_type(source_ty)?;
+            let result_clif = types.value_type(result_ty)?;
+            if source_clif.bits() < result_clif.bits() {
+                return Err(shape("bitfield extract widens its storage value"));
+            }
+            let source = scalar(scalars, *value)?;
+            let extracted = if source_clif == result_clif {
+                source
+            } else {
+                cursor.ins().ireduce(result_clif, source)
+            };
+            scalars.insert(result, extracted);
+            return Ok(());
+        }
+        FirInstructionKind::BitFieldExtend { value } => {
+            let result = instruction
+                .result
+                .ok_or_else(|| shape("bitfield extend has no result"))?;
+            let source_ty = value_type(fir, *value)?;
+            let result_ty = value_type(fir, result)?;
+            let source_clif = types.value_type(source_ty)?;
+            let result_clif = types.value_type(result_ty)?;
+            if source_ty != &Ty::Bool && source_clif.bits() > result_clif.bits() {
+                return Err(shape("bitfield extend narrows its field value"));
+            }
+            let source = scalar(scalars, *value)?;
+            let extended = if source_ty == &Ty::Bool {
+                cursor.ins().uextend(result_clif, source)
+            } else if source_clif == result_clif {
+                source
+            } else {
+                cursor.ins().uextend(result_clif, source)
+            };
+            scalars.insert(result, extended);
+            return Ok(());
+        }
         FirInstructionKind::Const {
             value: FirConst::Char { value },
         } => {

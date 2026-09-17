@@ -212,6 +212,26 @@ fn validate_c4_scalar_contract(
                         });
                     }
                 }
+                FirInstructionKind::BitFieldExtract { value } => {
+                    let source = value_type(fir, *value, "bitfield conversion input")?;
+                    if !matches!(source, Ty::Byte | Ty::Int { signed: false, .. })
+                        || !matches!(result_ty, Ty::Byte | Ty::Int { signed: false, .. })
+                    {
+                        return Err(shape(
+                            "bitfield conversion requires unsigned integer FIR types",
+                        ));
+                    }
+                }
+                FirInstructionKind::BitFieldExtend { value } => {
+                    let source = value_type(fir, *value, "bitfield conversion input")?;
+                    if !matches!(source, Ty::Bool | Ty::Byte | Ty::Int { signed: false, .. })
+                        || !matches!(result_ty, Ty::Byte | Ty::Int { signed: false, .. })
+                    {
+                        return Err(shape(
+                            "bitfield extension requires a bool or unsigned integer input and unsigned storage",
+                        ));
+                    }
+                }
                 _ => {}
             }
         }
@@ -322,6 +342,8 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
             | FirInstructionKind::BitStructStorage { value, .. }
             | FirInstructionKind::BitStructFromStorage { value, .. }
             | FirInstructionKind::BitFieldCheck { value, .. }
+            | FirInstructionKind::BitFieldExtract { value }
+            | FirInstructionKind::BitFieldExtend { value }
             | FirInstructionKind::PointerConvert { value, .. }
             | FirInstructionKind::MakeSome { value }
             | FirInstructionKind::VariantIs { value, .. }
