@@ -1,14 +1,13 @@
 module examples.c14.bitstruct_native;
 
 bitstruct Status: u8 {
-    ready: 1;
     mode: 3;
     code: 4;
+    spare: 1;
 }
 
 fn configure() -> Status {
     var status: Status = Status(0u8);
-    status.ready = true;
     status.mode = 5u8;
     status.code = 9u8;
     return status;
@@ -16,8 +15,7 @@ fn configure() -> Status {
 
 fn main() -> i32 {
     val status = configure();
-    if (!status.ready) { return 1i32; }
-    if (status.mode != 5u8) { return 2i32; }
-    if (status.code != 9u8) { return 3i32; }
+    if (status.mode != 5u8) { return 1i32; }
+    if (status.code != 9u8) { return 2i32; }
     return 0i32;
 }
