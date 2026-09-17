@@ -2912,7 +2912,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     }
                 }
             }
-            Ty::Int { .. } | Ty::Float { .. } | Ty::Byte | Ty::Char => {
+            Ty::Int { .. } | Ty::Float { .. } | Ty::Byte | Ty::Char | Ty::Slice { .. } => {
                 if !self.is_explicitly_convertible(&target_ty, &source) {
                     self.diagnostic(
                         span,
@@ -4475,6 +4475,26 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         }
         if is_numeric_concrete(target) && is_numeric_concrete(source) {
             return true;
+        }
+        if let (
+            Ty::Slice {
+                mutable: target_mutable,
+                element: target_element,
+            },
+            Ty::Reference {
+                mutable: source_mutable,
+                inner,
+            },
+        ) = (target, source)
+        {
+            if let Ty::Array {
+                element: source_element,
+                length: Some(_),
+            } = inner.as_ref()
+            {
+                return target_element.as_ref() == source_element.as_ref()
+                    && (!*target_mutable || *source_mutable);
+            }
         }
         if let Ty::Nominal(id) = source {
             if let Some(inner) = self.env.distinct_underlying(*id) {

@@ -678,6 +678,26 @@ fn sequence_rest_pattern_lowers_length_index_and_tail() {
 }
 
 #[test]
+fn explicit_array_reference_slice_view_has_dedicated_fir() {
+    let output = lower(
+        r#"
+        module test.fir_slice_view;
+        fn read(values: u32[]) -> u32 { return values[0]; }
+        fn main() -> i32 {
+            var values: [u32; 2] = [4u32, 9u32];
+            val view: u32[] = u32[](&values);
+            return i32(read(view));
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::SliceFromArrayRef { .. }
+    )));
+}
+
+#[test]
 fn or_pattern_uses_separate_resolved_alternatives() {
     let output = lower(
         r#"

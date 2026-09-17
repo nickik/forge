@@ -1,0 +1,35 @@
+module examples.c14.slice_views;
+
+struct Window {
+    values: u32[];
+}
+
+fn clear_ends(values: u32[] mut) {
+    values[0] = values[0] + 1u32;
+    values[2] = values[2] + 2u32;
+}
+
+fn tail(values: u32[]) -> u32[] {
+    return match (values) {
+        [_, ..rest] => rest,
+        _ => values,
+    };
+}
+
+fn sum3(values: u32[]) -> u32 {
+    return values[0] + values[1] + values[2];
+}
+
+fn main() -> i32 {
+    var source: [u32; 4] = [5u32, 6u32, 7u32, 8u32];
+    clear_ends(u32[] mut(&mut source));
+
+    val view: u32[] = u32[](&source);
+    val tail_view: u32[] = tail(view);
+    val window: Window = Window{values: tail_view};
+
+    if (sum3(window.values) == 23u32 && source[0] == 6u32 && source[2] == 9u32) {
+        return 0i32;
+    }
+    return 1i32;
+}

@@ -395,6 +395,18 @@ fn clear(values: u32[] mut) {
 }
 ```
 
+An array becomes a slice only through an explicit reference-view conversion.
+This preserves the backing storage and makes writable access visible:
+
+```forge
+val read: u32[] = u32[](&array);
+val write: u32[] mut = u32[] mut(&mut array);
+```
+
+The conversion neither copies the array nor relaxes ordinary numeric conversion
+rules. The referenced array storage must remain valid for every use of the
+resulting non-owning view.
+
 Read-only is the default.
 
 ## 18. Safe references

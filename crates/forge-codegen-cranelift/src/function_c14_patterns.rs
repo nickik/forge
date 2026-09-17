@@ -15,6 +15,20 @@ fn lower_c14_pattern_instruction(
     layouts: &mut LayoutEngine<'_>,
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
+    if let FirInstructionKind::SliceFromArrayRef { value } = &instruction.kind {
+        return lower_c14_slice_from_array_ref(
+            fir,
+            instruction,
+            *value,
+            flags,
+            scalars,
+            aggregates,
+            types,
+            layouts,
+            cursor,
+        );
+    }
+
     if let FirInstructionKind::Subsequence { base, start } = &instruction.kind {
         return lower_c14_subsequence(
             fir,
@@ -46,6 +60,72 @@ fn lower_c14_pattern_instruction(
         layouts,
         cursor,
     )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_c14_slice_from_array_ref(
+    fir: &FirFunction,
+    instruction: &FirInstruction,
+    input: FirValueId,
+    flags: MemoryFlags,
+    scalars: &BTreeMap<FirValueId, Value>,
+    aggregates: &mut BTreeMap<FirValueId, AggregateValue>,
+    types: &TypeLowering<'_>,
+    layouts: &mut LayoutEngine<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<(), BackendError> {
+    let result = instruction
+        .result
+        .ok_or_else(|| shape("slice-from-array reference has no result"))?;
+    let input_ty = value_type(fir, input)?;
+    let result_ty = value_type(fir, result)?.clone();
+    let (reference_mutable, element, length) = match input_ty {
+        Ty::Reference { mutable, inner } => match inner.as_ref() {
+            Ty::Array {
+                element,
+                length: Some(length),
+            } => (*mutable, element.as_ref(), *length),
+            _ => return Err(shape("slice conversion source is not a reference to a fixed array")),
+        },
+        _ => return Err(shape("slice conversion source is not a reference")),
+    };
+    let Ty::Slice {
+        mutable: result_mutable,
+        element: result_element,
+    } = &result_ty
+    else {
+        return Err(shape("slice-from-array reference result is not a slice"));
+    };
+    if element != result_element.as_ref() || (*result_mutable && !reference_mutable) {
+        return Err(shape("slice conversion source and result types are incompatible"));
+    }
+
+    let layout = layouts.layout_of(&result_ty).map_err(layout_error)?;
+    let LayoutKind::Slice {
+        data_offset,
+        len_offset,
+        ..
+    } = layout.kind
+    else {
+        return Err(shape("slice has non-slice layout"));
+    };
+    let output = new_aggregate(&result_ty, layouts, types, cursor)?;
+    cursor.ins().store(
+        flags.stack,
+        scalar(scalars, input)?,
+        output.address,
+        i32_offset(data_offset)?,
+    );
+    let length = i64::try_from(length).map_err(|_| shape("array length exceeds i64"))?;
+    let length = cursor.ins().iconst(types.pointer_type()?, length);
+    cursor.ins().store(
+        flags.stack,
+        length,
+        output.address,
+        i32_offset(len_offset)?,
+    );
+    aggregates.insert(result, output);
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]

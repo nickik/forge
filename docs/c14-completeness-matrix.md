@@ -27,7 +27,7 @@ Legend:
 | `Option[T]` | 1 | `None`, explicit `Some(value)`, implicit promotion, patterns and native layout/lowering. |
 | `Result[T,E]` | 1 | Canonical `Ok=0`/`Err=1` layout semantics, contextual and payloadless constructors, nested patterns, `?`, FIR discriminant/payload lowering, AArch64 object emission, and hosted native execution are covered. |
 | Arrays | 1 | Construction, indexing, bounds, aggregate elements and ABI execute. |
-| Slices | 4 | Pointer/length ABI, indexing and sequence-rest lowering exist. Mutable, aggregate-contained and return-value execution need expansion. |
+| Slices | 1 | Explicit array-reference views, mutable indexing, aggregate-contained views, sequence-rest lowering, and pointer/length argument/return ABI execute natively. |
 | References | 1 | Shared/mutable local rules, dereference, projections and ABI covered. |
 | Raw pointers and volatile | 1 | Unsafe authorization, casts, arithmetic, dereference, volatile load/store and barriers covered on AArch64/RISC-V structurally. |
 | Distinct types and aliases | 4 | Static semantics/layout exist; add native conversion and ABI fixtures. |
@@ -67,8 +67,7 @@ Legend:
 
 ## Next acceptance slices
 
-1. Complete slice mutable/aggregate/return ABI execution and the remaining
-   bitstruct storage-width/ABI matrix.
+1. Complete the remaining bitstruct storage-width/ABI matrix.
 2. Complete native `f32`/`f64` call/return, aggregate ABI and exceptional-value
    coverage without integer emulation.
 3. Complete defer, map-protocol match and distinct-type executable matrices.

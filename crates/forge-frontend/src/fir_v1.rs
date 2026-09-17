@@ -181,6 +181,13 @@ pub enum FirInstructionKind {
         value: FirValueId,
         target: Ty,
     },
+    /// Form a non-owning slice view from an explicit reference to a fixed
+    /// array. This is separate from `Convert`: it constructs the slice's
+    /// pointer/length representation and must never relax numeric conversion
+    /// rules.
+    SliceFromArrayRef {
+        value: FirValueId,
+    },
     BitStructStorage {
         value: FirValueId,
         storage: Ty,
@@ -1600,6 +1607,15 @@ impl<'a> FunctionLowerer<'a> {
                     return self.poison(expr.span, ty);
                 }
                 let value = self.lower_expr(source_expr);
+                if matches!(ty, Ty::Slice { .. })
+                    && matches!(source_ty, Ty::Reference { inner, .. } if matches!(inner.as_ref(), Ty::Array { .. }))
+                {
+                    return self.emit_value(
+                        expr.span,
+                        ty,
+                        FirInstructionKind::SliceFromArrayRef { value },
+                    );
+                }
                 if let Ty::Nominal(id) = ty {
                     if self.all_typed.bitstructs.contains_key(&id) {
                         return self.emit_value(
