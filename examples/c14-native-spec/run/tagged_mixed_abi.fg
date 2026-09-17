@@ -1,0 +1,28 @@
+module examples.c14.tagged_mixed_abi;
+
+tagged Packet {
+    Empty,
+    Code { value: u8; },
+    Pair { left: u64; right: u32; },
+}
+
+fn make_pair(seed: u64) -> Packet {
+    return Packet::Pair{left: seed, right: 7u32};
+}
+
+fn decode(packet: Packet) -> u64 {
+    return match (packet) {
+        Packet::Empty => 0u64,
+        Packet::Code{value} => u64(value),
+        Packet::Pair{left, right} => left + u64(right),
+    };
+}
+
+fn main() -> i32 {
+    val empty: Packet = Packet::Empty;
+    val code: Packet = Packet::Code{value: 5u8};
+    if (decode(empty) != 0u64) { return 1i32; }
+    if (decode(code) != 5u64) { return 2i32; }
+    if (decode(make_pair(40u64)) != 47u64) { return 3i32; }
+    return 0i32;
+}
