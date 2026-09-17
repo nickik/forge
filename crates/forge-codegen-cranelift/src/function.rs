@@ -1498,6 +1498,7 @@ fn instruction_kind_name(kind: &FirInstructionKind) -> &'static str {
         FirInstructionKind::Unary { .. } => "unary",
         FirInstructionKind::Binary { .. } => "binary",
         FirInstructionKind::Convert { .. } => "convert",
+        FirInstructionKind::SliceFromArrayRef { .. } => "slice from array reference",
         FirInstructionKind::BitStructStorage { .. } => "bitstruct storage",
         FirInstructionKind::BitStructFromStorage { .. } => "bitstruct from storage",
         FirInstructionKind::BitFieldCheck { .. } => "bitfield check",

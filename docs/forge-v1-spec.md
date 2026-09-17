@@ -395,6 +395,22 @@ fn clear(values: u32[] mut) {
 }
 ```
 
+An array becomes a slice only through an explicit reference-view conversion.
+Name the slice type, then use that name as the conversion constructor. This
+preserves the backing storage and makes writable access visible:
+
+```forge
+type ReadSlice = u32[];
+type WriteSlice = u32[] mut;
+
+val read: ReadSlice = ReadSlice(&array);
+val write: WriteSlice = WriteSlice(&mut array);
+```
+
+The conversion neither copies the array nor relaxes ordinary numeric conversion
+rules. The referenced array storage must remain valid for every use of the
+resulting non-owning view.
+
 Read-only is the default.
 
 ## 18. Safe references

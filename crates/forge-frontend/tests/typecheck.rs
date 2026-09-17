@@ -163,6 +163,26 @@ fn explicit_numeric_conversion_is_valid() {
 }
 
 #[test]
+fn explicit_array_reference_slice_views_preserve_mutability() {
+    let output = check(
+        r#"
+        module test.typecheck_slice_view;
+        type ReadSlice = u32[];
+        type WriteSlice = u32[] mut;
+        fn clear(values: WriteSlice) { values[0] = 0u32; }
+        fn main() -> i32 {
+            var values: [u32; 2] = [1u32, 2u32];
+            val read: ReadSlice = ReadSlice(&values);
+            clear(WriteSlice(&mut values));
+            val invalid: WriteSlice = WriteSlice(&values);
+            return i32(read[0]);
+        }
+        "#,
+    );
+    assert!(has(&output, "type/mismatch"), "{:?}", output.diagnostics);
+}
+
+#[test]
 fn distinct_types_do_not_implicitly_mix() {
     let output = check(
         r#"
