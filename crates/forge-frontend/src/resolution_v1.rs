@@ -676,7 +676,7 @@ impl<'a, 'd> Resolver<'a, 'd> {
 
 fn builtin_types() -> BTreeSet<&'static str> {
     [
-        "bool", "char", "str", "void", "never", "usize", "isize", "u8", "u16", "u32", "u64", "i8",
+        "bool", "char", "str", "void", "never", "duration", "usize", "isize", "u8", "u16", "u32", "u64", "i8",
         "i16", "i32", "i64", "f32", "f64",
     ]
     .into_iter()
