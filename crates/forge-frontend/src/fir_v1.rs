@@ -1622,7 +1622,7 @@ impl<'a> FunctionLowerer<'a> {
                 }
                 let value = self.lower_expr(source_expr);
                 if matches!(ty, Ty::Slice { .. })
-                    && matches!(source_ty, Ty::Reference { inner, .. } if matches!(inner.as_ref(), Ty::Array { .. }))
+                    && matches!(source_ty, Ty::Reference { ref inner, .. } if matches!(inner.as_ref(), Ty::Array { .. }))
                 {
                     return self.emit_value(
                         expr.span,
