@@ -396,6 +396,8 @@ fn reachable_provider_owners(
             .flat_map(|block| &block.instructions)
             .filter_map(|instruction| match instruction.kind {
                 FirInstructionKind::Call { target, .. } => Some(target),
+                FirInstructionKind::CollectionPatternLookup { operation, .. }
+                | FirInstructionKind::CollectionPatternHasOnly { operation, .. } => Some(operation),
                 _ => None,
             })
             .collect()

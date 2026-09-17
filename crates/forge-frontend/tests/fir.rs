@@ -1,5 +1,5 @@
 use forge_frontend::{
-    lower_fir, lower_module, lower_resolved_bodies, parse_source, type_check_module,
+    lower_fir, lower_module, lower_resolved_bodies, parse_source, type_check_module, FirConst,
     FirInstructionKind, FirTerminator, OverflowMode, Ty, TypedExprKind,
 };
 
@@ -1347,11 +1347,13 @@ fn map_pattern_lowers_resolved_collection_protocol_operations() {
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
     assert!(instructions(&output).any(|op| matches!(
         op,
-        FirInstructionKind::CollectionPatternLookup { key, .. } if key == "name"
+        FirInstructionKind::Const { value: FirConst::String { value } } if value == "name"
     )));
+    assert!(instructions(&output)
+        .any(|op| matches!(op, FirInstructionKind::CollectionPatternLookup { .. })));
     assert!(instructions(&output).any(|op| matches!(
         op,
-        FirInstructionKind::CollectionPatternHasOnly { keys, .. } if keys == &vec!["name".to_owned()]
+        FirInstructionKind::CollectionPatternHasOnly { keys, .. } if keys.len() == 1
     )));
     assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::OptionIsSome { .. })));
     assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::OptionUnwrap { .. })));
@@ -1378,8 +1380,10 @@ fn map_pattern_rest_skips_closed_key_check_and_optional_binds_option() {
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
     assert!(instructions(&output).any(|op| matches!(
         op,
-        FirInstructionKind::CollectionPatternLookup { key, .. } if key == "age"
+        FirInstructionKind::Const { value: FirConst::String { value } } if value == "age"
     )));
+    assert!(instructions(&output)
+        .any(|op| matches!(op, FirInstructionKind::CollectionPatternLookup { .. })));
     assert!(!instructions(&output)
         .any(|op| matches!(op, FirInstructionKind::CollectionPatternHasOnly { .. })));
 }

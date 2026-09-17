@@ -35,7 +35,7 @@ Legend:
 | `if`, `while`, C-style `for` | 1 | Typed CFG/FIR and executable corpus. |
 | value `for` iteration | 5 | Parsed and represented; protocol/static/native completion remains to be proven. |
 | `break`, `continue` | 4 | FIR cleanup paths exist; add nested-loop/defer executable matrix. |
-| `match` | 4 | Bool, scalar, enum, tagged, Option, Result, nested projections, guards, OR/as, ranges and sequence-rest covered. Map-protocol native execution remains. |
+| `match` | 1 | Bool, scalar, enum, tagged, Option, Result, nested projections, guards, OR/as, ranges, sequence-rest, and resolved map-protocol required/optional bindings execute natively. |
 | Functions and calls | 1 | Direct/indirect, named/default, method calls, scalar/aggregate ABI and non-main entry covered. |
 | Function pointers | 1 | Named functions cross call boundaries; anonymous closure coercion is rejected. |
 | Local captured closures | 1 | Explicit capture lists and local calls execute. Escaping/cross-function closure ABI is intentionally not part of C14. |
@@ -69,6 +69,6 @@ Legend:
 
 1. Complete native `f32`/`f64` call/return, aggregate ABI and exceptional-value
    coverage without integer emulation.
-2. Complete map-protocol match execution and mixed aggregate payload matrices.
+2. Expand mixed aggregate payload matrices.
 3. Validate current Cosmic through M18 or later.
 4. Emit and inspect a real freestanding Cosmic kernel object before default cutover.

@@ -279,12 +279,12 @@ pub enum FirInstructionKind {
     CollectionPatternLookup {
         collection: FirValueId,
         operation: DefId,
-        key: String,
+        key: FirValueId,
     },
     CollectionPatternHasOnly {
         collection: FirValueId,
         operation: DefId,
-        keys: Vec<String>,
+        keys: Vec<FirValueId>,
     },
     AddressOf {
         place: FirPlace,
@@ -2610,15 +2610,29 @@ impl<'a> FunctionLowerer<'a> {
                     name: name.clone(),
                 },
             ),
-            MatchTest::CollectionHasOnly { operation, keys } => self.emit_value(
-                span,
-                Ty::Bool,
-                FirInstructionKind::CollectionPatternHasOnly {
-                    collection: value,
-                    operation: *operation,
-                    keys: keys.clone(),
-                },
-            ),
+            MatchTest::CollectionHasOnly { operation, keys } => {
+                let keys = keys
+                    .iter()
+                    .map(|key| {
+                        self.emit_value(
+                            span,
+                            Ty::Str,
+                            FirInstructionKind::Const {
+                                value: FirConst::String { value: key.clone() },
+                            },
+                        )
+                    })
+                    .collect();
+                self.emit_value(
+                    span,
+                    Ty::Bool,
+                    FirInstructionKind::CollectionPatternHasOnly {
+                        collection: value,
+                        operation: *operation,
+                        keys,
+                    },
+                )
+            }
             MatchTest::Length { count, at_least } => {
                 let len = self.emit_value(span, usize_ty(), FirInstructionKind::Len { value });
                 let expected = self.emit_value(
@@ -2712,15 +2726,24 @@ impl<'a> FunctionLowerer<'a> {
                         start: *start,
                     },
                 ),
-                MatchProjection::CollectionLookup { operation, key, ty } => self.emit_value(
-                    span,
-                    ty.clone(),
-                    FirInstructionKind::CollectionPatternLookup {
-                        collection: value,
-                        operation: *operation,
-                        key: key.clone(),
-                    },
-                ),
+                MatchProjection::CollectionLookup { operation, key, ty } => {
+                    let key = self.emit_value(
+                        span,
+                        Ty::Str,
+                        FirInstructionKind::Const {
+                            value: FirConst::String { value: key.clone() },
+                        },
+                    );
+                    self.emit_value(
+                        span,
+                        ty.clone(),
+                        FirInstructionKind::CollectionPatternLookup {
+                            collection: value,
+                            operation: *operation,
+                            key,
+                        },
+                    )
+                }
             };
         }
         value
