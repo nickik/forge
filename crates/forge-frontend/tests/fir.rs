@@ -398,10 +398,8 @@ fn distinct_conversions_use_dedicated_fir_operations() {
         instruction,
         FirInstructionKind::DistinctFromUnderlying { .. }
     )));
-    assert!(instructions(&output).any(|instruction| matches!(
-        instruction,
-        FirInstructionKind::DistinctToUnderlying { .. }
-    )));
+    assert!(instructions(&output)
+        .any(|instruction| matches!(instruction, FirInstructionKind::DistinctToUnderlying { .. })));
 }
 
 #[test]
