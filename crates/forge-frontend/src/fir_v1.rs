@@ -3206,9 +3206,7 @@ impl<'a> FunctionLowerer<'a> {
         match &expr.kind {
             HirExprKind::Name { reference } => match reference.root {
                 ResolvedName::Local(local) => self.place_for_local(local),
-                ResolvedName::Def(global)
-                    if self.all_typed.global_types.contains_key(&global) =>
-                {
+                ResolvedName::Def(global) if self.all_typed.global_types.contains_key(&global) => {
                     // Preserve a global root as the dedicated FIR address
                     // operation, then reuse the normal reference/place path
                     // for member and index projections. This keeps global
