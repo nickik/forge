@@ -27,7 +27,10 @@ A package is described by `forge.fdn`:
 
 Supported target kinds are `:library`, `:executable`, `:kernel`, and `:test`.
 
-A kernel target defaults to `:std false`; other targets default to hosted `std`. A target may additionally specify `:entry "symbol"`. Linker metadata is reserved for a later implementation step and does not yet affect driver invocation.
+A kernel target requires `:std false`; explicitly enabling hosted `std` on a
+kernel is rejected while other target kinds default to hosted `std`. A target
+may additionally specify `:entry "symbol"`. Linker metadata is reserved for a
+later implementation step and does not yet affect driver invocation.
 
 ## Local path dependencies
 

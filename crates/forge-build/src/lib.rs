@@ -343,6 +343,12 @@ pub fn load_package(manifest_path: &Path) -> Result<Package> {
             )));
         }
         let std_default = kind != "kernel";
+        let std = optional_bool(m, "std", std_default)?;
+        if kind == "kernel" && std {
+            return Err(BuildError(format!(
+                "kernel target :{target_name} cannot enable hosted :std; kernel targets require :std false"
+            )));
+        }
         let expected_output = if let Some(test) = m.get("test") {
             let test = as_map(test, ":test")?;
             optional_string(test, "expected")?.map(|p| root_dir.join(p))
@@ -355,7 +361,7 @@ pub fn load_package(manifest_path: &Path) -> Result<Package> {
                 name: target_name.clone(),
                 kind,
                 root,
-                std: optional_bool(m, "std", std_default)?,
+                std,
                 entry: optional_string(m, "entry")?,
                 expected_output,
             },
@@ -651,6 +657,24 @@ mod tests {
         let package = load_package(&root.join("forge.fdn")).unwrap();
         assert!(!package.targets["kernel"].std);
         assert_eq!(package.targets["kernel"].entry.as_deref(), Some("start"));
+    }
+
+    #[test]
+    fn kernel_rejects_hosted_std() {
+        let root = temp_dir("kernel-hosted-std");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(root.join("src/main.fg"), "module kernel;\n").unwrap();
+        fs::write(
+            root.join("forge.fdn"),
+            "#forge/package { :name \"kernel\" :version \"0.1.0\" :targets { :kernel { :kind :kernel :root \"src/main.fg\" :std true } } }",
+        )
+        .unwrap();
+
+        let error = load_package(&root.join("forge.fdn")).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "kernel target :kernel cannot enable hosted :std; kernel targets require :std false"
+        );
     }
 
     #[test]
