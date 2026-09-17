@@ -4,7 +4,7 @@ struct Dict {}
 
 impl Dict {
     fn pattern_get(self: &Dict, key: str) -> u32? {
-        if (key == "name") { return Some(41u32); }
+        if (key.len == 4usize) { return Some(41u32); }
         return None;
     }
 
