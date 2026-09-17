@@ -40,7 +40,7 @@ Legend:
 | Function pointers | 1 | Named functions cross call boundaries; anonymous closure coercion is rejected. |
 | Local captured closures | 1 | Explicit capture lists and local calls execute. Escaping/cross-function closure ABI is intentionally not part of C14. |
 | `defer` | 4 | Normal and return cleanup lower/execute. Early return, loop exits, `?`, ordering and illegal cleanup-body control flow need a complete matrix. |
-| Globals | 4 | Static data, relocations, loads and ordered runtime initialization exist. Native mutable stores/address-taking and aggregate/pointer fixtures need expansion. |
+| Globals | 4 | Static data, function/global pointer relocations, ordered runtime initialization, mutable scalar/whole-aggregate stores, and shared/mutable addresses execute. AArch64 native and RISC-V object/QEMU tests cover those paths; direct field places rooted in a global and static aggregate-pointer initializer execution remain. |
 | Overflow and traps | 1 | Checked/wrapping add/sub/mul, div/rem, shifts and divide-by-zero coverage exists. Narrowing policy needs matrix documentation. |
 | FDN readers and metadata | 4 | Parse/preservation and duration boundary tests exist; executable behavior is provider/tool-specific. |
 | Hosted providers/build system | 4 | Build/check/run/test, entries and hosted providers exist. Full current Cosmic/CKV acceptance remains. |
@@ -67,8 +67,11 @@ Legend:
 
 ## Next acceptance slices
 
-1. Finish Result patterns plus native constructor/argument/return/aggregate execution.
-2. Implement native `f32`/`f64` operations and ABI coverage without integer emulation.
-3. Complete slices, bitstruct storage-width/ABI, globals and defer executable matrices.
+1. Complete slice mutable/aggregate/return ABI execution and the remaining
+   bitstruct storage-width/ABI matrix.
+2. Complete native `f32`/`f64` call/return, aggregate ABI and exceptional-value
+   coverage without integer emulation.
+3. Complete defer, map-protocol match, distinct-type and direct-global-place
+   executable matrices.
 4. Validate current Cosmic through M18 or later.
 5. Emit and inspect a real freestanding Cosmic kernel object before default cutover.
