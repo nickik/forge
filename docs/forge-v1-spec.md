@@ -263,6 +263,10 @@ Other fundamental types:
 bool char byte void never
 ```
 
+`duration` is an exact signed 64-bit count of nanoseconds in FIR and native
+code. The `#duration` reader accepts integral `ns`, `us`, `ms`, `s`, `m`, and
+`h` forms and rejects values that do not fit that representation.
+
 Forge has no implementation-dependent source-level `int` type.
 
 ## 10. Structs

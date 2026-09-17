@@ -1,0 +1,22 @@
+module examples.c14.duration_native;
+
+struct Holder {
+    value: duration;
+}
+
+fn round_trip(input: duration) -> duration {
+    var local: duration = input;
+    local = input;
+    return local;
+}
+
+fn read_holder(holder: Holder) -> duration {
+    return holder.value;
+}
+
+fn main() -> i32 {
+    val original: duration = #duration "250ms";
+    val holder: Holder = Holder{value: original};
+    val returned: duration = round_trip(read_holder(holder));
+    return 0i32;
+}
