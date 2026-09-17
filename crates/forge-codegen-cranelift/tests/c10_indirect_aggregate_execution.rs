@@ -7,10 +7,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use forge_codegen_cranelift::{CraneliftBackend, CraneliftTarget};
 use forge_fir::{
     DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction, FirInstructionKind,
-    FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator, FirValueId, IntWidth, OverflowMode,
-    Span, Ty, TypeDefinitionTable,
+    BinaryOp, FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator, FirValueId, IntWidth,
+    OverflowMode, Span, Ty, TypeDefinitionTable,
 };
-use forge_frontend::ast_v1::BinaryOp;
 
 const AGGREGATE_IDENTITY: DefId = DefId(30);
 const INDIRECT_AGGREGATE_ENTRY: DefId = DefId(31);
