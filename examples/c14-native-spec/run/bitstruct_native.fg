@@ -17,7 +17,7 @@ fn configure() -> Status {
 
 fn main() -> i32 {
     val status = configure();
-    if (status.ready != true) { return 1i32; }
+    if (!status.ready) { return 1i32; }
     if (status.mode != 5u8) { return 2i32; }
     if (status.code != 17u8) { return 3i32; }
     return 0i32;
