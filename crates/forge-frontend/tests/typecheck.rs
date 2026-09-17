@@ -606,6 +606,39 @@ fn direct_struct_member_assignment_tracks_root_mutability() {
 }
 
 #[test]
+fn direct_global_member_assignment_tracks_root_mutability() {
+    let mutable = check(
+        r#"
+        module test.mutable_global_member;
+        struct Point { x: i32; }
+        var POINT: Point = Point{x: 1i32};
+        fn main() -> i32 {
+            POINT.x = 2i32;
+            return POINT.x;
+        }
+        "#,
+    );
+    assert!(mutable.diagnostics.is_empty(), "{:?}", mutable.diagnostics);
+
+    let immutable = check(
+        r#"
+        module test.immutable_global_member;
+        struct Point { x: i32; }
+        val POINT: Point = Point{x: 1i32};
+        fn main() -> i32 {
+            POINT.x = 2i32;
+            return POINT.x;
+        }
+        "#,
+    );
+    assert!(
+        has(&immutable, "assignment/immutable"),
+        "{:?}",
+        immutable.diagnostics
+    );
+}
+
+#[test]
 fn struct_and_tagged_constructors_reject_bad_field_sets() {
     let duplicate = check(
         r#"

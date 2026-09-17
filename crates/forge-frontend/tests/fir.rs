@@ -100,6 +100,36 @@ fn mutable_aggregate_global_assignment_and_address_keep_the_global_identity() {
 }
 
 #[test]
+fn direct_aggregate_global_field_places_lower_through_global_addresses() {
+    let output = lower(
+        r#"
+        module test.fir_direct_aggregate_global_place;
+        struct Pair { left: i32; right: i32; }
+        var STATE: Pair = Pair{left: 1i32, right: 2i32};
+        fn main() -> i32 {
+            STATE.left = 3i32;
+            val right: &mut i32 = &mut STATE.right;
+            *right = 4i32;
+            return STATE.left + STATE.right;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let state = *output.module.globals.keys().next().expect("global");
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::AddressOfGlobal { global, .. } if *global == state
+    )));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Store {
+            place: forge_frontend::FirPlace::Field { .. },
+            ..
+        }
+    )));
+}
+
+#[test]
 fn lowers_checked_arithmetic_and_cfg() {
     let output = lower(
         r#"

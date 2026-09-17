@@ -39,7 +39,9 @@ aggregate values, and adds negative object-boundary relocation coverage.
    reference-based field mutation in a native AArch64 fixture.
 4. Prove positive static pointer relocations and reject missing function/global
    relocation targets for both AArch64 and RISC-V object emission.
-5. Update the C14 matrix and roadmap only after the full native CI gate is
+5. Lower direct field places rooted in a global through `AddressOfGlobal` plus
+   the existing reference projection path; retain immutable-root diagnostics.
+6. Update the C14 matrix and roadmap only after the full native CI gate is
    green.
 
 ## Tests
@@ -57,10 +59,9 @@ aggregate values, and adds negative object-boundary relocation coverage.
 
 Do not encode a global as a synthetic local or weaken ordinary place rules.
 Dedicated FIR operations retain global symbol identity for object emission and
-make immutable-global violations diagnosable at the boundary. Direct field
-places rooted in a global are deliberately not introduced in this increment:
-aggregate mutation is proven through the existing explicit mutable-address
-operation and normal reference projection lowering.
+make immutable-global violations diagnosable at the boundary. Global-rooted
+field places are expressed as `AddressOfGlobal` plus ordinary reference
+projection rather than as a duplicate place kind.
 
 ## Completion record
 
@@ -70,4 +71,8 @@ address are covered by `global_aggregate.fg`. Static function/global pointer
 relocations continue to link and execute; missing targets are rejected before
 object emission on both AArch64 and RISC-V. The implementation head
 `bb98e58dbdff4a5a9c2301e419fc2357ad979c5b` passed hosted-native CI run
-`35209849435` (job `105164491122`).
+`35209849435` (job `105164491122`). Direct global-field reads, stores, and
+mutable field addresses lower through `AddressOfGlobal` plus normal projection;
+their focused frontend tests and the hosted AArch64 fixture passed on
+`36cdea3ef50950ce58af013c305935117bb30cd7` in CI run `35211049973` (job
+`105168369552`).

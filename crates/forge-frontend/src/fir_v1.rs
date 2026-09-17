@@ -3206,6 +3206,24 @@ impl<'a> FunctionLowerer<'a> {
         match &expr.kind {
             HirExprKind::Name { reference } => match reference.root {
                 ResolvedName::Local(local) => self.place_for_local(local),
+                ResolvedName::Def(global) if self.all_typed.global_types.contains_key(&global) => {
+                    // Preserve a global root as the dedicated FIR address
+                    // operation, then reuse the normal reference/place path
+                    // for member and index projections. This keeps global
+                    // symbol identity through code generation instead of
+                    // pretending the global is a synthetic local.
+                    let inner = self.all_typed.global_types[&global].clone();
+                    let mutable = self.all_typed.mutable_globals.contains(&global);
+                    let address = self.emit_value(
+                        expr.span,
+                        Ty::Reference {
+                            mutable,
+                            inner: Box::new(inner),
+                        },
+                        FirInstructionKind::AddressOfGlobal { global, mutable },
+                    );
+                    Some(FirPlace::Deref { address })
+                }
                 _ => None,
             },
             HirExprKind::Member { base, name } => {
