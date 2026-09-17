@@ -23,5 +23,10 @@ fn main() -> i32 {
     STATE = Counters{first: 8i32, second: 9i32};
     val replaced: Counters = STATE;
     if (replaced.first != 8i32 || replaced.second != 9i32) { return 3i32; }
+
+    STATE.first = STATE.first + 10i32;
+    val second: &mut i32 = &mut STATE.second;
+    *second = 20i32;
+    if (STATE.first != 18i32 || STATE.second != 20i32) { return 4i32; }
     return 0i32;
 }
