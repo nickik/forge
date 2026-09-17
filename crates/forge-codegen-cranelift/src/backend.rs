@@ -330,6 +330,7 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
             | FirInstructionKind::Unit
             | FirInstructionKind::FunctionRef { .. }
             | FirInstructionKind::LoadGlobal { .. }
+            | FirInstructionKind::AddressOfGlobal { .. }
             | FirInstructionKind::ContextLoad { .. }
             | FirInstructionKind::ContextSave { .. }
             | FirInstructionKind::MakeNone
@@ -337,6 +338,7 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
             | FirInstructionKind::Poison => true,
 
             FirInstructionKind::ContextSet { value, .. }
+            | FirInstructionKind::StoreGlobal { value, .. }
             | FirInstructionKind::Unary { value, .. }
             | FirInstructionKind::Convert { value, .. }
             | FirInstructionKind::BitStructStorage { value, .. }

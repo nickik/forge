@@ -124,6 +124,7 @@ fn runtime_module() -> FirModule {
                 FirGlobal {
                     owner: FIRST,
                     ty: u64_ty(),
+                    mutable: false,
                     constant: None,
                 },
             ),
@@ -132,6 +133,7 @@ fn runtime_module() -> FirModule {
                 FirGlobal {
                     owner: SECOND,
                     ty: u64_ty(),
+                    mutable: false,
                     constant: None,
                 },
             ),
@@ -140,6 +142,7 @@ fn runtime_module() -> FirModule {
                 FirGlobal {
                     owner: PAIR,
                     ty: pair_ty(),
+                    mutable: false,
                     constant: None,
                 },
             ),

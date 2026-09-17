@@ -489,6 +489,7 @@ fn materialize_string_literals(
             FirGlobal {
                 owner: bytes_owner,
                 ty: bytes_ty,
+                mutable: false,
                 constant: None,
             },
         );
@@ -514,6 +515,7 @@ fn materialize_string_literals(
             FirGlobal {
                 owner: descriptor_owner,
                 ty: Ty::Str,
+                mutable: false,
                 constant: None,
             },
         );

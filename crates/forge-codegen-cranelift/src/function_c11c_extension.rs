@@ -632,18 +632,7 @@ fn lower_c11c_load_global(
         )));
     }
 
-    // Namespace 1 is reserved by the Forge Cranelift boundary for data
-    // definitions. Namespace 0 remains the existing C9/C10 function namespace.
-    let name = cursor
-        .func
-        .declare_imported_user_function(UserExternalName::new(1, global.0));
-    let symbolic = cursor.func.create_global_value(GlobalValueData::Symbol {
-        name: ExternalName::user(name),
-        offset: 0.into(),
-        colocated: true,
-        tls: false,
-    });
-    let address = cursor.ins().symbol_value(types.pointer_type()?, symbolic);
+    let address = global_symbol_address(global, types, cursor)?;
 
     if is_memory_value(result_ty) {
         materialize_result(
@@ -665,4 +654,24 @@ fn lower_c11c_load_global(
         scalars.insert(result, value);
     }
     Ok(())
+}
+
+/// Materialize the address of a Forge global through the same namespace and
+/// relocation scheme used by global reads. Namespace 1 is reserved for data;
+/// namespace 0 remains the function namespace.
+fn global_symbol_address(
+    global: DefId,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    let name = cursor
+        .func
+        .declare_imported_user_function(UserExternalName::new(1, global.0));
+    let symbolic = cursor.func.create_global_value(GlobalValueData::Symbol {
+        name: ExternalName::user(name),
+        offset: 0.into(),
+        colocated: true,
+        tls: false,
+    });
+    Ok(cursor.ins().symbol_value(types.pointer_type()?, symbolic))
 }

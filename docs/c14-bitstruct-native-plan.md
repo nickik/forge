@@ -19,15 +19,17 @@ The first C14 checkpoint now lowers `BitStructStorage`,
 path. Its executable proof deliberately uses `u8` storage and exact-width
 numeric fields.
 
-The normal frontend lowering still represents two bitfield-specific operations
-as general `Convert` instructions:
+The normal frontend lowering originally represented two bitfield-specific
+operations as general `Convert` instructions:
 
 - a masked storage value converted to a narrower read-field type; and
 - a narrow numeric write value converted to the wider declared storage type.
 
 The generic backend verifier intentionally rejects the first as lossy. That is
-correct for ordinary source conversions, but it means the current checkpoint
-does not yet prove ordinary `u16`/`u32` storage or one-bit `bool` fields.
+correct for ordinary source conversions. The follow-up now represents both as
+explicit `BitFieldExtract` and `BitFieldExtend` FIR operations, retaining that
+generic conversion boundary while proving `u16`, narrow numeric, and one-bit
+`bool` fields through native execution.
 
 ## Invariants
 
@@ -42,34 +44,12 @@ does not yet prove ordinary `u16`/`u32` storage or one-bit `bool` fields.
 - `BitFieldCheck` lowers to an unsigned comparison and Forge overflow trap.
 - AArch64 native normal and range-trap fixtures pass.
 
-## Next increment: explicit bitfield conversion semantics
+## Completed explicit bitfield conversion increment
 
-### Goal
-
-Represent extraction and insertion width changes as explicit FIR operations so
-the backend can distinguish bitfield masks from source-level casts.
-
-### Milestones
-
-1. Add a typed FIR operation for zero-extending a masked bitfield value into
-   its declared field type, and another for extending an already range-checked
-   field value into declared storage.
-2. Emit those operations only from bitfield read/write lowering; retain the
-   generic `Convert` verifier's rejection of lossy source conversions.
-3. Lower the new operations in the C14 scalar backend using CLIF integer
-   extension/reduction instructions with width validation.
-4. Add FIR shape tests plus native `u16` storage, narrow numeric-field,
-   boolean-field, and range-trap execution fixtures.
-5. Run the full hosted-native, workspace, conformance, and Clippy gates; only
-   then advance the completeness matrix.
-
-## Tests
-
-- Existing exact-width normal and range-trap fixtures remain regression tests.
-- FIR tests must assert the new bitfield-specific operations and assert that
-  ordinary source conversions remain generic `Convert` values.
-- Native fixtures must exercise read-modify-write, zero-extended reads, and
-  a rejected out-of-range write for a narrow numeric field.
+The increment adds typed extraction and extension operations, emits them only
+from bitfield read/write lowering, and lowers them using checked CLIF integer
+reduction/extension. The native fixture covers `u16` storage, narrow numeric
+and boolean fields; the trap fixture covers out-of-range writes.
 
 ## Risks / decisions
 
@@ -81,4 +61,4 @@ the backend can distinguish bitfield masks from source-level casts.
 
 ## Completion record
 
-Initial exact-width lowering merged as `a636725d32da3d0192be3472be57b201ec9f2ec5` after hosted-native CI. The explicit conversion increment is planned but not yet implemented.
+Initial exact-width lowering merged as `a636725d32da3d0192be3472be57b201ec9f2ec5`. Explicit conversion semantics merged as `ab9483f9bcb1bea94b3ba4082b86f1fd573c0bda` after hosted-native CI.

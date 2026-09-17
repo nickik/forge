@@ -20,7 +20,7 @@ Legend:
 | `val`, `var`, `const`, assignment | 1 | Typecheck/FIR/native integer corpus; definite initialization still needs a dedicated whole-CFG audit. |
 | Integer, bool, byte scalars | 1 | Checked/wrapping arithmetic, comparisons, shifts, conversions and ABI tests. |
 | `char` | 1 | Native constants, locals, comparison, argument and return fixture. |
-| `duration` | 4 | Layout and scalar representation exist; reader/type/FIR tests exist. Add executable argument/return/load/store coverage. |
+| `duration` | 1 | Source builtin and reader form lower as signed nanoseconds; native argument, return, local, field load and field store execution is covered. |
 | `f32`, `f64` | 4 | Native AArch64 scalar constants, arithmetic, negation, comparisons, integer-to-float conversion, aggregate field storage, and executable fixture are implemented. SIA32 deliberately rejects float FIR until C15; see `C15_TODO.md`. Full ABI coverage remains. |
 | Structs and enums | 1 | Construction, projection, layout, ABI and matching tests. |
 | Tagged unions | 1 | Construction, payload extraction, nested match and ABI basics execute; expand mixed-payload ABI coverage. |
@@ -31,7 +31,7 @@ Legend:
 | References | 1 | Shared/mutable local rules, dereference, projections and ABI covered. |
 | Raw pointers and volatile | 1 | Unsafe authorization, casts, arithmetic, dereference, volatile load/store and barriers covered on AArch64/RISC-V structurally. |
 | Distinct types and aliases | 4 | Static semantics/layout exist; add native conversion and ABI fixtures. |
-| Bitstructs | 3 | Normative layout, typecheck and FIR read/write/checks exist; native lowering audit is still required. |
+| Bitstructs | 4 | Native storage projection/rebuild, checked writes, explicit field extract/extend, narrow numeric and boolean fields execute. Expand the storage-width/ABI matrix before claiming full coverage. |
 | `if`, `while`, C-style `for` | 1 | Typed CFG/FIR and executable corpus. |
 | value `for` iteration | 5 | Parsed and represented; protocol/static/native completion remains to be proven. |
 | `break`, `continue` | 4 | FIR cleanup paths exist; add nested-loop/defer executable matrix. |
@@ -69,6 +69,6 @@ Legend:
 
 1. Finish Result patterns plus native constructor/argument/return/aggregate execution.
 2. Implement native `f32`/`f64` operations and ABI coverage without integer emulation.
-3. Complete duration, slices, bitstructs, globals and defer executable matrices.
+3. Complete slices, bitstruct storage-width/ABI, globals and defer executable matrices.
 4. Validate current Cosmic through M18 or later.
 5. Emit and inspect a real freestanding Cosmic kernel object before default cutover.

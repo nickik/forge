@@ -1,0 +1,21 @@
+module examples.c14.global_scalar;
+
+var COUNTER: i32 = 4i32;
+
+fn increment() {
+    COUNTER = COUNTER + 1i32;
+}
+
+fn replace(value: &mut i32) {
+    *value = 40i32;
+}
+
+fn main() -> i32 {
+    if (COUNTER != 4i32) { return 1i32; }
+    increment();
+    if (COUNTER != 5i32) { return 2i32; }
+    replace(&mut COUNTER);
+    increment();
+    if (COUNTER != 41i32) { return 3i32; }
+    return 0i32;
+}

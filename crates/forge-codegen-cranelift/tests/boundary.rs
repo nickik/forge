@@ -43,6 +43,7 @@ fn scalar_global_prepares_plans_and_emits() {
         FirGlobal {
             owner: DefId(1),
             ty: Ty::Bool,
+            mutable: false,
             constant: Some(ConstValue::Bool { value: true }),
         },
     );

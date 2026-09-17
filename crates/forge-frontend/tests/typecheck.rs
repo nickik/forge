@@ -31,6 +31,23 @@ fn has(output: &forge_frontend::TypeCheckOutput, code: &str) -> bool {
 }
 
 #[test]
+fn immutable_globals_reject_assignment_and_mutable_address() {
+    let output = check(
+        r#"
+        module test.immutable_globals;
+        val READY: i32 = 1i32;
+        fn main() -> i32 {
+            READY = 2i32;
+            val address = &mut READY;
+            return READY;
+        }
+        "#,
+    );
+    assert!(has(&output, "assignment/immutable"), "{:?}", output.diagnostics);
+    assert!(has(&output, "reference/immutable"), "{:?}", output.diagnostics);
+}
+
+#[test]
 fn contextual_integer_literal_gets_declared_type() {
     let output = check(
         r#"

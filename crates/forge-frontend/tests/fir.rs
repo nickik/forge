@@ -39,6 +39,36 @@ fn instructions(output: &forge_frontend::FirOutput) -> impl Iterator<Item = &Fir
 }
 
 #[test]
+fn mutable_global_assignment_and_address_lower_to_explicit_fir_operations() {
+    let output = lower(
+        r#"
+        module test.fir_mutable_global;
+        var COUNTER: i32 = 1i32;
+        fn write(value: &mut i32) { *value = 9i32; }
+        fn main() -> i32 {
+            COUNTER = 3i32;
+            write(&mut COUNTER);
+            return COUNTER;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let counter = *output.module.globals.keys().next().expect("global");
+    assert!(output.module.globals[&counter].mutable);
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::StoreGlobal { global, .. } if *global == counter
+    )));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::AddressOfGlobal {
+            global,
+            mutable: true,
+        } if *global == counter
+    )));
+}
+
+#[test]
 fn lowers_checked_arithmetic_and_cfg() {
     let output = lower(
         r#"
