@@ -363,12 +363,12 @@ fn c11b_rejects_unresolved_static_pointer_relocation_targets() {
             (
                 DATA_FN,
                 StaticSymbol::Function(DefId(999)),
-                "unresolved static function address DefId(999)",
+                "unresolved static function DefId(999)",
             ),
             (
                 DATA_GLOBAL,
                 StaticSymbol::Global(DefId(998)),
-                "unresolved static global address DefId(998)",
+                "unresolved static global DefId(998)",
             ),
         ] {
             let (module, definitions, mut static_initializers) = fixture();
