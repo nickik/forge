@@ -155,15 +155,23 @@ fn lower_c14_scalar_instruction(
                     global_data.ty
                 )));
             }
-            if is_memory_value(value_ty) {
-                return Err(BackendError::UnsupportedInstruction {
-                    kind: "aggregate global store",
-                });
-            }
             let address = global_symbol_address(*global, types, cursor)?;
-            cursor
-                .ins()
-                .store(flags.deref, scalar(scalars, *value)?, address, 0);
+            // A global is addressed symbolically, but its contents follow the
+            // same scalar-or-memory representation rule as every other FIR
+            // destination.  In particular, copying an aggregate here must
+            // preserve the C9 layout rather than attempt to materialize it as
+            // a scalar CLIF value.
+            store_typed_value(
+                *value,
+                value_ty,
+                address,
+                flags.deref,
+                flags.stack,
+                scalars,
+                aggregates,
+                layouts,
+                cursor,
+            )?;
             return Ok(());
         }
         FirInstructionKind::AddressOfGlobal { global, mutable } => {

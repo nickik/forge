@@ -69,6 +69,37 @@ fn mutable_global_assignment_and_address_lower_to_explicit_fir_operations() {
 }
 
 #[test]
+fn mutable_aggregate_global_assignment_and_address_keep_the_global_identity() {
+    let output = lower(
+        r#"
+        module test.fir_mutable_aggregate_global;
+        struct Pair { left: i32; right: i32; }
+        var STATE: Pair = Pair{left: 1i32, right: 2i32};
+        fn update(value: &mut Pair) { value.left = 5i32; }
+        fn main() -> i32 {
+            STATE = Pair{left: 3i32, right: 4i32};
+            update(&mut STATE);
+            return STATE.left + STATE.right;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let state = *output.module.globals.keys().next().expect("global");
+    assert!(output.module.globals[&state].mutable);
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::StoreGlobal { global, .. } if *global == state
+    )));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::AddressOfGlobal {
+            global,
+            mutable: true,
+        } if *global == state
+    )));
+}
+
+#[test]
 fn lowers_checked_arithmetic_and_cfg() {
     let output = lower(
         r#"

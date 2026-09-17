@@ -1,0 +1,27 @@
+module examples.c14.global_aggregate;
+
+struct Counters {
+    first: i32;
+    second: i32;
+}
+
+var STATE: Counters = Counters{first: 1i32, second: 2i32};
+
+fn adjust(value: &mut Counters) {
+    value.first = value.first + 4i32;
+    value.second = value.second * 3i32;
+}
+
+fn main() -> i32 {
+    val initial: Counters = STATE;
+    if (initial.first != 1i32 || initial.second != 2i32) { return 1i32; }
+
+    adjust(&mut STATE);
+    val adjusted: Counters = STATE;
+    if (adjusted.first != 5i32 || adjusted.second != 6i32) { return 2i32; }
+
+    STATE = Counters{first: 8i32, second: 9i32};
+    val replaced: Counters = STATE;
+    if (replaced.first != 8i32 || replaced.second != 9i32) { return 3i32; }
+    return 0i32;
+}
