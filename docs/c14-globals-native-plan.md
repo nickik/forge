@@ -41,7 +41,9 @@ aggregate values, and adds negative object-boundary relocation coverage.
    relocation targets for both AArch64 and RISC-V object emission.
 5. Lower direct field places rooted in a global through `AddressOfGlobal` plus
    the existing reference projection path; retain immutable-root diagnostics.
-6. Update the C14 matrix and roadmap only after the full native CI gate is
+6. Serialize function and global addresses inside a static aggregate, then
+   prove their relocations link and execute on both native object targets.
+7. Update the C14 matrix and roadmap only after the full native CI gate is
    green.
 
 ## Tests
@@ -51,6 +53,8 @@ aggregate values, and adds negative object-boundary relocation coverage.
 - Existing static global/function pointer relocations link and execute.
 - Missing static function and global relocation targets are rejected before
   object emission for both native object targets.
+- A read-only static aggregate contains both a function pointer and a global
+  pointer, with each relocated address observed by the AArch64/RISC-V harness.
 - Assignment to a `val` global and `&mut` of an immutable global are rejected.
 - FIR shape tests assert the dedicated global operations for scalar and
   aggregate globals.
@@ -75,4 +79,5 @@ object emission on both AArch64 and RISC-V. The implementation head
 mutable field addresses lower through `AddressOfGlobal` plus normal projection;
 their focused frontend tests and the hosted AArch64 fixture passed on
 `36cdea3ef50950ce58af013c305935117bb30cd7` in CI run `35211049973` (job
-`105168369552`).
+`105168369552`). Static aggregate pointer relocation execution is pending its
+focused object and native-harness proof.

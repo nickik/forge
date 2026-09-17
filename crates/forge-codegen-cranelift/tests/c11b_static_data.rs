@@ -22,7 +22,9 @@ const DATA_FN: DefId = DefId(13);
 const DATA_GLOBAL: DefId = DefId(14);
 const RO_STRUCT: DefId = DefId(15);
 const RO_FN: DefId = DefId(16);
+const RO_POINTERS: DefId = DefId(17);
 const STRUCT_TY: DefId = DefId(100);
+const POINTERS_TY: DefId = DefId(101);
 
 fn int_ty(width: IntWidth) -> Ty {
     Ty::Int {
@@ -104,9 +106,10 @@ fn fixture() -> (FirModule, TypeDefinitionTable, StaticGlobalInitializerTable) {
         (RO_ARRAY, array_ty),
         (BSS, u64_ty()),
         (DATA_FN, function_ty()),
-        (DATA_GLOBAL, pointer_ty),
+        (DATA_GLOBAL, pointer_ty.clone()),
         (RO_STRUCT, Ty::Nominal(STRUCT_TY)),
         (RO_FN, function_ty()),
+        (RO_POINTERS, Ty::Nominal(POINTERS_TY)),
     ] {
         module.globals.insert(
             owner,
@@ -119,31 +122,53 @@ fn fixture() -> (FirModule, TypeDefinitionTable, StaticGlobalInitializerTable) {
         );
     }
 
-    let definitions = TypeDefinitionTable::from([(
-        STRUCT_TY,
-        TypeDefinition {
-            owner: STRUCT_TY,
-            kind: TypeDefinitionKind::Struct {
-                fields: vec![
-                    TypeFieldDefinition {
-                        name: "a".into(),
-                        ty: u8_ty(),
-                        declaration_index: 0,
-                    },
-                    TypeFieldDefinition {
-                        name: "b".into(),
-                        ty: u64_ty(),
-                        declaration_index: 1,
-                    },
-                    TypeFieldDefinition {
-                        name: "c".into(),
-                        ty: u16_ty(),
-                        declaration_index: 2,
-                    },
-                ],
+    let definitions = TypeDefinitionTable::from([
+        (
+            STRUCT_TY,
+            TypeDefinition {
+                owner: STRUCT_TY,
+                kind: TypeDefinitionKind::Struct {
+                    fields: vec![
+                        TypeFieldDefinition {
+                            name: "a".into(),
+                            ty: u8_ty(),
+                            declaration_index: 0,
+                        },
+                        TypeFieldDefinition {
+                            name: "b".into(),
+                            ty: u64_ty(),
+                            declaration_index: 1,
+                        },
+                        TypeFieldDefinition {
+                            name: "c".into(),
+                            ty: u16_ty(),
+                            declaration_index: 2,
+                        },
+                    ],
+                },
             },
-        },
-    )]);
+        ),
+        (
+            POINTERS_TY,
+            TypeDefinition {
+                owner: POINTERS_TY,
+                kind: TypeDefinitionKind::Struct {
+                    fields: vec![
+                        TypeFieldDefinition {
+                            name: "data".into(),
+                            ty: pointer_ty,
+                            declaration_index: 0,
+                        },
+                        TypeFieldDefinition {
+                            name: "function".into(),
+                            ty: function_ty(),
+                            declaration_index: 1,
+                        },
+                    ],
+                },
+            },
+        ),
+    ]);
 
     let integer = |value| StaticValue::Scalar(ConstValue::Integer { value });
     let static_initializers = StaticGlobalInitializerTable::from([
@@ -198,6 +223,31 @@ fn fixture() -> (FirModule, TypeDefinitionTable, StaticGlobalInitializerTable) {
                 writable: false,
             },
         ),
+        (
+            RO_POINTERS,
+            StaticGlobalInitializer {
+                value: StaticValue::Aggregate {
+                    variant: None,
+                    fields: BTreeMap::from([
+                        (
+                            "data".into(),
+                            StaticValue::Address {
+                                target: StaticSymbol::Global(BSS),
+                                addend: 0,
+                            },
+                        ),
+                        (
+                            "function".into(),
+                            StaticValue::Address {
+                                target: StaticSymbol::Function(FUNCTION),
+                                addend: 0,
+                            },
+                        ),
+                    ]),
+                },
+                writable: false,
+            },
+        ),
     ]);
 
     (module, definitions, static_initializers)
@@ -226,6 +276,7 @@ fn emit(target: CraneliftTarget) -> Vec<u8> {
                 DATA_GLOBAL,
                 RO_STRUCT,
                 RO_FN,
+                RO_POINTERS,
             ],
         )
         .expect("C11b object should emit")
@@ -267,6 +318,20 @@ fn c11b_serializes_scalars_aggregates_and_relocations_from_c9_layout() {
         let bss = prepared.global(BSS).expect("bss global");
         assert_eq!(bss.storage(), GlobalStorageClass::ZeroFill);
         assert!(bss.static_data().is_none());
+
+        let pointers = prepared.global(RO_POINTERS).expect("pointer struct global");
+        assert_eq!(pointers.storage(), GlobalStorageClass::ReadOnlyData);
+        let layout = pointers.layout();
+        let relocations = pointers
+            .static_data()
+            .expect("pointer struct data")
+            .relocations();
+        assert_eq!(relocations.len(), 2);
+        assert_eq!(relocations[0].offset(), layout.field("data").expect("data").offset);
+        assert_eq!(relocations[0].target(), StaticSymbol::Global(BSS));
+        assert_eq!(relocations[1].offset(), layout.field("function").expect("function").offset);
+        assert_eq!(relocations[1].target(), StaticSymbol::Function(FUNCTION));
+        assert!(relocations.iter().all(|relocation| relocation.width() == 8));
 
         for (owner, target_symbol, storage) in [
             (
@@ -338,6 +403,7 @@ fn c11b_emits_deterministic_elf_sections_symbols_alignment_and_data_relocations(
             "__forge_global_0000000e",
             "__forge_global_0000000f",
             "__forge_global_00000010",
+            "__forge_global_00000011",
         ] {
             assert!(
                 report
@@ -402,6 +468,7 @@ fn c11b_rejects_unresolved_static_pointer_relocation_targets() {
                         DATA_GLOBAL,
                         RO_STRUCT,
                         RO_FN,
+                        RO_POINTERS,
                     ],
                 )
                 .expect_err("unresolved static pointer must not produce an object");
@@ -428,6 +495,10 @@ fn c11b_links_and_executes_aarch64_static_data() {
         &harness,
         r#"#include <stdint.h>
 typedef uint64_t (*fn0)(void);
+typedef struct {
+    uint64_t *data;
+    fn0 function;
+} StaticPointers;
 extern uint64_t __forge_fn_00000001(void);
 extern const uint64_t __forge_global_0000000a;
 extern const uint16_t __forge_global_0000000b[3];
@@ -435,6 +506,7 @@ extern uint64_t __forge_global_0000000c;
 extern fn0 __forge_global_0000000d;
 extern uint64_t *__forge_global_0000000e;
 extern fn0 const __forge_global_00000010;
+extern const StaticPointers __forge_global_00000011;
 int main(void) {
     if (__forge_global_0000000a != UINT64_C(0x1122334455667788)) return 1;
     if (__forge_global_0000000b[0] != 1 || __forge_global_0000000b[1] != 0x2233 || __forge_global_0000000b[2] != 0x4455) return 2;
@@ -445,6 +517,8 @@ int main(void) {
     if (__forge_global_0000000e != &__forge_global_0000000c) return 7;
     *__forge_global_0000000e = 77;
     if (__forge_global_0000000c != 77) return 8;
+    if (__forge_global_00000011.data != &__forge_global_0000000c) return 9;
+    if (__forge_global_00000011.function != __forge_fn_00000001) return 10;
     return 0;
 }
 "#,
@@ -525,6 +599,14 @@ _start:
     lla t0, __forge_global_0000000e
     ld t1, 0(t0)
     lla t2, __forge_global_0000000c
+    bne t1, t2, fail
+
+    lla t0, __forge_global_00000011
+    ld t1, 0(t0)
+    lla t2, __forge_global_0000000c
+    bne t1, t2, fail
+    ld t1, 8(t0)
+    lla t2, __forge_fn_00000001
     bne t1, t2, fail
 
     call __forge_fn_00000001
