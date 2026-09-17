@@ -52,7 +52,7 @@ available on every backend merely because the frontend accepts it.
 
 ## 3. Harden ABI and object correctness
 
-- [ ] Add cross-target ABI fixtures for mixed scalar/aggregate calls, hidden
+- [x] Add cross-target ABI fixtures for mixed scalar/aggregate calls, hidden
       returns, recursion and indirect calls.
 - [ ] Define floating-point aggregate ABI classes for native targets before
       enabling float aggregate calls beyond the current scalar/field coverage.
@@ -105,6 +105,11 @@ available on every backend merely because the frontend accepts it.
 
 - [ ] Finish freestanding `:kernel` validation: symbols, sections, relocations,
       entry contract and rejection of hosted dependencies.
+  - [x] AArch64 Forge kernel objects export the manifest-selected entry under
+        its exact platform symbol and verify ELF sections, call relocations,
+        and the absence of undefined hosted/runtime imports.
+  - [ ] Repeat the contract with a representative Cosmic kernel object and the
+        eventual SIA32 object/image path.
 - [ ] Keep package/module visibility and dependency ordering exercised through
       real multi-package builds.
 - [ ] Define the Forge-to-Cosmic kernel/userland compile contract once the

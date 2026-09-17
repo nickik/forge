@@ -29,8 +29,11 @@ Supported target kinds are `:library`, `:executable`, `:kernel`, and `:test`.
 
 A kernel target requires `:std false`; explicitly enabling hosted `std` on a
 kernel is rejected while other target kinds default to hosted `std`. A target
-may additionally specify `:entry "symbol"`. Linker metadata is reserved for a
-later implementation step and does not yet affect driver invocation.
+may additionally specify `:entry "symbol"`. Forge passes that entry to the
+compiler for non-check actions. Native object emission selects the named Forge
+function and exports it under that exact platform-facing symbol; other
+functions retain deterministic internal Forge symbols. General linker metadata
+is reserved for a later implementation step.
 
 ## Local path dependencies
 

@@ -44,7 +44,7 @@ Legend:
 | Overflow and traps | 1 | Checked/wrapping add/sub/mul, div/rem, shifts and divide-by-zero coverage exists. Narrowing policy needs matrix documentation. |
 | FDN readers and metadata | 4 | Parse/preservation and duration boundary tests exist; executable behavior is provider/tool-specific. |
 | Hosted providers/build system | 4 | Build/check/run/test, entries and hosted providers exist. Full current Cosmic/CKV acceptance remains. |
-| Freestanding `:kernel`, `:std false` | 3 | Manifest/compiler path exists; C14 still needs symbol/section/relocation and hosted-leak acceptance. |
+| Freestanding `:kernel`, `:std false` | 4 | AArch64 object emission exports the manifest-selected entry under its exact platform symbol and verifies ELF sections, call relocations, and no undefined hosted/runtime imports. A representative Cosmic object and SIA32/Lighting execution remain. |
 | `select` / channels | 6 | Explicitly deferred by the C14 acceptance request. Existing frontend/FIR scaffolding is not completion. |
 | SIA machine-code backend | 6 | C15. |
 | Tail calls | 6 | Not a C14 requirement. |
@@ -67,8 +67,7 @@ Legend:
 
 ## Next acceptance slices
 
-1. Complete native `f32`/`f64` call/return, aggregate ABI and exceptional-value
-   coverage without integer emulation.
-2. Expand cross-target mixed scalar/aggregate call and hidden-return matrices.
+1. Emit and inspect a real freestanding Cosmic kernel object before default cutover.
+2. Complete native float aggregate ABI and exceptional-value coverage without
+   integer emulation.
 3. Validate current Cosmic through M18 or later.
-4. Emit and inspect a real freestanding Cosmic kernel object before default cutover.

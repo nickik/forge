@@ -3,8 +3,10 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use forge_compiler::{
-    build_executable_with_libraries_and_entry, check_file_with_libraries,
-    emit_object_file_with_libraries_and_entry, run_file_with_libraries_and_entry, LibraryInput,
+    build_executable_with_libraries, build_executable_with_libraries_and_entry,
+    check_file_with_libraries, emit_object_file_with_libraries,
+    emit_object_file_with_libraries_and_entry, run_file_with_libraries,
+    run_file_with_libraries_and_entry, LibraryInput,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -135,7 +137,6 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .map(|spec| LibraryInput::parse(spec))
         .collect::<Result<Vec<_>, _>>()?;
-    let entry = entry.as_deref().unwrap_or("main");
     let implicit_source = implicit_provider_source(&source, &libraries)?;
     let compile_source = implicit_source
         .as_ref()
@@ -146,22 +147,39 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         Mode::Check => check_file_with_libraries(compile_source, &libraries)?,
         Mode::EmitObject => {
             let output = output.unwrap_or_else(|| source.with_extension("o"));
-            emit_object_file_with_libraries_and_entry(compile_source, &output, &libraries, entry)?;
+            if let Some(entry) = entry.as_deref() {
+                emit_object_file_with_libraries_and_entry(
+                    compile_source,
+                    &output,
+                    &libraries,
+                    entry,
+                )?;
+            } else {
+                emit_object_file_with_libraries(compile_source, &output, &libraries)?;
+            }
         }
         Mode::Build => {
             let output = output.unwrap_or_else(|| source.with_extension(""));
-            build_executable_with_libraries_and_entry(compile_source, &output, &libraries, entry)?;
+            if let Some(entry) = entry.as_deref() {
+                build_executable_with_libraries_and_entry(
+                    compile_source,
+                    &output,
+                    &libraries,
+                    entry,
+                )?;
+            } else {
+                build_executable_with_libraries(compile_source, &output, &libraries)?;
+            }
         }
         Mode::Run => {
             if output.is_some() {
                 return Err("-o/--output is not valid with --run".into());
             }
-            let result = run_file_with_libraries_and_entry(
-                compile_source,
-                &program_args,
-                &libraries,
-                entry,
-            )?;
+            let result = if let Some(entry) = entry.as_deref() {
+                run_file_with_libraries_and_entry(compile_source, &program_args, &libraries, entry)?
+            } else {
+                run_file_with_libraries(compile_source, &program_args, &libraries)?
+            };
             use std::io::Write;
             std::io::stdout().write_all(&result.stdout)?;
             std::io::stderr().write_all(&result.stderr)?;
