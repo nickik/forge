@@ -82,8 +82,8 @@ The manifest semantics already documented by the repository must work with `forg
 - [ ] `forge test` runs runnable targets, honors byte-exact `:test {:expected ...}`, and does not try to execute libraries;
 - [ ] local path dependency graphs pass all dependency library roots to the compiler deterministically;
 - [ ] shipped `core` is available to every target and shipped `std` modules are available only when `:std true`;
-- [ ] kernel `:std false` behavior is enforced rather than merely recorded;
-- [ ] `:entry` is honored for nonstandard/freestanding entry points;
+- [x] kernel `:std false` behavior is enforced rather than merely recorded;
+- [x] `:entry` is honored for nonstandard/freestanding entry points;
 - [ ] `--platform` remains usable for provider selection;
 - [ ] `--driver`/`--driver-arg` remain available so CForge can still serve as an alternate/reference driver;
 - [ ] build-system documentation matches the actual driver protocol and artifact behavior;
