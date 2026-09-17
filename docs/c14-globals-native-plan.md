@@ -71,5 +71,8 @@ address are covered by `global_aggregate.fg`. Static function/global pointer
 relocations continue to link and execute; missing targets are rejected before
 object emission on both AArch64 and RISC-V. The implementation head
 `bb98e58dbdff4a5a9c2301e419fc2357ad979c5b` passed hosted-native CI run
-`35209849435` (job `105164491122`). Direct global-field lowering is pending
-its focused frontend and hosted-native proof.
+`35209849435` (job `105164491122`). Direct global-field reads, stores, and
+mutable field addresses lower through `AddressOfGlobal` plus normal projection;
+their focused frontend tests and the hosted AArch64 fixture passed on
+`36cdea3ef50950ce58af013c305935117bb30cd7` in CI run `35211049973` (job
+`105168369552`).

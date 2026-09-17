@@ -38,8 +38,9 @@ available on every backend merely because the frontend accepts it.
       overflow/range diagnostics.
 - [x] globals: mutable storage, address-taking, whole-value aggregate mutation
       and static function/global pointer relocation execution.
-- [ ] globals follow-up: direct field places rooted in globals and static
-      aggregate-pointer initializer execution.
+- [x] globals follow-up: direct field places rooted in globals, including
+      reads, stores and mutable field addresses.
+- [ ] globals follow-up: static aggregate-pointer initializer execution.
 - [ ] `defer`: early `return`, loop exits, nested ordering and `?` propagation.
 - [ ] `match`: map-protocol execution and more mixed aggregate payload cases.
 - [ ] distinct types: conversion and ABI execution coverage.
