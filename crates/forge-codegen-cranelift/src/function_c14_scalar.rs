@@ -214,7 +214,7 @@ fn lower_c14_scalar_instruction(
                 return Err(shape("bitfield range check requires an unsigned integer value"));
             }
             let bits = types.value_type(field_ty)?.bits();
-            if *width == 0 || *width >= u32::from(bits) {
+            if *width == 0 || *width >= bits {
                 return Err(shape("bitfield range check has an invalid field width"));
             }
             let maximum = (1u64 << *width) - 1;
