@@ -34,8 +34,8 @@ available on every backend merely because the frontend accepts it.
 - [x] `duration`: native argument, return, local, load and store tests.
 - [x] slices: explicit array-reference views, mutable use, aggregate-contained
       slices and return-value ABI execution.
-- [ ] bitstructs: production native read/write/check lowering, including
-      overflow/range diagnostics.
+- [x] bitstructs: production native read/write/check lowering, including
+      overflow/range diagnostics and `u8`/`u16`/`u32`/`u64` value ABI.
 - [x] globals: mutable storage, address-taking, whole-value aggregate mutation
       and static function/global pointer relocation execution.
 - [x] globals follow-up: direct field places rooted in globals, including

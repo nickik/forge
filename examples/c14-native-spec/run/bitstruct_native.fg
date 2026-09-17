@@ -7,6 +7,22 @@ bitstruct Status: u16 {
     spare: 7;
 }
 
+bitstruct Tiny: u8 {
+    active: 1;
+    level: 3;
+    spare: 4;
+}
+
+bitstruct Control: u32 {
+    mode: 8;
+    spare: 24;
+}
+
+bitstruct Wide: u64 {
+    code: 16;
+    spare: 48;
+}
+
 fn configure() -> Status {
     var status: Status = Status(0u16);
     status.ready = true;
@@ -15,10 +31,38 @@ fn configure() -> Status {
     return status;
 }
 
+fn tune_tiny(input: Tiny) -> Tiny {
+    var output: Tiny = input;
+    output.active = true;
+    output.level = 6u8;
+    return output;
+}
+
+fn tune_control(input: Control) -> Control {
+    var output: Control = input;
+    output.mode = 171u8;
+    return output;
+}
+
+fn tune_wide(input: Wide) -> Wide {
+    var output: Wide = input;
+    output.code = 48879u16;
+    return output;
+}
+
 fn main() -> i32 {
     val status = configure();
     if (!status.ready) { return 1i32; }
     if (status.mode != 5u8) { return 2i32; }
     if (status.code != 17u8) { return 3i32; }
+
+    val tiny: Tiny = tune_tiny(Tiny(0u8));
+    if (!tiny.active || tiny.level != 6u8) { return 4i32; }
+
+    val control: Control = tune_control(Control(0u32));
+    if (control.mode != 171u8) { return 5i32; }
+
+    val wide: Wide = tune_wide(Wide(0u64));
+    if (wide.code != 48879u16) { return 6i32; }
     return 0i32;
 }
