@@ -26,7 +26,6 @@ fn optional_missing(map: Dict) -> bool {
             None => true,
             Some(_) => false,
         },
-        _ => false,
     };
 }
 
