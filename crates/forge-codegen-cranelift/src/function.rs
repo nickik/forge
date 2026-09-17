@@ -1326,9 +1326,9 @@ fn lower_const(
     }
 }
 
-/// Forge duration reader forms are normalized to signed nanoseconds before
-/// they reach FIR. The textual reader spelling is retained in FIR for dumps,
-/// so codegen performs this small, exact conversion at the scalar boundary.
+/// Forge duration reader forms lower to exact signed nanoseconds. FIR retains
+/// the textual reader spelling for dumps, so codegen performs the small exact
+/// conversion at the scalar boundary.
 fn duration_immediate(text: &str) -> Result<i64, BackendError> {
     let cleaned = text.replace('_', "");
     let units = [
