@@ -327,9 +327,15 @@ fn c11b_serializes_scalars_aggregates_and_relocations_from_c9_layout() {
             .expect("pointer struct data")
             .relocations();
         assert_eq!(relocations.len(), 2);
-        assert_eq!(relocations[0].offset(), layout.field("data").expect("data").offset);
+        assert_eq!(
+            relocations[0].offset(),
+            layout.field("data").expect("data").offset
+        );
         assert_eq!(relocations[0].target(), StaticSymbol::Global(BSS));
-        assert_eq!(relocations[1].offset(), layout.field("function").expect("function").offset);
+        assert_eq!(
+            relocations[1].offset(),
+            layout.field("function").expect("function").offset
+        );
         assert_eq!(relocations[1].target(), StaticSymbol::Function(FUNCTION));
         assert!(relocations.iter().all(|relocation| relocation.width() == 8));
 
