@@ -698,7 +698,7 @@ pub fn build_executable_with_libraries_and_entry(
     entry: &str,
 ) -> Result<(), CompilerError> {
     require_native_aarch64_linux()?;
-    let compiled = compile_file_with_libraries_and_entry(path, libraries, entry)?;
+    let compiled = compile_file_with_libraries_for_entry(path, libraries, entry, None)?;
     link_hosted(&compiled, output)
 }
 
@@ -724,7 +724,7 @@ pub fn run_file_with_libraries_and_entry(
     let dir = temporary_directory("run")?;
     let executable = dir.join("program");
     let result = (|| {
-        let compiled = compile_file_with_libraries_and_entry(path, libraries, entry)?;
+        let compiled = compile_file_with_libraries_for_entry(path, libraries, entry, None)?;
         link_hosted(&compiled, &executable)?;
         Command::new(&executable)
             .args(args)
@@ -882,6 +882,17 @@ fn main() -> i32 {
             .expect("compile custom entry");
         assert_eq!(&compiled.object()[..4], b"\x7fELF");
         assert_eq!(compiled.main_symbol(), "start");
+    }
+
+    #[test]
+    fn hosted_explicit_entry_keeps_an_internal_object_symbol() {
+        let dir = temporary_directory("hosted-entry-symbol-test").expect("temp directory");
+        let source = dir.join("main.fg");
+        fs::write(&source, SIMPLE).expect("write source");
+        let compiled = compile_file_with_libraries_for_entry(&source, &[], "main", None)
+            .expect("compile hosted explicit entry");
+        assert!(compiled.main_symbol().starts_with("__forge_fn_"));
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
