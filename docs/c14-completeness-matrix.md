@@ -21,7 +21,7 @@ Legend:
 | Integer, bool, byte scalars | 1 | Checked/wrapping arithmetic, comparisons, shifts, conversions and ABI tests. |
 | `char` | 1 | Native constants, locals, comparison, argument and return fixture. |
 | `duration` | 4 | Layout and scalar representation exist; reader/type/FIR tests exist. Add executable argument/return/load/store coverage. |
-| `f32`, `f64` | 4 | Native scalar constants, arithmetic, negation, comparisons, integer-to-float conversion, aggregate field storage, and the AArch64 executable fixture are implemented; full ABI coverage remains. |
+| `f32`, `f64` | 4 | Native AArch64 scalar constants, arithmetic, negation, comparisons, integer-to-float conversion, aggregate field storage, and executable fixture are implemented. SIA32 deliberately rejects float FIR until C15; see `C15_TODO.md`. Full ABI coverage remains. |
 | Structs and enums | 1 | Construction, projection, layout, ABI and matching tests. |
 | Tagged unions | 1 | Construction, payload extraction, nested match and ABI basics execute; expand mixed-payload ABI coverage. |
 | `Option[T]` | 1 | `None`, explicit `Some(value)`, implicit promotion, patterns and native layout/lowering. |
