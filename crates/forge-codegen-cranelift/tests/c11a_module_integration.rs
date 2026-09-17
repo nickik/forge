@@ -53,6 +53,7 @@ fn integrated_module() -> FirModule {
                 FirGlobal {
                     owner: constant,
                     ty: u64_ty(),
+                    mutable: false,
                     constant: Some(ConstValue::Integer { value: 42 }),
                 },
             ),
@@ -61,6 +62,7 @@ fn integrated_module() -> FirModule {
                 FirGlobal {
                     owner: runtime,
                     ty: u64_ty(),
+                    mutable: false,
                     constant: None,
                 },
             ),

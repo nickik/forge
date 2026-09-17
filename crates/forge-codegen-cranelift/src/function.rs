@@ -1487,6 +1487,8 @@ fn instruction_kind_name(kind: &FirInstructionKind) -> &'static str {
         FirInstructionKind::Unit => "unit",
         FirInstructionKind::FunctionRef { .. } => "function ref",
         FirInstructionKind::LoadGlobal { .. } => "global load",
+        FirInstructionKind::StoreGlobal { .. } => "global store",
+        FirInstructionKind::AddressOfGlobal { .. } => "global address of",
         FirInstructionKind::ContextLoad { .. } => "context load",
         FirInstructionKind::ContextSave { .. } => "context save",
         FirInstructionKind::ContextSet { .. } => "context set",

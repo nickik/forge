@@ -60,6 +60,7 @@ pub struct FirModule {
 pub struct FirGlobal {
     pub owner: DefId,
     pub ty: Ty,
+    pub mutable: bool,
     pub constant: Option<ConstValue>,
 }
 
@@ -136,6 +137,14 @@ pub enum FirInstructionKind {
     },
     LoadGlobal {
         global: DefId,
+    },
+    StoreGlobal {
+        global: DefId,
+        value: FirValueId,
+    },
+    AddressOfGlobal {
+        global: DefId,
+        mutable: bool,
     },
     ContextLoad {
         slot: ContextSlot,
@@ -398,6 +407,7 @@ pub fn lower_fir(bodies: &BodyHirOutput, typed: &TypeCheckOutput) -> FirOutput {
             FirGlobal {
                 owner: *owner,
                 ty: ty.clone(),
+                mutable: typed.mutable_globals.contains(owner),
                 constant: typed.constants.get(owner).cloned(),
             },
         );
@@ -778,6 +788,17 @@ impl<'a> FunctionLowerer<'a> {
                     return;
                 }
                 let value = self.lower_expr(value);
+                if let HirExprKind::Name { reference } = &target.kind {
+                    if let ResolvedName::Def(global) = reference.root {
+                        if self.all_typed.global_types.contains_key(&global) {
+                            self.emit_void(
+                                stmt.span,
+                                FirInstructionKind::StoreGlobal { global, value },
+                            );
+                            return;
+                        }
+                    }
+                }
                 if let Some(place) = self.lower_place(target) {
                     self.emit_void(stmt.span, FirInstructionKind::Store { place, value });
                 }
@@ -3054,6 +3075,20 @@ impl<'a> FunctionLowerer<'a> {
     fn lower_unary(&mut self, span: Span, op: UnaryOp, value: &HirExpr, ty: Ty) -> FirValueId {
         match op {
             UnaryOp::AddressOf | UnaryOp::AddressOfMut => {
+                if let HirExprKind::Name { reference } = &value.kind {
+                    if let ResolvedName::Def(global) = reference.root {
+                        if self.all_typed.global_types.contains_key(&global) {
+                            return self.emit_value(
+                                span,
+                                ty,
+                                FirInstructionKind::AddressOfGlobal {
+                                    global,
+                                    mutable: matches!(op, UnaryOp::AddressOfMut),
+                                },
+                            );
+                        }
+                    }
+                }
                 let Some(place) = self.lower_place(value) else {
                     return self.poison(span, ty);
                 };

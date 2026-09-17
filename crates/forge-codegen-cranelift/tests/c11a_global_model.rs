@@ -49,6 +49,7 @@ fn global(owner: u32, ty: Ty, constant: Option<ConstValue>) -> (DefId, FirGlobal
         FirGlobal {
             owner,
             ty,
+            mutable: false,
             constant,
         },
     )

@@ -448,6 +448,7 @@ pub struct TypedGlobalInitializer {
 pub struct TypeCheckOutput {
     pub functions: BTreeMap<DefId, TypedBody>,
     pub global_types: BTreeMap<DefId, Ty>,
+    pub mutable_globals: BTreeSet<DefId>,
     pub global_initializers: BTreeMap<DefId, TypedGlobalInitializer>,
     pub global_init_order: Vec<DefId>,
     pub constants: BTreeMap<DefId, ConstValue>,
@@ -631,6 +632,9 @@ pub fn type_check_module(
             checker.materialize_literal(global.value.span, value_ty)
         };
         output.global_types.insert(*owner, ty.clone());
+        if env.mutable_globals.contains(owner) {
+            output.mutable_globals.insert(*owner);
+        }
 
         let is_runtime = source
             .declarations
@@ -785,6 +789,7 @@ struct ModuleTypeEnv {
     functions: BTreeMap<DefId, FunctionSig>,
     methods: BTreeMap<(DefId, String), DefId>,
     globals: BTreeMap<DefId, Ty>,
+    mutable_globals: BTreeSet<DefId>,
     constants: BTreeMap<DefId, ConstValue>,
 }
 
@@ -801,6 +806,7 @@ impl ModuleTypeEnv {
             functions: BTreeMap::new(),
             methods: BTreeMap::new(),
             globals: BTreeMap::new(),
+            mutable_globals: BTreeSet::new(),
             constants: constants.clone(),
         };
 
@@ -1026,6 +1032,9 @@ impl ModuleTypeEnv {
                 if let Some(annotation) = &value.ty {
                     let ty = env.lower_ast_type(annotation, module);
                     env.globals.insert(id, ty);
+                }
+                if matches!(value.binding, ast::BindingKind::Var) {
+                    env.mutable_globals.insert(id);
                 }
             }
         }
@@ -1831,6 +1840,21 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             }
             HirExprKind::Unary { op, value } => {
                 let v = self.check_expr(value, expected);
+                if *op == UnaryOp::AddressOfMut {
+                    if let HirExprKind::Name { reference } = &value.kind {
+                        if let ResolvedName::Def(id) = reference.root {
+                            if self.env.globals.contains_key(&id)
+                                && !self.env.mutable_globals.contains(&id)
+                            {
+                                self.diagnostic(
+                                    value.span,
+                                    "reference/immutable",
+                                    "cannot take a mutable reference to an immutable global binding",
+                                );
+                            }
+                        }
+                    }
+                }
                 let result = self.check_unary(expr.span, *op, v.clone());
                 if *op == UnaryOp::Deref {
                     if let Ty::Pointer { volatile, .. } = v {
@@ -2290,6 +2314,15 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                             target.span,
                             "assignment/immutable",
                             "cannot assign to a `val` binding",
+                        );
+                    }
+                }
+                ResolvedName::Def(id) if self.env.globals.contains_key(&id) => {
+                    if !self.env.mutable_globals.contains(&id) {
+                        self.diagnostic(
+                            target.span,
+                            "assignment/immutable",
+                            "cannot assign to an immutable global binding",
                         );
                     }
                 }

@@ -138,6 +138,57 @@ fn lower_c14_scalar_instruction(
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
     match &instruction.kind {
+        FirInstructionKind::StoreGlobal { global, value } => {
+            if instruction.result.is_some() {
+                return Err(shape("global store unexpectedly has a result"));
+            }
+            let global_data = all_globals
+                .get(global)
+                .ok_or_else(|| shape(format!("global store refers to missing global {global:?}")))?;
+            if !global_data.mutable {
+                return Err(shape(format!("global store targets immutable global {global:?}")));
+            }
+            let value_ty = value_type(fir, *value)?;
+            if value_ty != &global_data.ty {
+                return Err(shape(format!(
+                    "global store {global:?} value type {value_ty:?} differs from global type {:?}",
+                    global_data.ty
+                )));
+            }
+            if is_memory_value(value_ty) {
+                return Err(BackendError::UnsupportedInstruction {
+                    kind: "aggregate global store",
+                });
+            }
+            let address = global_symbol_address(*global, types, cursor)?;
+            cursor
+                .ins()
+                .store(flags.deref, scalar(scalars, *value)?, address, 0);
+            return Ok(());
+        }
+        FirInstructionKind::AddressOfGlobal { global, mutable } => {
+            let result = instruction
+                .result
+                .ok_or_else(|| shape("global address-of has no result"))?;
+            let global_data = all_globals.get(global).ok_or_else(|| {
+                shape(format!("global address-of refers to missing global {global:?}"))
+            })?;
+            if *mutable && !global_data.mutable {
+                return Err(shape(format!(
+                    "mutable global address targets immutable global {global:?}"
+                )));
+            }
+            match value_type(fir, result)? {
+                Ty::Reference {
+                    mutable: result_mutable,
+                    inner,
+                } if result_mutable == mutable && inner.as_ref() == &global_data.ty => {}
+                _ => return Err(shape("global address-of result does not match global type")),
+            }
+            let address = global_symbol_address(*global, types, cursor)?;
+            scalars.insert(result, address);
+            return Ok(());
+        }
         FirInstructionKind::BitStructStorage { value, storage } => {
             let result = instruction
                 .result

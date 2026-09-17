@@ -31,7 +31,7 @@ available on every backend merely because the frontend accepts it.
 
 ## 2. Close the remaining native C14 matrices
 
-- [ ] `duration`: native argument, return, local, load and store tests.
+- [x] `duration`: native argument, return, local, load and store tests.
 - [ ] slices: mutable use, aggregate-contained slices and return-value ABI
       execution.
 - [ ] bitstructs: production native read/write/check lowering, including

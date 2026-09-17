@@ -122,6 +122,7 @@ fn fixture() -> (FirModule, TypeDefinitionTable, StaticGlobalInitializerTable) {
                 FirGlobal {
                     owner: SCALAR_GLOBAL,
                     ty: u64_ty(),
+                    mutable: false,
                     constant: Some(ConstValue::Integer { value: 42 }),
                 },
             ),
@@ -130,6 +131,7 @@ fn fixture() -> (FirModule, TypeDefinitionTable, StaticGlobalInitializerTable) {
                 FirGlobal {
                     owner: AGGREGATE_GLOBAL,
                     ty: aggregate_ty(),
+                    mutable: false,
                     constant: None,
                 },
             ),
