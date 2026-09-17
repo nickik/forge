@@ -361,6 +361,27 @@ fn defer_call_is_emitted_before_return() {
 }
 
 #[test]
+fn defer_cleanup_control_flow_is_rejected_in_fir() {
+    let output = lower(
+        r#"
+        module test.fir_defer_cleanup_control;
+        fn main() -> i32 {
+            defer { return 7i32; }
+            return 0i32;
+        }
+        "#,
+    );
+    assert!(
+        output
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "fir/control-in-cleanup"),
+        "expected defer cleanup control-flow diagnostic: {:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
 fn defer_cleanups_are_emitted_for_loop_transfers_and_try_return() {
     let output = lower(
         r#"
