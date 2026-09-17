@@ -270,6 +270,64 @@ fn defer_call_is_emitted_before_return() {
 }
 
 #[test]
+fn defer_cleanups_are_emitted_for_loop_transfers_and_try_return() {
+    let output = lower(
+        r#"
+        module test.fir_defer_control_flow;
+        fn cleanup() -> void { return; }
+        fn fallible(ok: bool) -> Result[void, void] {
+            if (ok) { return Ok(); }
+            return Err();
+        }
+        fn main() -> Result[void, void] {
+            var index: i32 = 0i32;
+            while (index < 3i32) {
+                defer cleanup();
+                index = index + 1i32;
+                if (index == 1i32) { continue; }
+                if (index == 2i32) { break; }
+            }
+            defer cleanup();
+            fallible(false)?;
+            return Ok();
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let main = output
+        .module
+        .functions
+        .values()
+        .filter(|function| matches!(&function.return_type, Ty::Result { .. }))
+        .max_by_key(|function| {
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .filter(|instruction| matches!(instruction.kind, FirInstructionKind::Call { .. }))
+                .count()
+        })
+        .expect("Result-returning main function");
+    let cleanup_calls = main
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .filter(|instruction| matches!(instruction.kind, FirInstructionKind::Call { .. }))
+        .count();
+    assert!(
+        cleanup_calls >= 3,
+        "expected cleanup calls for continue, break, and ? return; got {cleanup_calls}"
+    );
+    assert!(main.blocks.iter().any(|block| {
+        matches!(block.terminator, Some(FirTerminator::Return { .. }))
+            && block
+                .instructions
+                .iter()
+                .any(|instruction| matches!(instruction.kind, FirInstructionKind::Call { .. }))
+    }));
+}
+
+#[test]
 fn boolean_match_plan_lowers_to_cfg() {
     let output = lower(
         r#"
