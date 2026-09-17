@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use forge_codegen_cranelift::{CraneliftBackend, CraneliftTarget, GlobalStorageClass};
+use forge_codegen_cranelift::{
+    BackendError, CraneliftBackend, CraneliftTarget, GlobalStorageClass,
+};
 use forge_fir::{
     ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal, FirInstruction,
     FirInstructionKind, FirModule, FirTerminator, FirValueId, IntWidth, Span,
@@ -351,6 +353,66 @@ fn c11b_emits_deterministic_elf_sections_symbols_alignment_and_data_relocations(
             "missing function symbol:\n{report}"
         );
         let _ = fs::remove_dir_all(dir);
+    }
+}
+
+#[test]
+fn c11b_rejects_unresolved_static_pointer_relocation_targets() {
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        for (owner, target_symbol, expected) in [
+            (
+                DATA_FN,
+                StaticSymbol::Function(DefId(999)),
+                "unresolved static function DefId(999)",
+            ),
+            (
+                DATA_GLOBAL,
+                StaticSymbol::Global(DefId(998)),
+                "unresolved static global DefId(998)",
+            ),
+        ] {
+            let (module, definitions, mut static_initializers) = fixture();
+            static_initializers.insert(
+                owner,
+                StaticGlobalInitializer {
+                    value: StaticValue::Address {
+                        target: target_symbol,
+                        addend: 0,
+                    },
+                    writable: true,
+                },
+            );
+            let backend = CraneliftBackend::new(target).expect("backend");
+            let prepared = backend
+                .prepare_module_with_static_initializers(
+                    &module,
+                    &definitions,
+                    &static_initializers,
+                )
+                .expect("relocation fixture should prepare");
+            let error = backend
+                .emit_object_with_exports(
+                    &prepared,
+                    [
+                        FUNCTION,
+                        RO_SCALAR,
+                        RO_ARRAY,
+                        BSS,
+                        DATA_FN,
+                        DATA_GLOBAL,
+                        RO_STRUCT,
+                        RO_FN,
+                    ],
+                )
+                .expect_err("unresolved static pointer must not produce an object");
+            assert!(
+                matches!(
+                    &error,
+                    BackendError::Cranelift { message } if message.contains(expected)
+                ),
+                "unexpected {target:?} error: {error}"
+            );
+        }
     }
 }
 

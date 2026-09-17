@@ -36,8 +36,10 @@ available on every backend merely because the frontend accepts it.
       execution.
 - [ ] bitstructs: production native read/write/check lowering, including
       overflow/range diagnostics.
-- [ ] globals: mutable storage, address-taking, aggregates and pointer
-      relocation execution.
+- [x] globals: mutable storage, address-taking, whole-value aggregate mutation
+      and static function/global pointer relocation execution.
+- [ ] globals follow-up: direct field places rooted in globals and static
+      aggregate-pointer initializer execution.
 - [ ] `defer`: early `return`, loop exits, nested ordering and `?` propagation.
 - [ ] `match`: map-protocol execution and more mixed aggregate payload cases.
 - [ ] distinct types: conversion and ABI execution coverage.
@@ -52,6 +54,8 @@ available on every backend merely because the frontend accepts it.
       naming for every supported target.
 - [ ] Add malformed-object, unresolved-symbol and relocation-overflow negative
       tests at each object/image boundary.
+  - [x] Static function/global pointer relocations reject missing targets before
+        object emission on AArch64 and RISC-V.
 
 ## 4. Target capability roadmap
 
