@@ -6,9 +6,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use forge_codegen_cranelift::{CraneliftBackend, CraneliftTarget};
 use forge_fir::{
-    DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction, FirInstructionKind,
-    BinaryOp, FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator, FirValueId, IntWidth,
-    OverflowMode, Span, Ty, TypeDefinitionTable,
+    BinaryOp, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction,
+    FirInstructionKind, FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator, FirValueId,
+    IntWidth, OverflowMode, Span, Ty, TypeDefinitionTable,
 };
 
 const AGGREGATE_IDENTITY: DefId = DefId(30);
