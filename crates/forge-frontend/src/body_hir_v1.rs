@@ -1452,6 +1452,7 @@ fn is_builtin_type(name: &str) -> bool {
             | "str"
             | "void"
             | "never"
+            | "duration"
             | "usize"
             | "isize"
             | "u8"
