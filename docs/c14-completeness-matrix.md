@@ -31,7 +31,7 @@ Legend:
 | References | 1 | Shared/mutable local rules, dereference, projections and ABI covered. |
 | Raw pointers and volatile | 1 | Unsafe authorization, casts, arithmetic, dereference, volatile load/store and barriers covered on AArch64/RISC-V structurally. |
 | Distinct types and aliases | 4 | Static semantics/layout exist; add native conversion and ABI fixtures. |
-| Bitstructs | 4 | Native storage projection/rebuild, checked writes, explicit field extract/extend, narrow numeric and boolean fields execute. Expand the storage-width/ABI matrix before claiming full coverage. |
+| Bitstructs | 1 | Native storage projection/rebuild, checked writes, explicit field extract/extend, narrow numeric and boolean fields, and `u8`/`u16`/`u32`/`u64` value ABI execute. |
 | `if`, `while`, C-style `for` | 1 | Typed CFG/FIR and executable corpus. |
 | value `for` iteration | 5 | Parsed and represented; protocol/static/native completion remains to be proven. |
 | `break`, `continue` | 4 | FIR cleanup paths exist; add nested-loop/defer executable matrix. |
