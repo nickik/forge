@@ -28,7 +28,7 @@ those operations to an older backend path that rejects them.
 ## Milestones
 
 1. Lower storage projection and rebuild using the existing layout-backed
-   aggregate address machinery.
+   aggregate address machinery, first proving exact-width storage/field paths.
 2. Lower `BitFieldCheck` to an unsigned range comparison and Forge overflow
    trap.
 3. Add a native normal-path fixture and a range-trap fixture.

@@ -1,14 +1,13 @@
 module examples.c14.bitstruct_native;
 
-bitstruct Status: u16 {
+bitstruct Status: u8 {
     ready: 1;
     mode: 3;
     code: 4;
-    reserved: 8;
 }
 
 fn configure() -> Status {
-    var status: Status = Status(0u16);
+    var status: Status = Status(0u8);
     status.ready = true;
     status.mode = 5u8;
     status.code = 9u8;
