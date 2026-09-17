@@ -5,8 +5,7 @@ use cranelift_codegen::isa::{CallConv, OwnedTargetIsa};
 use cranelift_codegen::Context;
 use forge_fir::{
     verify_fir_module, BinaryOp, DefId, FirBasicBlock, FirFunction, FirInstructionKind, FirModule,
-    FirPlace, FirTerminator, FirValueId, IntWidth, Ty, TypeDefinitionKind,
-    TypeDefinitionTable,
+    FirPlace, FirTerminator, FirValueId, IntWidth, Ty, TypeDefinitionKind, TypeDefinitionTable,
 };
 use target_lexicon::Triple;
 
@@ -238,7 +237,9 @@ fn validate_c4_scalar_contract(
                     if value_type(fir, *value, "distinct extraction input")?
                         != &Ty::Nominal(*distinct)
                     {
-                        return Err(shape("distinct extraction input has the wrong nominal type"));
+                        return Err(shape(
+                            "distinct extraction input has the wrong nominal type",
+                        ));
                     }
                     let Some(definition) = definitions.get(distinct) else {
                         return Err(shape(format!(
@@ -256,18 +257,26 @@ fn validate_c4_scalar_contract(
                 }
                 FirInstructionKind::SliceFromArrayRef { value } => {
                     let source = value_type(fir, *value, "slice conversion input")?;
-                    let (source_mutable, source_element) = match source {
-                        Ty::Reference { mutable, inner } => match inner.as_ref() {
-                            Ty::Array { element, length: Some(_) } => (*mutable, element.as_ref()),
-                            _ => return Err(shape("slice conversion source is not a reference to a fixed array")),
-                        },
-                        _ => return Err(shape("slice conversion source is not a reference")),
-                    };
+                    let (source_mutable, source_element) =
+                        match source {
+                            Ty::Reference { mutable, inner } => match inner.as_ref() {
+                                Ty::Array {
+                                    element,
+                                    length: Some(_),
+                                } => (*mutable, element.as_ref()),
+                                _ => return Err(shape(
+                                    "slice conversion source is not a reference to a fixed array",
+                                )),
+                            },
+                            _ => return Err(shape("slice conversion source is not a reference")),
+                        };
                     let Ty::Slice { mutable, element } = result_ty else {
                         return Err(shape("slice conversion result is not a slice"));
                     };
                     if source_element != element.as_ref() || (*mutable && !source_mutable) {
-                        return Err(shape("slice conversion source and result types are incompatible"));
+                        return Err(shape(
+                            "slice conversion source and result types are incompatible",
+                        ));
                     }
                 }
                 FirInstructionKind::BitFieldExtract { value } => {
@@ -413,18 +422,19 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
             | FirInstructionKind::ExtractField { base: value, .. }
             | FirInstructionKind::Len { value }
             | FirInstructionKind::Subsequence { base: value, .. }
-            | FirInstructionKind::CollectionPatternLookup {
-                collection: value, ..
-            }
-            | FirInstructionKind::CollectionPatternHasOnly {
-                collection: value, ..
-            }
             | FirInstructionKind::ResultIsOk { value }
             | FirInstructionKind::ResultUnwrapOk { value }
             | FirInstructionKind::ResultUnwrapErr { value }
             | FirInstructionKind::MakeResultOk { value }
             | FirInstructionKind::OptionIsSome { value }
             | FirInstructionKind::OptionUnwrap { value } => available.contains(value),
+
+            FirInstructionKind::CollectionPatternLookup {
+                collection, key, ..
+            } => available.contains(collection) && available.contains(key),
+            FirInstructionKind::CollectionPatternHasOnly {
+                collection, keys, ..
+            } => available.contains(collection) && keys.iter().all(|key| available.contains(key)),
 
             FirInstructionKind::ContextRestore { saved, .. } => available.contains(saved),
             FirInstructionKind::Binary { left, right, .. }

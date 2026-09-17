@@ -1,0 +1,37 @@
+module examples.c14.map_pattern_native;
+
+struct Dict {}
+
+impl Dict {
+    fn pattern_get(self: &Dict, key: str) -> u32? {
+        if (key.len == 4usize) { return Some(41u32); }
+        return None;
+    }
+
+    fn pattern_has_only(self: &Dict, keys: str[]) -> bool {
+        return keys.len == 1usize;
+    }
+}
+
+fn required_value(map: Dict) -> u32 {
+    return match (map) {
+        {:name name} => name,
+        _ => 0u32,
+    };
+}
+
+fn optional_missing(map: Dict) -> bool {
+    return match (map) {
+        {:missing value?, ..} => match (value) {
+            None => true,
+            Some(_) => false,
+        },
+    };
+}
+
+fn main() -> i32 {
+    val map: Dict = Dict{};
+    if (required_value(map) != 41u32) { return 1i32; }
+    if (!optional_missing(map)) { return 2i32; }
+    return 0i32;
+}

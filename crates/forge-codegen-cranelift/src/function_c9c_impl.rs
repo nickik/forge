@@ -125,39 +125,42 @@ fn needs_aggregate_lowering(fir: &FirFunction) -> bool {
     {
         return true;
     }
-    fir.blocks.iter().flat_map(|block| &block.instructions).any(|instruction| {
-        matches!(
-            &instruction.kind,
-            FirInstructionKind::MakeArray { .. }
-                | FirInstructionKind::MakeAggregate { .. }
-                | FirInstructionKind::MakeNone
-                | FirInstructionKind::MakeSome { .. }
-                | FirInstructionKind::Variant { .. }
-                | FirInstructionKind::VariantIs { .. }
-                | FirInstructionKind::ExtractField { .. }
-                | FirInstructionKind::Len { .. }
-                | FirInstructionKind::BoundsCheck { .. }
-                | FirInstructionKind::IndexUnchecked { .. }
-                | FirInstructionKind::ResultIsOk { .. }
-                | FirInstructionKind::ResultUnwrapOk { .. }
-                | FirInstructionKind::ResultUnwrapErr { .. }
-                | FirInstructionKind::MakeResultErr { .. }
-                | FirInstructionKind::MakeResultOk { .. }
-                | FirInstructionKind::OptionIsSome { .. }
-                | FirInstructionKind::OptionUnwrap { .. }
-        ) || matches!(
-            &instruction.kind,
-            FirInstructionKind::Load {
-                place: FirPlace::Field { .. } | FirPlace::Index { .. }
-            } | FirInstructionKind::Store {
-                place: FirPlace::Field { .. } | FirPlace::Index { .. },
-                ..
-            } | FirInstructionKind::AddressOf {
-                place: FirPlace::Field { .. } | FirPlace::Index { .. },
-                ..
-            }
-        )
-    })
+    fir.blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .any(|instruction| {
+            matches!(
+                &instruction.kind,
+                FirInstructionKind::MakeArray { .. }
+                    | FirInstructionKind::MakeAggregate { .. }
+                    | FirInstructionKind::MakeNone
+                    | FirInstructionKind::MakeSome { .. }
+                    | FirInstructionKind::Variant { .. }
+                    | FirInstructionKind::VariantIs { .. }
+                    | FirInstructionKind::ExtractField { .. }
+                    | FirInstructionKind::Len { .. }
+                    | FirInstructionKind::BoundsCheck { .. }
+                    | FirInstructionKind::IndexUnchecked { .. }
+                    | FirInstructionKind::ResultIsOk { .. }
+                    | FirInstructionKind::ResultUnwrapOk { .. }
+                    | FirInstructionKind::ResultUnwrapErr { .. }
+                    | FirInstructionKind::MakeResultErr { .. }
+                    | FirInstructionKind::MakeResultOk { .. }
+                    | FirInstructionKind::OptionIsSome { .. }
+                    | FirInstructionKind::OptionUnwrap { .. }
+            ) || matches!(
+                &instruction.kind,
+                FirInstructionKind::Load {
+                    place: FirPlace::Field { .. } | FirPlace::Index { .. }
+                } | FirInstructionKind::Store {
+                    place: FirPlace::Field { .. } | FirPlace::Index { .. },
+                    ..
+                } | FirInstructionKind::AddressOf {
+                    place: FirPlace::Field { .. } | FirPlace::Index { .. },
+                    ..
+                }
+            )
+        })
 }
 
 fn lower_aggregate_function(
@@ -192,7 +195,8 @@ fn lower_aggregate_function(
     let call_conv = CallConv::triple_default(isa.triple());
     let signature = lower_fir_signature(fir, types, call_conv)?;
     let mut function = Function::with_name_signature(UserFuncName::user(0, fir.owner.0), signature);
-    let mut layouts = LayoutEngine::new(LayoutTarget::new(types.target().pointer_bits), definitions);
+    let mut layouts =
+        LayoutEngine::new(LayoutTarget::new(types.target().pointer_bits), definitions);
     let local_slots = allocate_local_slots(fir, &mut layouts, &mut function)?;
     let flags = MemoryFlags {
         stack: MemFlagsData::trusted(),
@@ -271,7 +275,10 @@ fn lower_aggregate_function(
     }
 
     verify_function(&function, isa).map_err(|errors| BackendError::Cranelift {
-        message: format!("CLIF verifier rejected C9c FIR function {:?}: {errors}", fir.owner),
+        message: format!(
+            "CLIF verifier rejected C9c FIR function {:?}: {errors}",
+            fir.owner
+        ),
     })?;
     Ok(function)
 }
@@ -319,7 +326,15 @@ fn lower_mixed_instruction(
                 return Err(shape("store unexpectedly has a result"));
             }
             let (address, stored_ty, dst_flags) = lower_place_address(
-                fir, definitions, place, local_slots, flags, scalars, types, layouts, cursor,
+                fir,
+                definitions,
+                place,
+                local_slots,
+                flags,
+                scalars,
+                types,
+                layouts,
+                cursor,
             )?;
             if ty != &stored_ty {
                 return Err(shape("store value and place types differ"));
@@ -366,7 +381,15 @@ fn lower_mixed_instruction(
             let id = result_id.ok_or_else(|| shape("load has no result"))?;
             let ty = result_ty.expect("result id has type");
             let (address, stored_ty, src_flags) = lower_place_address(
-                fir, definitions, place, local_slots, flags, scalars, types, layouts, cursor,
+                fir,
+                definitions,
+                place,
+                local_slots,
+                flags,
+                scalars,
+                types,
+                layouts,
+                cursor,
             )?;
             if ty != &stored_ty {
                 return Err(shape("load result and place types differ"));
@@ -389,7 +412,15 @@ fn lower_mixed_instruction(
             let id = result_id.ok_or_else(|| shape("address-of has no result"))?;
             let result_ty = result_ty.expect("address-of result type");
             let (address, stored_ty, _) = lower_place_address(
-                fir, definitions, place, local_slots, flags, scalars, types, layouts, cursor,
+                fir,
+                definitions,
+                place,
+                local_slots,
+                flags,
+                scalars,
+                types,
+                layouts,
+                cursor,
             )?;
             match result_ty {
                 Ty::Reference {
@@ -835,15 +866,7 @@ fn lower_place_address(
                 cursor,
             )?;
             let (address, element_ty) = index_address(
-                fir,
-                &base_ty,
-                address,
-                *index,
-                mem_flags,
-                scalars,
-                layouts,
-                types,
-                cursor,
+                fir, &base_ty, address, *index, mem_flags, scalars, layouts, types, cursor,
             )?;
             Ok((address, element_ty, mem_flags))
         }
@@ -894,7 +917,8 @@ fn field_projection(
             };
             let mut result: Option<(Ty, u64)> = None;
             for (variant, placed_variant) in variants.iter().zip(placed_variants) {
-                let Some(source) = variant.fields.iter().find(|field| field.name == field_name) else {
+                let Some(source) = variant.fields.iter().find(|field| field.name == field_name)
+                else {
                     continue;
                 };
                 let placed = placed_variant
@@ -960,10 +984,7 @@ fn index_address(
             );
             let stride = layouts.layout_of(element).map_err(layout_error)?.size;
             let offset = scale_index(index, stride, types, cursor)?;
-            Ok((
-                cursor.ins().iadd(data, offset),
-                element.as_ref().clone(),
-            ))
+            Ok((cursor.ins().iadd(data, offset), element.as_ref().clone()))
         }
         _ => Err(shape(format!("index on non-array/slice {base_ty:?}"))),
     }
@@ -1170,7 +1191,17 @@ fn lower_make_result_err(
     cursor: &mut FuncCursor<'_>,
 ) -> Result<(), BackendError> {
     lower_make_result_payload(
-        fir, id, ty, error, false, stack_flags, scalars, aggregates, layouts, types, cursor,
+        fir,
+        id,
+        ty,
+        error,
+        false,
+        stack_flags,
+        scalars,
+        aggregates,
+        layouts,
+        types,
+        cursor,
     )
 }
 
@@ -1362,6 +1393,18 @@ fn lower_len(
                 i32_offset(len_offset)?,
             ))
         }
+        Ty::Str => {
+            let layout = layouts.layout_of(ty).map_err(layout_error)?;
+            let LayoutKind::Str { len_offset, .. } = layout.kind else {
+                return Err(shape("str has non-str layout"));
+            };
+            Ok(cursor.ins().load(
+                types.pointer_type()?,
+                flags,
+                address,
+                i32_offset(len_offset)?,
+            ))
+        }
         _ => Err(shape(format!("len on unsupported type {ty:?}"))),
     }
 }
@@ -1544,9 +1587,7 @@ fn store_integer_immediate(
     let value = cursor
         .ins()
         .iconst(clif_integer_type(bits)?, value as u64 as i64);
-    cursor
-        .ins()
-        .store(flags, value, base, i32_offset(offset)?);
+    cursor.ins().store(flags, value, base, i32_offset(offset)?);
     Ok(())
 }
 
