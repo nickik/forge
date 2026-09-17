@@ -131,13 +131,22 @@ pub fn compile_source_with_library_sources(
     source: &str,
     libraries: &[(String, String)],
 ) -> Result<CompiledProgram, CompilerError> {
-    compile_source_with_library_sources_and_entry(source, libraries, "main")
+    compile_source_with_library_sources_for_entry(source, libraries, "main", None)
 }
 
 pub fn compile_source_with_library_sources_and_entry(
     source: &str,
     libraries: &[(String, String)],
     entry: &str,
+) -> Result<CompiledProgram, CompilerError> {
+    compile_source_with_library_sources_for_entry(source, libraries, entry, Some(entry))
+}
+
+fn compile_source_with_library_sources_for_entry(
+    source: &str,
+    libraries: &[(String, String)],
+    entry: &str,
+    external_entry_symbol: Option<&str>,
 ) -> Result<CompiledProgram, CompilerError> {
     if entry.is_empty() {
         return Err(CompilerError::message(
@@ -154,7 +163,7 @@ pub fn compile_source_with_library_sources_and_entry(
     }
     let ast = link_modules(root, parsed_libraries)
         .map_err(|error| CompilerError::message(format!("module linking failed: {error}")))?;
-    compile_ast(ast, entry)
+    compile_ast(ast, entry, external_entry_symbol)
 }
 
 fn parse_ast(label: &str, source: &str) -> Result<SourceFile, CompilerError> {
@@ -168,7 +177,11 @@ fn parse_ast(label: &str, source: &str) -> Result<SourceFile, CompilerError> {
     Ok(parsed.ast.expect("checked above"))
 }
 
-fn compile_ast(ast: SourceFile, entry_name: &str) -> Result<CompiledProgram, CompilerError> {
+fn compile_ast(
+    ast: SourceFile,
+    entry_name: &str,
+    external_entry_symbol: Option<&str>,
+) -> Result<CompiledProgram, CompilerError> {
     let provider_names = ast
         .declarations
         .iter()
@@ -252,7 +265,7 @@ fn compile_ast(ast: SourceFile, entry_name: &str) -> Result<CompiledProgram, Com
             })
     {
         return Err(CompilerError::message(format!(
-            "hosted C14 entry point `{entry_name}` must have signature fn {entry_name}() -> i32"
+            "C14 entry point `{entry_name}` must have signature fn {entry_name}() -> i32"
         )));
     }
 
@@ -268,9 +281,10 @@ fn compile_ast(ast: SourceFile, entry_name: &str) -> Result<CompiledProgram, Com
         exports.push(owner);
     }
     let imports = reachable_provider_owners(&fir.module, main_owner, &provider_owners);
-    let plan = backend.plan_object_module_with_exports_and_imports(
+    let plan = backend.plan_object_module_with_export_names_and_imports(
         &prepared,
         exports,
+        external_entry_symbol.map(|symbol| (main_owner, symbol.to_owned())),
         imports.iter().copied(),
     )?;
     let main_symbol = plan
@@ -603,7 +617,7 @@ pub fn compile_file_with_libraries(
     path: &Path,
     libraries: &[LibraryInput],
 ) -> Result<CompiledProgram, CompilerError> {
-    compile_file_with_libraries_and_entry(path, libraries, "main")
+    compile_file_with_libraries_for_entry(path, libraries, "main", None)
 }
 
 pub fn compile_file_with_libraries_and_entry(
@@ -611,9 +625,18 @@ pub fn compile_file_with_libraries_and_entry(
     libraries: &[LibraryInput],
     entry: &str,
 ) -> Result<CompiledProgram, CompilerError> {
+    compile_file_with_libraries_for_entry(path, libraries, entry, Some(entry))
+}
+
+fn compile_file_with_libraries_for_entry(
+    path: &Path,
+    libraries: &[LibraryInput],
+    entry: &str,
+    external_entry_symbol: Option<&str>,
+) -> Result<CompiledProgram, CompilerError> {
     let source = read_source(path)?;
     let sources = read_library_sources(libraries)?;
-    compile_source_with_library_sources_and_entry(&source, &sources, entry)
+    compile_source_with_library_sources_for_entry(&source, &sources, entry, external_entry_symbol)
 }
 
 pub fn check_file(path: &Path) -> Result<(), CompilerError> {
@@ -629,7 +652,7 @@ pub fn check_file_with_libraries(
     source.push_str(CHECK_ENTRY);
     source.push_str("() -> i32 { return 0; }\n");
     let sources = read_library_sources(libraries)?;
-    compile_source_with_library_sources_and_entry(&source, &sources, CHECK_ENTRY).map(|_| ())
+    compile_source_with_library_sources_for_entry(&source, &sources, CHECK_ENTRY, None).map(|_| ())
 }
 
 pub fn emit_object_file(path: &Path, output: &Path) -> Result<(), CompilerError> {
@@ -813,6 +836,16 @@ fn start() -> i32 {
 }
 "#;
 
+    const KERNEL_OBJECT: &str = r#"
+module test.kernel_object;
+fn helper() -> i32 {
+    return 0;
+}
+fn start() -> i32 {
+    return helper();
+}
+"#;
+
     const LIBRARY_ONLY: &str = r#"
 module test.library_only;
 pub fn forty_two() -> i32 { return 42; }
@@ -848,7 +881,191 @@ fn main() -> i32 {
         let compiled = compile_source_with_library_sources_and_entry(CUSTOM_ENTRY, &[], "start")
             .expect("compile custom entry");
         assert_eq!(&compiled.object()[..4], b"\x7fELF");
-        assert!(compiled.main_symbol().starts_with("__forge_fn_"));
+        assert_eq!(compiled.main_symbol(), "start");
+    }
+
+    #[test]
+    fn freestanding_entry_object_has_explicit_elf_contract_without_hosted_imports() {
+        let compiled = compile_source_with_library_sources_and_entry(
+            KERNEL_OBJECT,
+            &[("core".into(), include_str!("../../../lib/core.fg").into())],
+            "start",
+        )
+        .expect("compile freestanding kernel object");
+
+        assert_eq!(compiled.main_symbol(), "start");
+        assert!(compiled.hosted_provider_symbols().is_empty());
+
+        let sections = elf64_sections(compiled.object());
+        for name in [
+            ".text",
+            ".rela.text",
+            ".rodata",
+            ".rela.rodata",
+            ".data",
+            ".rela.data",
+            ".bss",
+            ".symtab",
+            ".strtab",
+            ".note.GNU-stack",
+        ] {
+            assert!(
+                sections.iter().any(|section| section.name == name),
+                "missing kernel object section {name}: {sections:#?}"
+            );
+        }
+        let text = sections
+            .iter()
+            .find(|section| section.name == ".text")
+            .expect("text section");
+        assert_eq!(text.kind, 1, ".text must be SHT_PROGBITS");
+        assert_eq!(text.flags, 0x6, ".text must be allocatable/executable");
+        assert!(text.size > 0, ".text must contain the kernel entry");
+        let rela_text = sections
+            .iter()
+            .find(|section| section.name == ".rela.text")
+            .expect("text relocations");
+        assert_eq!(rela_text.kind, 4, ".rela.text must be SHT_RELA");
+        assert!(rela_text.size > 0, "helper call must retain a relocation");
+
+        let symbols = elf64_symbols(compiled.object(), &sections);
+        let entry = symbols
+            .iter()
+            .find(|symbol| symbol.name == "start")
+            .expect("platform-facing start symbol");
+        assert_eq!(entry.binding, 1, "entry must be STB_GLOBAL");
+        assert_eq!(entry.kind, 2, "entry must be STT_FUNC");
+        assert_eq!(usize::from(entry.section), text.index);
+        let undefined = symbols
+            .iter()
+            .filter(|symbol| !symbol.name.is_empty() && symbol.section == 0)
+            .map(|symbol| symbol.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            undefined.is_empty(),
+            "freestanding object must not leak hosted/runtime imports: {undefined:?}"
+        );
+    }
+
+    #[derive(Debug)]
+    struct ElfSection {
+        index: usize,
+        name: String,
+        kind: u32,
+        flags: u64,
+        offset: usize,
+        size: usize,
+        link: usize,
+        entry_size: usize,
+    }
+
+    #[derive(Debug)]
+    struct ElfSymbol {
+        name: String,
+        binding: u8,
+        kind: u8,
+        section: u16,
+    }
+
+    fn elf64_sections(bytes: &[u8]) -> Vec<ElfSection> {
+        assert_eq!(&bytes[..4], b"\x7fELF");
+        assert_eq!(bytes[4], 2, "kernel object must be ELF64");
+        assert_eq!(bytes[5], 1, "kernel object must be little-endian");
+        assert_eq!(read_u16(bytes, 16), 1, "kernel object must be relocatable");
+        assert_eq!(
+            read_u16(bytes, 18),
+            183,
+            "kernel object must target AArch64"
+        );
+
+        let table = read_u64(bytes, 40) as usize;
+        let entry_size = usize::from(read_u16(bytes, 58));
+        let count = usize::from(read_u16(bytes, 60));
+        let names_index = usize::from(read_u16(bytes, 62));
+        assert_eq!(entry_size, 64, "unexpected ELF64 section-header size");
+        assert!(names_index < count, "invalid section-name string table");
+
+        let raw = (0..count)
+            .map(|index| {
+                let header = table + index * entry_size;
+                (
+                    index,
+                    read_u32(bytes, header) as usize,
+                    read_u32(bytes, header + 4),
+                    read_u64(bytes, header + 8),
+                    read_u64(bytes, header + 24) as usize,
+                    read_u64(bytes, header + 32) as usize,
+                    read_u32(bytes, header + 40) as usize,
+                    read_u64(bytes, header + 56) as usize,
+                )
+            })
+            .collect::<Vec<_>>();
+        let (_, _, _, _, names_offset, names_size, _, _) = raw[names_index];
+        let names = slice(bytes, names_offset, names_size);
+        raw.into_iter()
+            .map(
+                |(index, name, kind, flags, offset, size, link, entry_size)| ElfSection {
+                    index,
+                    name: read_c_string(names, name),
+                    kind,
+                    flags,
+                    offset,
+                    size,
+                    link,
+                    entry_size,
+                },
+            )
+            .collect()
+    }
+
+    fn elf64_symbols(bytes: &[u8], sections: &[ElfSection]) -> Vec<ElfSymbol> {
+        let symtab = sections
+            .iter()
+            .find(|section| section.name == ".symtab")
+            .expect("symbol table");
+        assert_eq!(symtab.kind, 2, ".symtab must be SHT_SYMTAB");
+        assert_eq!(symtab.entry_size, 24, "unexpected ELF64 symbol size");
+        let strings = sections.get(symtab.link).expect("linked symbol strings");
+        let strings = slice(bytes, strings.offset, strings.size);
+        let count = symtab.size / symtab.entry_size;
+        (0..count)
+            .map(|index| {
+                let offset = symtab.offset + index * symtab.entry_size;
+                let info = bytes[offset + 4];
+                ElfSymbol {
+                    name: read_c_string(strings, read_u32(bytes, offset) as usize),
+                    binding: info >> 4,
+                    kind: info & 0x0f,
+                    section: read_u16(bytes, offset + 6),
+                }
+            })
+            .collect()
+    }
+
+    fn slice(bytes: &[u8], offset: usize, size: usize) -> &[u8] {
+        bytes
+            .get(offset..offset.checked_add(size).expect("ELF range overflow"))
+            .expect("ELF range outside object")
+    }
+
+    fn read_c_string(bytes: &[u8], offset: usize) -> String {
+        let tail = bytes.get(offset..).expect("ELF string offset");
+        let end = tail.iter().position(|byte| *byte == 0).expect("ELF NUL");
+        std::str::from_utf8(&tail[..end])
+            .expect("ELF UTF-8 symbol/section name")
+            .to_owned()
+    }
+
+    fn read_u16(bytes: &[u8], offset: usize) -> u16 {
+        u16::from_le_bytes(slice(bytes, offset, 2).try_into().expect("u16 bytes"))
+    }
+
+    fn read_u32(bytes: &[u8], offset: usize) -> u32 {
+        u32::from_le_bytes(slice(bytes, offset, 4).try_into().expect("u32 bytes"))
+    }
+
+    fn read_u64(bytes: &[u8], offset: usize) -> u64 {
+        u64::from_le_bytes(slice(bytes, offset, 8).try_into().expect("u64 bytes"))
     }
 
     #[test]

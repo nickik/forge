@@ -136,6 +136,30 @@ impl CraneliftBackend {
         I: IntoIterator<Item = DefId>,
         J: IntoIterator<Item = DefId>,
     {
+        self.plan_object_module_with_export_names_and_imports(
+            prepared,
+            exports,
+            std::iter::empty(),
+            imports,
+        )
+    }
+
+    /// Plan an object while assigning selected exported functions an explicit
+    /// platform-facing symbol. Other functions retain their deterministic
+    /// Forge symbol so internal calls and ordinary hosted entry shims remain
+    /// independent of source names.
+    pub fn plan_object_module_with_export_names_and_imports<I, N, J>(
+        &self,
+        prepared: &PreparedModule,
+        exports: I,
+        named_exports: N,
+        imports: J,
+    ) -> Result<ObjectModulePlan, BackendError>
+    where
+        I: IntoIterator<Item = DefId>,
+        N: IntoIterator<Item = (DefId, String)>,
+        J: IntoIterator<Item = DefId>,
+    {
         if prepared.target() != self.target() {
             return Err(shape(format!(
                 "prepared module target {:?} does not match object-plan target {:?}",
@@ -146,6 +170,14 @@ impl CraneliftBackend {
 
         let exports: BTreeSet<DefId> = exports.into_iter().collect();
         let imports: BTreeSet<DefId> = imports.into_iter().collect();
+        let mut export_names = BTreeMap::new();
+        for (owner, name) in named_exports {
+            if export_names.insert(owner, name).is_some() {
+                return Err(shape(format!(
+                    "object plan assigns multiple external names to {owner:?}"
+                )));
+            }
+        }
         if let Some(owner) = exports.intersection(&imports).next() {
             return Err(shape(format!(
                 "function {owner:?} cannot be both exported and imported"
@@ -156,6 +188,23 @@ impl CraneliftBackend {
             {
                 return Err(shape(format!(
                     "cannot export missing FIR definition {owner:?}"
+                )));
+            }
+        }
+        for (owner, name) in &export_names {
+            if !exports.contains(owner) {
+                return Err(shape(format!(
+                    "external object name {name:?} belongs to non-exported function {owner:?}"
+                )));
+            }
+            if !prepared.functions().contains_key(owner) {
+                return Err(shape(format!(
+                    "external object name {name:?} belongs to missing/non-function definition {owner:?}"
+                )));
+            }
+            if name.is_empty() || name.contains('\0') {
+                return Err(shape(format!(
+                    "invalid external object symbol name {name:?} for {owner:?}"
                 )));
             }
         }
@@ -171,7 +220,10 @@ impl CraneliftBackend {
         let mut names = BTreeSet::new();
         let mut symbols = BTreeMap::new();
         for (owner, function) in prepared.functions() {
-            let name = forge_function_symbol(*owner);
+            let name = export_names
+                .get(owner)
+                .cloned()
+                .unwrap_or_else(|| forge_function_symbol(*owner));
             if !names.insert(name.clone()) {
                 return Err(shape(format!(
                     "duplicate Forge object symbol generated for {owner:?}: {name}"
