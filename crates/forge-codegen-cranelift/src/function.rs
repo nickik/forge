@@ -1317,10 +1317,43 @@ fn lower_const(
                 }),
             }
         }
+        FirConst::Duration { value } if *ty == Ty::Duration => {
+            Ok(cursor.ins().iconst(clif_ty, duration_immediate(value)?))
+        }
         _ => Err(BackendError::UnsupportedInstruction {
             kind: "non-integer scalar constant",
         }),
     }
+}
+
+/// Forge duration reader forms lower to exact signed nanoseconds. FIR retains
+/// the textual reader spelling for dumps, so codegen performs the small exact
+/// conversion at the scalar boundary.
+fn duration_immediate(text: &str) -> Result<i64, BackendError> {
+    let cleaned = text.replace('_', "");
+    let units = [
+        ("ns", 1_i64),
+        ("us", 1_000_i64),
+        ("ms", 1_000_000_i64),
+        ("s", 1_000_000_000_i64),
+        ("m", 60_000_000_000_i64),
+        ("h", 3_600_000_000_000_i64),
+    ];
+    let Some((number, scale)) = units
+        .iter()
+        .find_map(|(suffix, scale)| cleaned.strip_suffix(suffix).map(|number| (number, scale)))
+    else {
+        return Err(BackendError::InvalidConstant {
+            text: text.to_owned(),
+        });
+    };
+    number
+        .parse::<i64>()
+        .ok()
+        .and_then(|value| value.checked_mul(*scale))
+        .ok_or_else(|| BackendError::InvalidConstant {
+            text: text.to_owned(),
+        })
 }
 
 fn integer_immediate(text: &str, ty: &Ty, types: &TypeLowering<'_>) -> Result<i64, BackendError> {

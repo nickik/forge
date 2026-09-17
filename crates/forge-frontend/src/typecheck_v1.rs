@@ -5122,6 +5122,7 @@ fn builtin_ty(name: &str) -> Option<Ty> {
         "byte" => Ty::Byte,
         "void" => Ty::Void,
         "never" => Ty::Never,
+        "duration" => Ty::Duration,
         "i8" => Ty::Int {
             signed: true,
             width: IntWidth::W8,

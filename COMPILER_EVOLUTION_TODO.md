@@ -4,6 +4,14 @@ This is the top-level implementation order for the Forge compiler after C14.
 The versioned `C12_TODO.md` through `C15_TODO.md` files remain the detailed
 acceptance records for their individual milestones.
 
+## End goal
+
+The compiler program is complete only when Forge can build the relevant Cosmic
+kernel and userspace components for SIA32, produce a loadable SIA image, and
+run that image with observable correct behavior on the Lighting simulator.
+Hosted AArch64 and RISC-V lanes are supporting compiler evidence; they do not
+replace native SIA/Lighting execution.
+
 ## Rule for advancing work
 
 For each slice, use one semantic fixture, one FIR/lowering assertion where that
