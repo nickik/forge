@@ -42,7 +42,8 @@ available on every backend merely because the frontend accepts it.
       reads, stores and mutable field addresses.
 - [x] globals follow-up: static aggregate-pointer initializer execution on
       AArch64 and RISC-V.
-- [ ] `defer`: early `return`, loop exits, nested ordering and `?` propagation.
+- [x] `defer`: direct and `?` early return, loop exits and nested LIFO
+      ordering execute natively.
 - [ ] `match`: map-protocol execution and more mixed aggregate payload cases.
 - [ ] distinct types: conversion and ABI execution coverage.
 

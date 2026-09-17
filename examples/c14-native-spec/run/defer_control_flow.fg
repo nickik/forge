@@ -12,6 +12,14 @@ fn normal_order(value: &mut i32) {
     }
 }
 
+fn return_order(value: &mut i32) -> i32 {
+    defer { *value = (*value * 10i32) + 1i32; }
+    {
+        defer { *value = (*value * 10i32) + 2i32; }
+        return 7i32;
+    }
+}
+
 fn loop_exits(value: &mut i32) {
     var index: i32 = 0i32;
     while (index < 3i32) {
@@ -36,12 +44,16 @@ fn main() -> i32 {
     normal_order(&mut normal);
     if (normal != 21i32) { return 1i32; }
 
+    var early: i32 = 0i32;
+    if (return_order(&mut early) != 7i32) { return 2i32; }
+    if (early != 21i32) { return 3i32; }
+
     var loop: i32 = 0i32;
     loop_exits(&mut loop);
-    if (loop != 12i32) { return 2i32; }
+    if (loop != 12i32) { return 4i32; }
 
     var propagated: i32 = 0i32;
     val result = propagate(&mut propagated);
-    if (propagated != 21i32) { return 3i32; }
-    return match (result) { Ok(_) => 4i32, Err(_) => 0i32, };
+    if (propagated != 21i32) { return 5i32; }
+    return match (result) { Ok(_) => 6i32, Err(_) => 0i32, };
 }
