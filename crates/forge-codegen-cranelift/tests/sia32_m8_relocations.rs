@@ -117,9 +117,11 @@ fn m8_links_legacy_flat_objects() {
 fn m8_rejects_unresolved_duplicates_malformed_and_overflowing_relocations() {
     let mut unresolved = Sia32Object::new(vec![0; 4]);
     unresolved.add_abs32_relocation(0, "missing", 0).unwrap();
+    let error = link_sia32_objects(&[unresolved], &[0]).unwrap_err();
     assert!(matches!(
-        link_sia32_objects(&[unresolved], &[0]),
-        Err(BackendError::Cranelift { .. })
+        error,
+        BackendError::Cranelift { message }
+            if message == "unresolved SIA32 symbol \"missing\""
     ));
 
     let mut unsupported = Sia32Object::new(vec![0; 8]);
@@ -145,9 +147,11 @@ fn m8_rejects_unresolved_duplicates_malformed_and_overflowing_relocations() {
     let mut overflow = Sia32Object::new(vec![0; 4]);
     overflow.define_symbol("top", 0).unwrap();
     overflow.add_abs32_relocation(0, "top", 1).unwrap();
+    let error = link_sia32_objects(&[overflow], &[u32::MAX]).unwrap_err();
     assert!(matches!(
-        link_sia32_objects(&[overflow], &[u32::MAX]),
-        Err(BackendError::Cranelift { .. })
+        error,
+        BackendError::Cranelift { message }
+            if message == "SIA32 ABS32 relocation for \"top\" overflows 32-bit address space: S=0xffffffff, A=1"
     ));
 
     let mut a = Sia32Object::new(vec![0; 4]);
@@ -161,8 +165,10 @@ fn m8_rejects_unresolved_duplicates_malformed_and_overflowing_relocations() {
 
     let mut malformed = Sia32Object::new(vec![0; 4]).to_bytes().unwrap();
     malformed.push(0);
+    let error = Sia32Object::from_bytes(&malformed).unwrap_err();
     assert!(matches!(
-        Sia32Object::from_bytes(&malformed),
-        Err(BackendError::Cranelift { .. })
+        error,
+        BackendError::Cranelift { message }
+            if message == "trailing bytes after SIAO32 object"
     ));
 }
