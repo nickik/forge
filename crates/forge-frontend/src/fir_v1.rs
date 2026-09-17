@@ -1690,6 +1690,12 @@ impl<'a> FunctionLowerer<'a> {
                 )
             }
             HirExprKind::Member { base, name } => {
+                let base_ty = self.expr_ty(base);
+                if name == "len" && matches!(base_ty, Ty::Array { .. } | Ty::Slice { .. } | Ty::Str)
+                {
+                    let base = self.lower_expr(base);
+                    return self.emit_len(expr.span, base, &base_ty);
+                }
                 if let Some(place) = self.try_place(base) {
                     let place = FirPlace::Field {
                         base: Box::new(place),

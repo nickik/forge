@@ -1333,8 +1333,13 @@ fn map_pattern_lowers_resolved_collection_protocol_operations() {
         module test.fir_map_protocol;
         struct Dict {}
         impl Dict {
-            fn pattern_get(self: &Dict, key: str) -> u32? { return None; }
-            fn pattern_has_only(self: &Dict, keys: str[]) -> bool { return true; }
+            fn pattern_get(self: &Dict, key: str) -> u32? {
+                if (key.len == 4usize) { return Some(1u32); }
+                return None;
+            }
+            fn pattern_has_only(self: &Dict, keys: str[]) -> bool {
+                return keys.len == 1usize;
+            }
         }
         fn use_map(map: Dict) -> u32 {
             return match (map) {
@@ -1355,6 +1360,7 @@ fn map_pattern_lowers_resolved_collection_protocol_operations() {
         op,
         FirInstructionKind::CollectionPatternHasOnly { keys, .. } if keys.len() == 1
     )));
+    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::Len { .. })));
     assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::OptionIsSome { .. })));
     assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::OptionUnwrap { .. })));
 }
