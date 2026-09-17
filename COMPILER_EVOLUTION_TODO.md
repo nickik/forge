@@ -64,6 +64,9 @@ available on every backend merely because the frontend accepts it.
         unresolved symbols and overflowing `ABS32` relocations.
   - [x] Static function/global pointer relocations reject missing targets before
         object emission on AArch64 and RISC-V.
+  - [x] Native ELF emission pins unresolved function/global/internal-label
+        diagnostics and rejects text/static-data relocation ranges that escape
+        their owning section before writing an object.
 
 ## 4. Target capability roadmap
 

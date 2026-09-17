@@ -547,7 +547,13 @@ fn emit_global_sections(prepared: &PreparedModule) -> Result<GlobalSections, Bac
                 align_vec(bytes, align)?;
                 let offset = bytes.len() as u64;
                 bytes.extend_from_slice(static_data.bytes());
-                append_data_relocations(offset, static_data.relocations(), relocations)?;
+                append_data_relocations(
+                    *owner,
+                    offset,
+                    static_data.bytes().len() as u64,
+                    static_data.relocations(),
+                    relocations,
+                )?;
                 sections.globals.insert(
                     *owner,
                     EmittedGlobal {
@@ -585,15 +591,23 @@ fn emit_global_sections(prepared: &PreparedModule) -> Result<GlobalSections, Bac
 }
 
 fn append_data_relocations(
+    owner: DefId,
     base: u64,
+    static_size: u64,
     relocations: &[PreparedStaticRelocation],
     output: &mut Vec<PendingDataRelocation>,
 ) -> Result<(), BackendError> {
     for relocation in relocations {
+        validate_relocation_range(
+            &format!("global {owner:?} static-data"),
+            relocation.offset(),
+            u64::from(relocation.width()),
+            static_size,
+        )?;
         output.push(PendingDataRelocation {
-            offset: base
-                .checked_add(relocation.offset())
-                .ok_or_else(|| object_error("static-data relocation offset overflow"))?,
+            offset: base.checked_add(relocation.offset()).ok_or_else(|| {
+                object_error(format!("global {owner:?} relocation offset overflow"))
+            })?,
             target: relocation.target(),
             addend: relocation.addend(),
             width: relocation.width(),
@@ -728,6 +742,7 @@ fn emit_elf64(
 
     let rela_text = encode_text_relocations(
         target,
+        text.len() as u64,
         text_relocs,
         &function_symbols,
         &global_symbols,
@@ -897,6 +912,7 @@ fn add_global_symbol(
 
 fn encode_text_relocations(
     target: CraneliftTarget,
+    text_size: u64,
     relocs: &[PendingTextRelocation],
     function_symbols: &BTreeMap<DefId, u32>,
     global_symbols: &BTreeMap<DefId, u32>,
@@ -904,6 +920,12 @@ fn encode_text_relocations(
 ) -> Result<Vec<u8>, BackendError> {
     let mut output = Vec::with_capacity(relocs.len() * 24);
     for reloc in relocs {
+        validate_relocation_range(
+            ".text",
+            reloc.offset,
+            text_relocation_width(target, reloc.kind)?,
+            text_size,
+        )?;
         let symbol = match reloc.target {
             TextRelocationTarget::Function(owner) => *function_symbols
                 .get(&owner)
@@ -926,6 +948,42 @@ fn encode_text_relocations(
         );
     }
     Ok(output)
+}
+
+fn text_relocation_width(target: CraneliftTarget, kind: Reloc) -> Result<u64, BackendError> {
+    match (target, kind) {
+        (_, Reloc::Abs4)
+        | (CraneliftTarget::Aarch64, Reloc::Arm64Call)
+        | (CraneliftTarget::Aarch64, Reloc::Aarch64AdrPrelPgHi21)
+        | (CraneliftTarget::Aarch64, Reloc::Aarch64AddAbsLo12Nc)
+        | (CraneliftTarget::Aarch64, Reloc::Aarch64AdrGotPage21)
+        | (CraneliftTarget::Aarch64, Reloc::Aarch64Ld64GotLo12Nc)
+        | (CraneliftTarget::Riscv64, Reloc::RiscvGotHi20)
+        | (CraneliftTarget::Riscv64, Reloc::RiscvPCRelHi20)
+        | (CraneliftTarget::Riscv64, Reloc::RiscvPCRelLo12I) => Ok(4),
+        (_, Reloc::Abs8) | (CraneliftTarget::Riscv64, Reloc::RiscvCallPlt) => Ok(8),
+        (target, kind) => Err(object_error(format!(
+            "unsupported {target:?} object relocation kind {kind:?}"
+        ))),
+    }
+}
+
+fn validate_relocation_range(
+    section: &str,
+    offset: u64,
+    width: u64,
+    section_size: u64,
+) -> Result<(), BackendError> {
+    if offset
+        .checked_add(width)
+        .is_some_and(|end| end <= section_size)
+    {
+        Ok(())
+    } else {
+        Err(object_error(format!(
+            "{section} relocation at offset {offset} with width {width} exceeds section size {section_size}"
+        )))
+    }
 }
 
 fn encode_data_relocations(
@@ -1256,5 +1314,109 @@ fn shape(message: impl Into<String>) -> BackendError {
 fn object_error(message: impl Into<String>) -> BackendError {
     BackendError::Cranelift {
         message: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn target_relocation(target: CraneliftTarget) -> Reloc {
+        match target {
+            CraneliftTarget::Aarch64 => Reloc::Arm64Call,
+            CraneliftTarget::Riscv64 => Reloc::RiscvCallPlt,
+            CraneliftTarget::Sia32 => panic!("SIA32 does not use the ELF64 object writer"),
+        }
+    }
+
+    fn error_message(error: BackendError) -> String {
+        match error {
+            BackendError::Cranelift { message } => message,
+            error => panic!("unexpected error: {error}"),
+        }
+    }
+
+    #[test]
+    fn native_elf_rejects_text_relocations_outside_the_text_section() {
+        for (target, offset, text_size, expected_width) in [
+            (CraneliftTarget::Aarch64, 5, 8, 4),
+            (CraneliftTarget::Riscv64, 1, 8, 8),
+        ] {
+            let relocation = PendingTextRelocation {
+                offset,
+                kind: target_relocation(target),
+                target: TextRelocationTarget::Function(DefId(1)),
+                addend: 0,
+            };
+            let error = encode_text_relocations(
+                target,
+                text_size,
+                &[relocation],
+                &BTreeMap::from([(DefId(1), 1)]),
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+            )
+            .expect_err("out-of-section text relocation must fail");
+            assert_eq!(
+                error_message(error),
+                format!(
+                    ".text relocation at offset {offset} with width {expected_width} exceeds section size {text_size}"
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn native_elf_pins_unresolved_text_relocation_diagnostics() {
+        for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+            let kind = target_relocation(target);
+            for (relocation_target, expected) in [
+                (
+                    TextRelocationTarget::Function(DefId(91)),
+                    "unresolved function relocation DefId(91)",
+                ),
+                (
+                    TextRelocationTarget::Global(DefId(92)),
+                    "unresolved global relocation DefId(92)",
+                ),
+                (
+                    TextRelocationTarget::Label {
+                        owner: DefId(93),
+                        offset: 4,
+                    },
+                    "unresolved internal label DefId(93)+4",
+                ),
+            ] {
+                let relocation = PendingTextRelocation {
+                    offset: 0,
+                    kind,
+                    target: relocation_target,
+                    addend: 0,
+                };
+                let error = encode_text_relocations(
+                    target,
+                    8,
+                    &[relocation],
+                    &BTreeMap::new(),
+                    &BTreeMap::new(),
+                    &BTreeMap::new(),
+                )
+                .expect_err("unresolved relocation target must fail");
+                assert_eq!(error_message(error), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn native_elf_rejects_static_data_relocation_range_overflow() {
+        let error = validate_relocation_range("global DefId(7) static-data", u64::MAX, 8, u64::MAX)
+            .expect_err("overflowing relocation range must fail");
+        assert_eq!(
+            error_message(error),
+            "global DefId(7) static-data relocation at offset 18446744073709551615 with width 8 exceeds section size 18446744073709551615"
+        );
+
+        validate_relocation_range("global DefId(7) static-data", 8, 8, 16)
+            .expect("relocation ending exactly at the section boundary is valid");
     }
 }
