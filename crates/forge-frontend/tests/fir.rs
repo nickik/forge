@@ -1115,6 +1115,10 @@ fn bitstruct_read_lowers_to_storage_shift_and_mask() {
             ..
         }
     )));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::BitFieldExtract { .. }
+    )));
 }
 
 #[test]
@@ -1149,6 +1153,10 @@ fn bitstruct_write_is_checked_and_uses_read_modify_write_masks() {
     )));
     assert!(instructions(&output)
         .any(|op| matches!(op, FirInstructionKind::BitStructFromStorage { .. })));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::BitFieldExtend { .. }
+    )));
 }
 
 #[test]
