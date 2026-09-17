@@ -78,7 +78,7 @@ impl CraneliftBackend {
         let lowering = self.type_lowering();
         let mut functions = BTreeMap::new();
         for (owner, fir) in &all_functions {
-            validate_c4_scalar_contract(fir, &self.layout)?;
+            validate_c4_scalar_contract(fir, &self.layout, definitions)?;
             validate_c9_memory_places(fir)?;
             let scheduled = schedule_value_blocks(fir)?;
             let function = crate::function::lower_function_with_globals(

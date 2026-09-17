@@ -45,7 +45,7 @@ available on every backend merely because the frontend accepts it.
 - [x] `defer`: direct and `?` early return, loop exits and nested LIFO
       ordering execute natively.
 - [ ] `match`: map-protocol execution and more mixed aggregate payload cases.
-- [ ] distinct types: conversion and ABI execution coverage.
+- [x] distinct types and aliases: explicit conversion and value ABI execution.
 
 ## 3. Harden ABI and object correctness
 

@@ -264,6 +264,69 @@ fn lower_c14_scalar_instruction(
             aggregates.insert(result, rebuilt);
             return Ok(());
         }
+        FirInstructionKind::DistinctFromUnderlying { value, distinct } => {
+            let result = instruction
+                .result
+                .ok_or_else(|| shape("distinct construction has no result"))?;
+            let result_ty = value_type(fir, result)?;
+            if result_ty != &Ty::Nominal(*distinct) {
+                return Err(shape(
+                    "distinct construction result has the wrong nominal type",
+                ));
+            }
+            let Some(definition) = definitions.get(distinct) else {
+                return Err(shape(format!(
+                    "distinct construction has unknown type {distinct:?}"
+                )));
+            };
+            let TypeDefinitionKind::Distinct { underlying } = &definition.kind else {
+                return Err(shape("distinct construction target is not a distinct type"));
+            };
+            if value_type(fir, *value)? != underlying {
+                return Err(shape(
+                    "distinct construction input differs from its underlying type",
+                ));
+            }
+            let rebuilt = new_aggregate(result_ty, layouts, types, cursor)?;
+            cursor.ins().store(
+                flags.stack,
+                scalar(scalars, *value)?,
+                rebuilt.address,
+                0,
+            );
+            aggregates.insert(result, rebuilt);
+            return Ok(());
+        }
+        FirInstructionKind::DistinctToUnderlying { value, distinct } => {
+            let result = instruction
+                .result
+                .ok_or_else(|| shape("distinct extraction has no result"))?;
+            let result_ty = value_type(fir, result)?;
+            if value_type(fir, *value)? != &Ty::Nominal(*distinct) {
+                return Err(shape(
+                    "distinct extraction input has the wrong nominal type",
+                ));
+            }
+            let Some(definition) = definitions.get(distinct) else {
+                return Err(shape(format!(
+                    "distinct extraction has unknown type {distinct:?}"
+                )));
+            };
+            let TypeDefinitionKind::Distinct { underlying } = &definition.kind else {
+                return Err(shape("distinct extraction source is not a distinct type"));
+            };
+            if result_ty != underlying {
+                return Err(shape(
+                    "distinct extraction result differs from its underlying type",
+                ));
+            }
+            let source = aggregate(aggregates, *value)?.address;
+            let value = cursor
+                .ins()
+                .load(types.value_type(result_ty)?, flags.stack, source, 0);
+            scalars.insert(result, value);
+            return Ok(());
+        }
         FirInstructionKind::BitFieldCheck { value, width } => {
             if instruction.result.is_some() {
                 return Err(shape("bitfield range check unexpectedly has a result"));

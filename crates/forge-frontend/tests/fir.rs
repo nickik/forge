@@ -382,6 +382,27 @@ fn defer_cleanup_control_flow_is_rejected_in_fir() {
 }
 
 #[test]
+fn distinct_conversions_use_dedicated_fir_operations() {
+    let output = lower(
+        r#"
+        module test.fir_distinct_conversion;
+        distinct UserId: u32;
+        fn main() -> u32 {
+            val user: UserId = UserId(7u32);
+            return u32(user);
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::DistinctFromUnderlying { .. }
+    )));
+    assert!(instructions(&output)
+        .any(|instruction| matches!(instruction, FirInstructionKind::DistinctToUnderlying { .. })));
+}
+
+#[test]
 fn defer_cleanups_are_emitted_for_loop_transfers_and_try_return() {
     let output = lower(
         r#"
