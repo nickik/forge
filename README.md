@@ -219,3 +219,9 @@ Do not generate backend IR directly from parser nodes. Forge keeps semantics exp
 ## Design rule
 
 When implementation and specification disagree, **the specification wins** unless a language change is explicitly recorded and the normative specification is updated in the same change.
+
+## Forge firmware on Lighting
+
+Before the full Cosmic OS path is ready, Forge can be brought up on SIA32 as small reset-ROM firmware. The `forge-lighting-firmware` tool compiles a relocation-free Forge entry through the production SIA32 Cranelift backend, and `scripts/run-forge-lighting.sh` turns it into a Lighting ROM blob and runs it with instruction/MMIO/trap tracing.
+
+See `docs/lighting-firmware.md` for setup, the hello-firmware example, generated artifacts, debugging, and the staged path from firmware to Cosmic.
