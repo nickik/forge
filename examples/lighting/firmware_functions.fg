@@ -1,0 +1,53 @@
+module examples.lighting.firmware_functions;
+
+type Register = *volatile u32;
+
+fn putc(console: Register, value: u32) -> i32 {
+    unsafe {
+        *console = value;
+    }
+    return 0;
+}
+
+fn banner(console: Register) -> i32 {
+    putc(console, 70);
+    putc(console, 79);
+    putc(console, 82);
+    putc(console, 71);
+    putc(console, 69);
+    putc(console, 32);
+    putc(console, 70);
+    putc(console, 85);
+    putc(console, 78);
+    putc(console, 67);
+    putc(console, 84);
+    putc(console, 73);
+    putc(console, 79);
+    putc(console, 78);
+    putc(console, 83);
+    putc(console, 10);
+    return 0;
+}
+
+fn diagnostics(console: Register) -> i32 {
+    putc(console, 68);
+    putc(console, 73);
+    putc(console, 65);
+    putc(console, 71);
+    putc(console, 58);
+    putc(console, 32);
+    putc(console, 79);
+    putc(console, 75);
+    putc(console, 10);
+    return 0;
+}
+
+fn main() -> i32 {
+    unsafe {
+        val console_address: usize = usize(0xfff03000);
+        val console: Register = Register(console_address);
+        banner(console);
+        diagnostics(console);
+    }
+    return 0;
+}
