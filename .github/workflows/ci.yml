@@ -61,6 +61,14 @@ jobs:
       - name: C14 native executable specification
         timeout-minutes: 5
         run: scripts/run-c14-native-spec.sh
+      - name: SIA32 Lighting firmware bring-up
+        timeout-minutes: 3
+        run: |
+          cargo run --quiet -p forge-compiler --bin forge-lighting-firmware -- \\
+            examples/lighting/firmware_hello.fg -o /tmp/forge-lighting.s
+          grep -q '^forge_entry:' /tmp/forge-lighting.s
+          grep -q '^unexpected_trap:' /tmp/forge-lighting.s
+
       - name: Generated native collections snapshot
         timeout-minutes: 3
         run: |
