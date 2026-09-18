@@ -23,13 +23,12 @@ TRACE="$OUT_DIR/debug.log"
 cargo run --quiet --manifest-path "$ROOT/Cargo.toml" -p forge-compiler \
   --bin forge-lighting-firmware -- "$SOURCE" -o "$ASM"
 
-cargo run --quiet --manifest-path "$LIGHTING_SIM/Cargo.toml" \
-  --bin siaasm -- "$ASM" -o "$BIN" --symbols >"$SYMS"
-
+# .romorg is a Lighting ROM-image/linker directive, not a base siaasm
+# directive. lighting-run deliberately routes assembly sources through the
+# ROM packer so reset/trap-vector segments are placed correctly.
 set +e
 cargo run --quiet --manifest-path "$LIGHTING_SIM/Cargo.toml" \
-  --bin lighting-run -- "$BIN" \
-  --symbols "$SYMS" \
+  --bin lighting-run -- "$ASM" \
   --console stdout \
   --console-log "$CONSOLE" \
   --max-steps "$MAX_STEPS" \
@@ -42,10 +41,15 @@ cargo run --quiet --manifest-path "$LIGHTING_SIM/Cargo.toml" \
 status=$?
 set -e
 
+# Preserve a raw ROM blob for inspection/deployment. lighting-run's ROM packer
+# is authoritative for .romorg; extracting an exact blob is a separate tool
+# concern, so do not incorrectly feed this source through base siaasm.
+cp "$ASM" "$OUT_DIR/firmware.rom.s"
+
 echo
-echo "Firmware blob: $BIN"
-echo "Generated wrapper: $ASM"
-echo "Symbols: $SYMS"
+echo "Firmware ROM source: $ASM"
+echo "Raw blob: produced by Lighting ROM packer when a blob-export command is available"
+echo "Symbols: embedded/loaded directly from ROM source by lighting-run"
 echo "Console log: $CONSOLE"
 echo "Debug trace: $TRACE"
 
