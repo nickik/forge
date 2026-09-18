@@ -1,0 +1,28 @@
+module examples.lighting.firmware_hello;
+
+type Register = *volatile u32;
+
+fn main() -> i32 {
+    unsafe {
+        val console: Register = Register(0xfff03000);
+        *console = 70;
+        *console = 79;
+        *console = 82;
+        *console = 71;
+        *console = 69;
+        *console = 32;
+        *console = 79;
+        *console = 78;
+        *console = 32;
+        *console = 76;
+        *console = 73;
+        *console = 71;
+        *console = 72;
+        *console = 84;
+        *console = 73;
+        *console = 78;
+        *console = 71;
+        *console = 10;
+    }
+    return 0;
+}
