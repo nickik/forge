@@ -111,54 +111,13 @@ fn emit_relocation_free_image(
     backend: &CraneliftBackend,
     prepared: &forge_codegen_cranelift::PreparedModule,
     entry: forge_fir::DefId,
-    entry_name: &str,
+    _entry_name: &str,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    use std::collections::{BTreeMap, BTreeSet};
-
-    let mut pending = vec![entry];
-    let mut reachable = BTreeSet::new();
-    while let Some(owner) = pending.pop() {
-        if !reachable.insert(owner) {
-            continue;
-        }
-        let function = prepared
-            .function(owner)
-            .ok_or_else(|| format!("reachable firmware function {owner:?} is missing"))?;
-        for block in &function.layout.blocks() {
-            for inst in function.layout.block_insts(block) {
-                if let cranelift_codegen::ir::InstructionData::Call { func_ref, .. } = &function.dfg.insts[inst] {
-                    let name = &function.params.user_named_funcs()[*func_ref];
-                    if name.namespace == 0 {
-                        pending.push(forge_fir::DefId(name.index));
-                    }
-                }
-            }
-        }
+    let machine = backend.emit_machine_code(prepared, entry)?;
+    if machine.target() != CraneliftTarget::Sia32 {
+        return Err("compiler selected a non-SIA32 backend".into());
     }
-
-    let mut code = BTreeMap::new();
-    for owner in &reachable {
-        let machine = backend.emit_machine_code(prepared, *owner).map_err(|error| {
-            format!(
-                "firmware function {owner:?} requires relocations or unsupported SIA32 lowering; \
-                 multi-function firmware is enabled only when the production backend can emit \
-                 relocation-free code: {error}"
-            )
-        })?;
-        if machine.target() != CraneliftTarget::Sia32 {
-            return Err("compiler selected a non-SIA32 backend".into());
-        }
-        code.insert(*owner, machine.into_bytes());
-    }
-
-    if reachable.len() != 1 {
-        return Err(format!(
-            "entry '{entry_name}' reaches {} Forge functions; cross-function SIA32 calls still \
-             require the SIAO32 relocation linker before this firmware path can emit them",
-            reachable.len()
-        ).into());
-    }
-    Ok(code.remove(&entry).expect("entry was compiled"))
+    Ok(machine.into_bytes())
 }
 
 fn lighting_rom_assembly(code: &[u8], entry: &str) -> String {
