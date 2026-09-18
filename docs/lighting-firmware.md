@@ -126,16 +126,6 @@ cargo run -p forge-compiler --bin forge-lighting-firmware -- \
   -o build/firmware.s
 ```
 
-Turn it into a raw ROM blob using LightingSimulation:
-
-```sh
-cargo run --manifest-path ../LightingSimulation/Cargo.toml \
-  --bin siaasm -- \
-  build/firmware.s \
-  -o build/firmware.bin \
-  --symbols > build/firmware.symbols
-```
-
 Then run it:
 
 ```sh
