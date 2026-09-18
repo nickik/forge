@@ -4,7 +4,8 @@ type Register = *volatile u32;
 
 fn main() -> i32 {
     unsafe {
-        val console: Register = Register(0xfff03000);
+        val console_address: usize = usize(0xfff03000);
+        val console: Register = Register(console_address);
         *console = 70;
         *console = 79;
         *console = 82;
