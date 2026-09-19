@@ -80,3 +80,42 @@ mod tests {
         assert!(validate_sia32_privileged_operations(CraneliftTarget::Aarch64, &function).is_ok());
     }
 }
+
+
+/// Stable bridge descriptor consumed by the SIA32 machine-backend integration.
+/// Keeping this conversion in one place prevents frontend operation names from
+/// leaking into Cranelift target code.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Sia32MachinePrivilegedOp {
+    Trap { imm8: u8 },
+    ReadSystem { selector: u8 },
+    WriteSystem { selector: u8 },
+    SwapScratch,
+    Return,
+    ReturnContext,
+    TlbFence,
+    TlbFenceVa,
+    TlbFenceAsid,
+    WaitForInterrupt,
+    SyncInstruction,
+    Fence,
+}
+
+impl From<Sia32PrivilegedOperation> for Sia32MachinePrivilegedOp {
+    fn from(value: Sia32PrivilegedOperation) -> Self {
+        match value {
+            Sia32PrivilegedOperation::Trap { imm8 } => Self::Trap { imm8 },
+            Sia32PrivilegedOperation::ReadSystem { system_register } => Self::ReadSystem { selector: system_register },
+            Sia32PrivilegedOperation::WriteSystem { system_register } => Self::WriteSystem { selector: system_register },
+            Sia32PrivilegedOperation::SwapScratch => Self::SwapScratch,
+            Sia32PrivilegedOperation::Return => Self::Return,
+            Sia32PrivilegedOperation::ReturnContext => Self::ReturnContext,
+            Sia32PrivilegedOperation::TlbFence => Self::TlbFence,
+            Sia32PrivilegedOperation::TlbFenceVa => Self::TlbFenceVa,
+            Sia32PrivilegedOperation::TlbFenceAsid => Self::TlbFenceAsid,
+            Sia32PrivilegedOperation::WaitForInterrupt => Self::WaitForInterrupt,
+            Sia32PrivilegedOperation::SyncInstruction => Self::SyncInstruction,
+            Sia32PrivilegedOperation::Fence => Self::Fence,
+        }
+    }
+}
