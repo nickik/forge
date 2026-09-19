@@ -156,15 +156,17 @@ fn direct_scalar_call_lowers_and_reaches_relocation_boundary_on_both_targets() {
         assert!(clif.contains("call"), "{clif}");
         assert!(clif.contains("u0:10"), "{clif}");
 
-        let error = backend
+        let machine = backend
             .emit_machine_code(&prepared, caller_owner)
-            .expect_err("direct call requires relocation linking after C8");
-        assert_eq!(
-            error,
-            BackendError::UnsupportedFir {
-                component: "machine-code relocations"
-            }
-        );
+            .expect("direct call machine code");
+        if target == CraneliftTarget::Sia32 {
+            assert_eq!(machine.relocations().len(), 1);
+            let relocation = &machine.relocations()[0];
+            assert_eq!(relocation.target, callee_owner);
+            assert_eq!(relocation.kind, cranelift_codegen::binemit::Reloc::Abs4);
+        } else {
+            panic!("non-SIA target unexpectedly accepted direct-call relocation");
+        }
     }
 }
 
