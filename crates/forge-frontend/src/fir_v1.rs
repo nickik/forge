@@ -1478,7 +1478,16 @@ impl<'a> FunctionLowerer<'a> {
                     ResolvedBuiltinValue::SiaFence => Sia32PrivilegedOperation::Fence,
                     _ => unreachable!(),
                 };
-                self.emit_value(expr.span, result_ty, FirInstructionKind::Sia32Privileged { operation: op, args: lowered_args })
+                let instruction = FirInstructionKind::Sia32Privileged { operation: op, args: lowered_args };
+                if result_ty == Ty::Void || result_ty == Ty::Never {
+                    self.emit_void(expr.span, instruction);
+                    // Expression statements still require an internal value id from
+                    // lower_expr; keep that bookkeeping separate from the void
+                    // privileged instruction itself.
+                    self.emit_value(expr.span, Ty::Void, FirInstructionKind::Unit)
+                } else {
+                    self.emit_value(expr.span, result_ty, instruction)
+                }
             }
             TypedExprKind::BuiltinConstructor { constructor, .. } => {
                 let HirExprKind::Call { args, .. } = &expr.kind else {
