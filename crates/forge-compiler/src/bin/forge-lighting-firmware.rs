@@ -115,7 +115,9 @@ fn emit_linked_image(
     entry_name: &str,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut objects = Vec::new();
-    for owner in module.functions.keys().copied() {
+    let owners = std::iter::once(entry)
+        .chain(module.functions.keys().copied().filter(|owner| *owner != entry));
+    for owner in owners {
         let machine = backend.emit_machine_code(prepared, owner)?;
         if machine.target() != CraneliftTarget::Sia32 {
             return Err("compiler selected a non-SIA32 backend".into());
