@@ -1525,6 +1525,7 @@ impl<'a> FunctionLowerer<'a> {
                         result_ty,
                         FirInstructionKind::MakeResultErr { error: value },
                     ),
+                    _ => unreachable!("SIA32 builtins are lowered by TypedExprKind::Sia32Privileged"),
                 }
             }
             TypedExprKind::UnsafeOperation {
@@ -3859,7 +3860,6 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
 fn integer_literal_u8(expr: &HirExpr) -> Option<u8> {
     match &expr.kind {
         HirExprKind::Integer { text } => {
-            let digits = text.trim_end_matches(|c: char| c.is_ascii_alphabetic() || c.is_ascii_digit() && false);
             let raw = text.split(|c: char| c == 'u' || c == 'i').next().unwrap_or(text);
             if let Some(hex) = raw.strip_prefix("0x") { u8::from_str_radix(hex, 16).ok() } else { raw.parse().ok() }
         }
