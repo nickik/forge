@@ -32,11 +32,18 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     let source = PathBuf::from(args.next().unwrap_or_else(|| usage()));
     let mut output = source.with_extension("lighting.s");
     let mut entry = "main".to_owned();
+    let mut text_base: u32 = 0xffff_0014;
+    let mut raw_image = false;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "-o" | "--output" => output = PathBuf::from(args.next().unwrap_or_else(|| usage())),
             "--entry" => entry = args.next().unwrap_or_else(|| usage()),
+            "--text-base" => {
+                let value = args.next().unwrap_or_else(|| usage());
+                text_base = if let Some(hex) = value.strip_prefix("0x") { u32::from_str_radix(hex, 16)? } else { value.parse()? };
+            }
+            "--raw-image" => raw_image = true,
             "-h" | "--help" => usage(),
             _ => usage(),
         }
@@ -91,9 +98,14 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
 
     let backend = CraneliftBackend::sia32()?;
     let prepared = backend.prepare_module_with_types(&fir.module, &definitions)?;
-    let image = emit_linked_image(&backend, &prepared, &fir.module, owner, &entry)?;
-    let assembly = lighting_rom_assembly(&image, &entry);
-    fs::write(&output, assembly)?;
+    let image = emit_linked_image(&backend, &prepared, &fir.module, owner, &entry, text_base)?;
+    if raw_image {
+        fs::write(&output, &image)?;
+    } else {
+        if text_base != 0xffff_0014 { return Err("--text-base requires --raw-image".into()); }
+        let assembly = lighting_rom_assembly(&image, &entry);
+        fs::write(&output, assembly)?;
+    }
     eprintln!(
         "wrote {} bytes of SIA32 Forge code to {} (wrapped as Lighting reset ROM)",
         image.len(),
@@ -116,7 +128,8 @@ fn emit_linked_image(
     module: &forge_fir::FirModule,
     entry: forge_fir::DefId,
     entry_name: &str,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    text_base: u32,
+) -> Result<Vec<u8>>, Box<dyn std::error::Error>> {
     let mut objects = Vec::new();
     let owners = std::iter::once(entry).chain(
         module
@@ -157,15 +170,10 @@ fn emit_linked_image(
 
     // The linked bytes execute from ROM_BASE in Lighting, so relocations must
     // contain final architectural addresses rather than zero-based image offsets.
-    const LIGHTING_ROM_BASE: u32 = 0xffff_0000;
-    // The reset shim occupies 0x14 bytes before forge_entry in the ROM source.
-    // SIAO32 relocations must use the address where linked Forge text actually
-    // executes, not the beginning of the containing ROM.
-    const FORGE_TEXT_BASE: u32 = LIGHTING_ROM_BASE + 0x14;
-    let image = build_sia32_flat_image(&objects, FORGE_TEXT_BASE, entry_name, 0)?;
-    if image.entry() != FORGE_TEXT_BASE {
+    let image = build_sia32_flat_image(&objects, text_base, entry_name, 0)?;
+    if image.entry() != text_base {
         return Err(format!(
-            "firmware entry must link at Forge text base 0xffff0014, got 0x{:x}",
+            "firmware entry must link at requested text base 0x{text_base:08x}, got 0x{:x}",
             image.entry()
         )
         .into());
