@@ -323,8 +323,14 @@ fn lossless_integer_conversion(
         return Ok(false);
     };
 
-    if target_bits <= source_bits {
+    if target_bits < source_bits {
         return Ok(false);
+    }
+    if target_bits == source_bits {
+        // Equal-width aliases such as u32 <-> usize on SIA32 preserve every
+        // bit and value when signedness is unchanged. They lower to the same
+        // CLIF integer type and require no machine instruction.
+        return Ok(source_signed == target_signed);
     }
 
     Ok(match (source_signed, target_signed) {
