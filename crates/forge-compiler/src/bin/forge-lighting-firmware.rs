@@ -53,7 +53,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
             "--user-image" => {
                 user_image = true;
                 raw_image = true;
-            },
+            }
             "--embed-payload" => {
                 let path = PathBuf::from(args.next().unwrap_or_else(|| usage()));
                 let off = args.next().unwrap_or_else(|| usage());
@@ -146,7 +146,13 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!(
         "wrote {} bytes of SIA32 Forge {} to {}",
         image.len(),
-        if user_image { "user image" } else if raw_image { "raw image" } else { "reset ROM payload" },
+        if user_image {
+            "user image"
+        } else if raw_image {
+            "raw image"
+        } else {
+            "reset ROM payload"
+        },
         output.display()
     );
     Ok(())
