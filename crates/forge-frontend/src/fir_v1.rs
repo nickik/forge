@@ -1453,7 +1453,16 @@ impl<'a> FunctionLowerer<'a> {
                     self.diagnostic(expr.span, "fir/sia32-shape", "resolved SIA32 operation is not a call");
                     return self.poison(expr.span, result_ty);
                 };
-                let lowered_args = args.iter().map(|arg| self.lower_expr(arg_value(arg))).collect::<Vec<_>>();
+                // Selector immediates for TRAP/SREAD/SWRITE are encoded in
+                // the FIR operation itself, not carried as runtime operands.
+                // SWRITE therefore retains only its second (u32 value) operand.
+                let lowered_args = match operation {
+                    ResolvedBuiltinValue::SiaTrap | ResolvedBuiltinValue::SiaSread => Vec::new(),
+                    ResolvedBuiltinValue::SiaSwrite => args.get(1)
+                        .map(|arg| vec![self.lower_expr(arg_value(arg))])
+                        .unwrap_or_default(),
+                    _ => args.iter().map(|arg| self.lower_expr(arg_value(arg))).collect::<Vec<_>>(),
+                };
                 let op = match operation {
                     ResolvedBuiltinValue::SiaTrap => {
                         let imm8 = first_positional(args).and_then(integer_literal_u8).unwrap_or(0);
