@@ -1448,6 +1448,38 @@ impl<'a> FunctionLowerer<'a> {
             TypedExprKind::ResolvedBitField { access, .. } => {
                 self.lower_bitfield_read(expr, access, result_ty)
             }
+            TypedExprKind::Sia32Privileged { operation, .. } => {
+                let HirExprKind::Call { args, .. } = &expr.kind else {
+                    self.diagnostic(expr.span, "fir/sia32-shape", "resolved SIA32 operation is not a call");
+                    return self.poison(expr.span, result_ty);
+                };
+                let lowered_args = args.iter().map(|arg| self.lower_expr(arg_value(arg))).collect::<Vec<_>>();
+                let op = match operation {
+                    ResolvedBuiltinValue::SiaTrap => {
+                        let imm8 = first_positional(args).and_then(integer_literal_u8).unwrap_or(0);
+                        Sia32PrivilegedOperation::Trap { imm8 }
+                    }
+                    ResolvedBuiltinValue::SiaSread => {
+                        let system_register = first_positional(args).and_then(integer_literal_u8).unwrap_or(0);
+                        Sia32PrivilegedOperation::ReadSystem { system_register }
+                    }
+                    ResolvedBuiltinValue::SiaSwrite => {
+                        let system_register = first_positional(args).and_then(integer_literal_u8).unwrap_or(0);
+                        Sia32PrivilegedOperation::WriteSystem { system_register }
+                    }
+                    ResolvedBuiltinValue::SiaSswapScratch => Sia32PrivilegedOperation::SwapScratch,
+                    ResolvedBuiltinValue::SiaSret => Sia32PrivilegedOperation::Return,
+                    ResolvedBuiltinValue::SiaSretctx => Sia32PrivilegedOperation::ReturnContext,
+                    ResolvedBuiltinValue::SiaTlbfence => Sia32PrivilegedOperation::TlbFence,
+                    ResolvedBuiltinValue::SiaTlbfenceVa => Sia32PrivilegedOperation::TlbFenceVa,
+                    ResolvedBuiltinValue::SiaTlbfenceAsid => Sia32PrivilegedOperation::TlbFenceAsid,
+                    ResolvedBuiltinValue::SiaWfi => Sia32PrivilegedOperation::WaitForInterrupt,
+                    ResolvedBuiltinValue::SiaSyncI => Sia32PrivilegedOperation::SyncInstruction,
+                    ResolvedBuiltinValue::SiaFence => Sia32PrivilegedOperation::Fence,
+                    _ => unreachable!(),
+                };
+                self.emit_value(expr.span, result_ty, FirInstructionKind::Sia32Privileged { operation: op, args: lowered_args })
+            }
             TypedExprKind::BuiltinConstructor { constructor, .. } => {
                 let HirExprKind::Call { args, .. } = &expr.kind else {
                     self.diagnostic(
@@ -3822,4 +3854,15 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
         }
     }
     diagnostics
+}
+
+fn integer_literal_u8(expr: &HirExpr) -> Option<u8> {
+    match &expr.kind {
+        HirExprKind::Integer { text } => {
+            let digits = text.trim_end_matches(|c: char| c.is_ascii_alphabetic() || c.is_ascii_digit() && false);
+            let raw = text.split(|c: char| c == 'u' || c == 'i').next().unwrap_or(text);
+            if let Some(hex) = raw.strip_prefix("0x") { u8::from_str_radix(hex, 16).ok() } else { raw.parse().ok() }
+        }
+        _ => None,
+    }
 }
