@@ -1,0 +1,13 @@
+module examples.m28_user_probe;
+
+type P32 = *volatile u32;
+
+pub fn system_task_entry() -> i32 {
+    sia_trap(0x40u8);
+    unsafe {
+        val proof: P32 = P32(0x0020f000u32);
+        *proof = 0x4d32384fu32;
+    }
+    sia_trap(0x41u8);
+    return 0;
+}
