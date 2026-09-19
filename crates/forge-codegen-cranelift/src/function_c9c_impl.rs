@@ -986,7 +986,24 @@ fn index_address(
             let offset = scale_index(index, stride, types, cursor)?;
             Ok((cursor.ins().iadd(data, offset), element.as_ref().clone()))
         }
-        _ => Err(shape(format!("index on non-array/slice {base_ty:?}"))),
+        Ty::Str => {
+            let layout = layouts.layout_of(base_ty).map_err(layout_error)?;
+            let LayoutKind::Str { data_offset, .. } = layout.kind else {
+                return Err(shape("str has non-str layout"));
+            };
+            let data = cursor.ins().load(
+                types.pointer_type()?,
+                base_flags,
+                base_address,
+                i32_offset(data_offset)?,
+            );
+            // str indexing is explicitly UTF-8 byte indexing in Forge v1.
+            Ok((
+                cursor.ins().iadd(data, index),
+                Ty::Int { signed: false, width: forge_fir::IntWidth::W8 },
+            ))
+        }
+        _ => Err(shape(format!("index on non-array/slice/str {base_ty:?}"))),
     }
 }
 
