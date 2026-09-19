@@ -822,13 +822,13 @@ fn lower_place_address(
             ))
         }
         FirPlace::RawDeref {
-            address, volatile, ..
+            address, volatile: _, ..
         } => {
-            if *volatile {
-                return Err(BackendError::UnsupportedInstruction {
-                    kind: "volatile raw dereference",
-                });
-            }
+            // Raw volatile accesses are represented as ordinary non-trapping CLIF
+            // loads/stores. Their ordering is already pinned by Forge FIR; do not
+            // synthesize a generic CLIF fence here. SIA32 has no architectural
+            // memory-fence instruction, and the backend must not invent one for
+            // device MMIO.
             let Ty::Pointer { inner, .. } = value_type(fir, *address)? else {
                 return Err(shape("raw dereference has non-pointer address"));
             };
