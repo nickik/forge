@@ -27,11 +27,21 @@ pub struct MachineCode {
 }
 
 impl MachineCode {
-    pub const fn target(&self) -> CraneliftTarget { self.target }
-    pub const fn owner(&self) -> DefId { self.owner }
-    pub fn bytes(&self) -> &[u8] { &self.bytes }
-    pub fn relocations(&self) -> &[MachineRelocation] { &self.relocations }
-    pub fn into_bytes(self) -> Vec<u8> { self.bytes }
+    pub const fn target(&self) -> CraneliftTarget {
+        self.target
+    }
+    pub const fn owner(&self) -> DefId {
+        self.owner
+    }
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+    pub fn relocations(&self) -> &[MachineRelocation] {
+        &self.relocations
+    }
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
 }
 
 impl CraneliftBackend {
