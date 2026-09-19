@@ -1301,7 +1301,6 @@ impl ModuleTypeEnv {
                 })
             }
             Ty::Str if name == "data" => MemberLookup::Field(Ty::Pointer {
-                mutable: false,
                 volatile: false,
                 inner: Box::new(Ty::Int { signed: false, width: IntWidth::W8 }),
             }),
