@@ -1300,6 +1300,10 @@ impl ModuleTypeEnv {
                     width: IntWidth::Pointer,
                 })
             }
+            Ty::Str if name == "data" => MemberLookup::Field(Ty::Pointer {
+                volatile: false,
+                inner: Box::new(Ty::Int { signed: false, width: IntWidth::W8 }),
+            }),
             Ty::Unknown | Ty::Error => MemberLookup::Unknown,
             _ => MemberLookup::Unsupported,
         }
@@ -1966,6 +1970,12 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 }
                 match base_ty {
                     Ty::Array { element, .. } | Ty::Slice { element, .. } => *element,
+                    // Forge str has pointer + byte-length representation. Indexing is
+                    // byte indexing; Unicode scalar/grapheme iteration is a distinct API.
+                    Ty::Str => Ty::Int {
+                        signed: false,
+                        width: IntWidth::W8,
+                    },
                     _ => Ty::Unknown,
                 }
             }
