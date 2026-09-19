@@ -64,7 +64,7 @@ pub fn build_sia32_flat_image(
     let mut cursor = align_address(load_address, SIA32_TEXT_ALIGNMENT)?;
     if cursor != load_address {
         return Err(image_error(
-            "SIA32 flat image load address must be 2-byte aligned",
+            "SIA32 flat image load address must be 4-byte aligned",
         ));
     }
 
@@ -114,9 +114,9 @@ pub fn build_sia32_flat_image(
             "SIA32 entry symbol {entry_symbol:?} is not in executable text"
         )));
     }
-    if entry & 1 != 0 {
+    if entry & 3 != 0 {
         return Err(image_error(format!(
-            "SIA32 entry symbol {entry_symbol:?} is not 2-byte aligned"
+            "SIA32 entry symbol {entry_symbol:?} is not 4-byte aligned"
         )));
     }
 
