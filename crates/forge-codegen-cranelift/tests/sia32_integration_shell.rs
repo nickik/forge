@@ -208,3 +208,51 @@ fn sia32_swrite_vmctx_emits_value_register_and_selector_five() {
         "missing SWRITE VMCTX encoding in {bytes:02x?}"
     );
 }
+
+
+#[test]
+fn sia32_accepts_equal_width_u32_to_usize_conversion() {
+    let backend = CraneliftBackend::sia32().unwrap();
+    let owner = DefId(88);
+    let input = FirValueId(0);
+    let output = FirValueId(1);
+    let u32_ty = Ty::Int { signed: false, width: IntWidth::W32 };
+    let usize_ty = Ty::Int { signed: false, width: IntWidth::Pointer };
+    let function = FirFunction {
+        owner,
+        params: vec![],
+        return_type: usize_ty.clone(),
+        locals: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![
+                FirInstruction {
+                    span: Span::new(0, 0),
+                    result: Some(input),
+                    kind: FirInstructionKind::Const {
+                        value: FirConst::Integer { text: "305419896u32".into() },
+                    },
+                },
+                FirInstruction {
+                    span: Span::new(0, 0),
+                    result: Some(output),
+                    kind: FirInstructionKind::Convert {
+                        value: input,
+                        target: usize_ty.clone(),
+                    },
+                },
+            ],
+            terminator: Some(FirTerminator::Return { value: Some(output) }),
+        }],
+        value_types: BTreeMap::from([(input, u32_ty), (output, usize_ty)]),
+    };
+    let mut module = FirModule::default();
+    module.functions.insert(owner, function);
+
+    let prepared = backend.prepare_module(&module).expect("u32 -> usize is lossless on SIA32");
+    let code = backend.emit_machine_code(&prepared, owner).expect("lower equal-width conversion");
+    assert!(!code.bytes().is_empty());
+}
