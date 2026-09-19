@@ -25,6 +25,7 @@ mod object;
 mod sia32_image;
 mod sia32_object;
 pub mod sia32_privileged;
+pub mod sia32_privileged_source;
 mod sia32_shell;
 mod target;
 mod types;
