@@ -43,6 +43,8 @@ pub enum Sia32PrivilegedOperation {
     Trap { imm8: u8 },
     ReadSystem { system_register: u8 },
     WriteSystem { system_register: u8 },
+    ReadGpr { register: u8 },
+    WriteGpr { register: u8 },
     SwapScratch,
     Return,
     ReturnContext,
@@ -1461,8 +1463,8 @@ impl<'a> FunctionLowerer<'a> {
                 // the FIR operation itself, not carried as runtime operands.
                 // SWRITE therefore retains only its second (u32 value) operand.
                 let lowered_args = match operation {
-                    ResolvedBuiltinValue::SiaTrap | ResolvedBuiltinValue::SiaSread => Vec::new(),
-                    ResolvedBuiltinValue::SiaSwrite => args
+                    ResolvedBuiltinValue::SiaTrap | ResolvedBuiltinValue::SiaSread | ResolvedBuiltinValue::SiaGprRead => Vec::new(),
+                    ResolvedBuiltinValue::SiaSwrite | ResolvedBuiltinValue::SiaGprWrite => args
                         .get(1)
                         .map(|arg| vec![self.lower_expr(arg_value(arg))])
                         .unwrap_or_default(),
@@ -1489,6 +1491,18 @@ impl<'a> FunctionLowerer<'a> {
                             .map(|expr| self.sia_immediate_u8(expr, "SIA32 privileged immediate"))
                             .unwrap_or(0);
                         Sia32PrivilegedOperation::WriteSystem { system_register }
+                    }
+                    ResolvedBuiltinValue::SiaGprRead => {
+                        let register = first_positional(args)
+                            .map(|expr| self.sia_immediate_u8(expr, "SIA32 GPR number"))
+                            .unwrap_or(0);
+                        Sia32PrivilegedOperation::ReadGpr { register }
+                    }
+                    ResolvedBuiltinValue::SiaGprWrite => {
+                        let register = first_positional(args)
+                            .map(|expr| self.sia_immediate_u8(expr, "SIA32 GPR number"))
+                            .unwrap_or(0);
+                        Sia32PrivilegedOperation::WriteGpr { register }
                     }
                     ResolvedBuiltinValue::SiaSswapScratch => Sia32PrivilegedOperation::SwapScratch,
                     ResolvedBuiltinValue::SiaSret => Sia32PrivilegedOperation::Return,
