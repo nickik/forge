@@ -7,7 +7,7 @@
 - [x] SIA32 direct-call literals preserve the required 4-byte function alignment through final image layout.
 - [x] The merged Forge image is consumed by LightingSimulation's end-to-end Cosmic boot proof.
 - [x] M27 proof reaches Cosmic, installs VMCTX/page tables, enables translation, enters and returns from TRAP 0x27, and halts intentionally.
-- [ ] Next vertical target: compile the smallest System Task/userspace image and support the kernel/user crossing required to run it.
+- [~] Next vertical target: compile the smallest System Task/userspace image and support the kernel/user crossing required to run it.\n  - [x] M28.1 add a dedicated freestanding SIA32 user-image compiler surface and deterministic image contract.\n  - [ ] Consume Cosmic's `user/native/m28_probe.fg` and validate TRAP 0x40 plus post-SRET proof-store code in LightingSimulation.
 
 
 This is the top-level implementation order for the Forge compiler after C14.
