@@ -1,5 +1,15 @@
 # Forge compiler evolution TODO
 
+## 2026-09 M27 checkpoint
+
+- [x] Forge emits and links the freestanding SIA32 image used by Cosmic's native M27 boot.
+- [x] SIA32 privileged operations used by Cosmic lower through production Cranelift: SREAD/SWRITE, TLBFENCE, SYNC.I and TRAP.
+- [x] SIA32 direct-call literals preserve the required 4-byte function alignment through final image layout.
+- [x] The merged Forge image is consumed by LightingSimulation's end-to-end Cosmic boot proof.
+- [x] M27 proof reaches Cosmic, installs VMCTX/page tables, enables translation, enters and returns from TRAP 0x27, and halts intentionally.
+- [ ] Next vertical target: compile the smallest System Task/userspace image and support the kernel/user crossing required to run it.
+
+
 This is the top-level implementation order for the Forge compiler after C14.
 The versioned `C12_TODO.md` through `C15_TODO.md` files remain the detailed
 acceptance records for their individual milestones.
