@@ -122,6 +122,13 @@ fn emit_linked_image(
         if machine.target() != CraneliftTarget::Sia32 {
             return Err("compiler selected a non-SIA32 backend".into());
         }
+        eprintln!(
+            "firmware function DefId({}) size={} first={:02x?} relocations={}",
+            owner.0,
+            machine.bytes().len(),
+            &machine.bytes()[..machine.bytes().len().min(12)],
+            machine.relocations().len()
+        );
         let mut object = Sia32Object::new(machine.bytes().to_vec());
         object.define_symbol(format!("__forge_fn_{:08x}", owner.0), 0)?;
         if owner == entry {
