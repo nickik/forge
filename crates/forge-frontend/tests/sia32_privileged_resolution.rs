@@ -27,13 +27,13 @@ fn resolves_cosmic_sia32_privileged_source_names() {
                 if let HirExprKind::Name { reference } = &callee.kind {
                     if let ResolvedName::BuiltinValue(value) = reference.root { out.push(value); }
                 }
-                for arg in args { collect(match arg { forge_frontend::body_hir::HirCallArg::Positional(v) => v, forge_frontend::body_hir::HirCallArg::Named { value, .. } => value }, out); }
+                for arg in args { collect(match arg { forge_frontend::body_hir::HirCallArg::Positional { value } => value, forge_frontend::body_hir::HirCallArg::Named { value, .. } => value }, out); }
             }
             _ => {}
         }
     }
     for stmt in &body.block.statements {
-        if let forge_frontend::body_hir::HirStmtKind::Expr { value } = &stmt.kind { collect(value, &mut builtins); }
+        if let forge_frontend::body_hir::HirStmtKind::Expr { expr } = &stmt.kind { collect(expr, &mut builtins); }
     }
     assert!(builtins.contains(&ResolvedBuiltinValue::SiaTrap));
     assert!(builtins.contains(&ResolvedBuiltinValue::SiaSwrite));
