@@ -197,6 +197,10 @@ fn lighting_rom_assembly(code: &[u8], entry: &str, payload: Option<(&[u8], u32)>
     out.push_str("    ; Firmware owns early-machine stack initialization. Lighting reset leaves GPRs zero.\n");
     out.push_str("    LDPC.W r13, lit_stack_top\n");
     out.push_str("    BL forge_entry\n");
+    if payload.is_some() {
+        out.push_str("    LDPC.W r12, lit_os_entry\n");
+        out.push_str("    CALLR r12\n");
+    }
     out.push_str("    LDPC.W r11, lit_halt\n");
     out.push_str("    LI r2, 1\n");
     out.push_str("    SW r2, [r11]\n");
@@ -204,7 +208,9 @@ fn lighting_rom_assembly(code: &[u8], entry: &str, payload: Option<(&[u8], u32)>
     out.push_str("    B halted_forever\n\n");
     out.push_str(".align 4\n");
     out.push_str("lit_halt: .word 0xfff02008\n");
-    out.push_str("lit_stack_top: .word 0x01000000\n\n");
+    out.push_str("lit_stack_top: .word 0x01000000\n");
+    if payload.is_some() { out.push_str("lit_os_entry: .word 0x00100000\n"); }
+    out.push_str("\n");
     out.push_str(&format!("; Forge entry: {entry}\nforge_entry:\n"));
     for chunk in code.chunks(16) {
         out.push_str("    .byte ");
