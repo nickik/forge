@@ -1300,6 +1300,11 @@ impl ModuleTypeEnv {
                     width: IntWidth::Pointer,
                 })
             }
+            Ty::Str if name == "data" => MemberLookup::Field(Ty::Pointer {
+                mutable: false,
+                volatile: false,
+                inner: Box::new(Ty::Int { signed: false, width: IntWidth::W8 }),
+            }),
             Ty::Unknown | Ty::Error => MemberLookup::Unknown,
             _ => MemberLookup::Unsupported,
         }
