@@ -85,6 +85,7 @@ mod tests {
 /// Stable bridge descriptor consumed by the SIA32 machine-backend integration.
 /// Keeping this conversion in one place prevents frontend operation names from
 /// leaking into Cranelift target code.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Sia32MachinePrivilegedOp {
     Trap { imm8: u8 },
