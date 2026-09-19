@@ -441,7 +441,7 @@ fn lower_sia32_privileged_instruction(
     let result_value = match operation {
         Op::Trap { imm8 } => { cursor.ins().sia_trap(imm8); None }
         Op::ReadSystem { system_register } => Some(cursor.ins().sia_sread(system_register)),
-        Op::WriteSystem { system_register } => { cursor.ins().sia_swrite(operand(1)?, system_register); None }
+        Op::WriteSystem { system_register } => { cursor.ins().sia_swrite(operand(0)?, system_register); None }
         Op::Return => { cursor.ins().sia_sret(); None }
         Op::TlbFence => { cursor.ins().sia_tlbfence(); None }
         Op::TlbFenceVa => { cursor.ins().sia_tlbfence_va(operand(0)?); None }
