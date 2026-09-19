@@ -75,6 +75,21 @@ jobs:
           else
             grep -Eq 'relocation|machine-code relocations|SIA32' /tmp/forge-lighting-functions.err
           fi
+      - name: M28 SIA32 freestanding user image
+        timeout-minutes: 3
+        run: |
+          cargo run --quiet -p forge-compiler --bin forge-lighting-firmware -- \
+            "$PWD/examples/m28-user-probe.fg" --entry system_task_entry \
+            --user-image --text-base 0x00200000 -o /tmp/m28-user.bin
+          test -s /tmp/m28-user.bin
+          python3 - <<'PY'
+          image = open("/tmp/m28-user.bin", "rb").read()
+          trap40 = bytes((0x0f, 0xc4))
+          trap41 = bytes((0x1f, 0xc4))
+          assert trap40 in image, "missing architectural TRAP 0x40"
+          assert trap41 in image, "missing architectural TRAP 0x41"
+          print(f"M28 user image: {len(image)} bytes; TRAP 0x40/0x41 present")
+          PY
 
       - name: Generated native collections snapshot
         timeout-minutes: 3
