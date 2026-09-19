@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process;
 
-use forge_codegen_cranelift::{CraneliftBackend, CraneliftTarget};
+use forge_codegen_cranelift::{build_sia32_flat_image, CraneliftBackend, CraneliftTarget, Sia32Object};
 use forge_frontend::{
     ast::SourceFile, collect_type_definitions, lower_fir, lower_module, lower_resolved_bodies,
     parse_source, type_check_module, IntWidth, Ty,
@@ -88,7 +88,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
 
     let backend = CraneliftBackend::sia32()?;
     let prepared = backend.prepare_module_with_types(&fir.module, &definitions)?;
-    let image = emit_relocation_free_image(&backend, &prepared, owner, &entry)?;
+    let image = emit_linked_image(&backend, &prepared, &fir.module, owner, &entry)?;
     let assembly = lighting_rom_assembly(&image, &entry);
     fs::write(&output, assembly)?;
     eprintln!(
@@ -107,17 +107,45 @@ fn parse_clean(source: &str) -> Result<SourceFile, Box<dyn std::error::Error>> {
     Ok(parsed.ast.expect("checked above"))
 }
 
-fn emit_relocation_free_image(
+fn emit_linked_image(
     backend: &CraneliftBackend,
     prepared: &forge_codegen_cranelift::PreparedModule,
+    module: &forge_fir::FirModule,
     entry: forge_fir::DefId,
-    _entry_name: &str,
+    entry_name: &str,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let machine = backend.emit_machine_code(prepared, entry)?;
-    if machine.target() != CraneliftTarget::Sia32 {
-        return Err("compiler selected a non-SIA32 backend".into());
+    let mut objects = Vec::new();
+    for owner in module.functions.keys().copied() {
+        let machine = backend.emit_machine_code(prepared, owner)?;
+        if machine.target() != CraneliftTarget::Sia32 {
+            return Err("compiler selected a non-SIA32 backend".into());
+        }
+        let mut object = Sia32Object::new(machine.bytes().to_vec());
+        object.define_symbol(format!("__forge_fn_{:08x}", owner.0), 0)?;
+        if owner == entry {
+            object.define_symbol(entry_name, 0)?;
+        }
+        for relocation in machine.relocations() {
+            let addend = i32::try_from(relocation.addend)
+                .map_err(|_| "SIA32 relocation addend does not fit i32")?;
+            object.add_relocation(
+                relocation.offset,
+                relocation.kind,
+                format!("__forge_fn_{:08x}", relocation.target.0),
+                addend,
+            )?;
+        }
+        objects.push(object);
     }
-    Ok(machine.into_bytes())
+
+    let image = build_sia32_flat_image(&objects, 0, entry_name, 0)?;
+    if image.entry() != 0 {
+        return Err(format!(
+            "firmware entry must currently link at ROM offset 0, got 0x{:x}",
+            image.entry()
+        ).into());
+    }
+    Ok(image.bytes().to_vec())
 }
 
 fn lighting_rom_assembly(code: &[u8], entry: &str) -> String {
