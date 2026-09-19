@@ -216,8 +216,14 @@ fn sia32_accepts_equal_width_u32_to_usize_conversion() {
     let owner = DefId(88);
     let input = FirValueId(0);
     let output = FirValueId(1);
-    let u32_ty = Ty::Int { signed: false, width: IntWidth::W32 };
-    let usize_ty = Ty::Int { signed: false, width: IntWidth::Pointer };
+    let u32_ty = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let usize_ty = Ty::Int {
+        signed: false,
+        width: IntWidth::Pointer,
+    };
     let function = FirFunction {
         owner,
         params: vec![],
@@ -233,7 +239,9 @@ fn sia32_accepts_equal_width_u32_to_usize_conversion() {
                     span: Span::new(0, 0),
                     result: Some(input),
                     kind: FirInstructionKind::Const {
-                        value: FirConst::Integer { text: "305419896u32".into() },
+                        value: FirConst::Integer {
+                            text: "305419896u32".into(),
+                        },
                     },
                 },
                 FirInstruction {
@@ -245,14 +253,20 @@ fn sia32_accepts_equal_width_u32_to_usize_conversion() {
                     },
                 },
             ],
-            terminator: Some(FirTerminator::Return { value: Some(output) }),
+            terminator: Some(FirTerminator::Return {
+                value: Some(output),
+            }),
         }],
         value_types: BTreeMap::from([(input, u32_ty), (output, usize_ty)]),
     };
     let mut module = FirModule::default();
     module.functions.insert(owner, function);
 
-    let prepared = backend.prepare_module(&module).expect("u32 -> usize is lossless on SIA32");
-    let code = backend.emit_machine_code(&prepared, owner).expect("lower equal-width conversion");
+    let prepared = backend
+        .prepare_module(&module)
+        .expect("u32 -> usize is lossless on SIA32");
+    let code = backend
+        .emit_machine_code(&prepared, owner)
+        .expect("lower equal-width conversion");
     assert!(!code.bytes().is_empty());
 }
