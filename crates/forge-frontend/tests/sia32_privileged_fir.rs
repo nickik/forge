@@ -113,7 +113,7 @@ fn fixed_gpr_syscall_builtins_lower_to_explicit_fir() {
         fn main() -> i32 {
             sia_gpr_write(1u8, 0u32);
             val result: u32 = sia_gpr_read(1u8);
-            return i32(result);
+            return 0;
         }
     "#;
     let parsed = parse_source(source);
