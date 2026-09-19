@@ -861,7 +861,7 @@ fn lower_place_address(
             ))
         }
         FirPlace::RawDeref {
-            address, volatile: _, ..
+            address, ..
         } => {
             // Raw volatile accesses are represented as ordinary non-trapping CLIF
             // loads/stores. Their ordering is already pinned by Forge FIR; do not

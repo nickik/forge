@@ -35,6 +35,25 @@ pub enum OverflowMode {
     Wrapping,
 }
 
+/// Target-owned protected-machine operations. These remain explicit in FIR so
+/// generic backends cannot accidentally assign host-call semantics to them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Sia32PrivilegedOperation {
+    Trap { imm8: u8 },
+    ReadSystem { system_register: u8 },
+    WriteSystem { system_register: u8 },
+    SwapScratch,
+    Return,
+    ReturnContext,
+    TlbFence,
+    TlbFenceVa,
+    TlbFenceAsid,
+    WaitForInterrupt,
+    SyncInstruction,
+    Fence,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FirDiagnostic {
     pub span: Span,
@@ -308,6 +327,12 @@ pub enum FirInstructionKind {
         callee: FirValueId,
         args: Vec<FirValueId>,
         tail: bool,
+    },
+    /// SIA32-P operation retained as an explicit target operation through FIR.
+    /// Operand values, when required, are carried in `args`.
+    Sia32Privileged {
+        operation: Sia32PrivilegedOperation,
+        args: Vec<FirValueId>,
     },
     ResultIsOk {
         value: FirValueId,
@@ -1423,6 +1448,73 @@ impl<'a> FunctionLowerer<'a> {
             TypedExprKind::ResolvedBitField { access, .. } => {
                 self.lower_bitfield_read(expr, access, result_ty)
             }
+            TypedExprKind::Sia32Privileged { operation, .. } => {
+                let HirExprKind::Call { args, .. } = &expr.kind else {
+                    self.diagnostic(
+                        expr.span,
+                        "fir/sia32-shape",
+                        "resolved SIA32 operation is not a call",
+                    );
+                    return self.poison(expr.span, result_ty);
+                };
+                // Selector immediates for TRAP/SREAD/SWRITE are encoded in
+                // the FIR operation itself, not carried as runtime operands.
+                // SWRITE therefore retains only its second (u32 value) operand.
+                let lowered_args = match operation {
+                    ResolvedBuiltinValue::SiaTrap | ResolvedBuiltinValue::SiaSread => Vec::new(),
+                    ResolvedBuiltinValue::SiaSwrite => args
+                        .get(1)
+                        .map(|arg| vec![self.lower_expr(arg_value(arg))])
+                        .unwrap_or_default(),
+                    _ => args
+                        .iter()
+                        .map(|arg| self.lower_expr(arg_value(arg)))
+                        .collect::<Vec<_>>(),
+                };
+                let op = match operation {
+                    ResolvedBuiltinValue::SiaTrap => {
+                        let imm8 = first_positional(args)
+                            .map(|expr| self.sia_immediate_u8(expr, "SIA32 privileged immediate"))
+                            .unwrap_or(0);
+                        Sia32PrivilegedOperation::Trap { imm8 }
+                    }
+                    ResolvedBuiltinValue::SiaSread => {
+                        let system_register = first_positional(args)
+                            .map(|expr| self.sia_immediate_u8(expr, "SIA32 privileged immediate"))
+                            .unwrap_or(0);
+                        Sia32PrivilegedOperation::ReadSystem { system_register }
+                    }
+                    ResolvedBuiltinValue::SiaSwrite => {
+                        let system_register = first_positional(args)
+                            .map(|expr| self.sia_immediate_u8(expr, "SIA32 privileged immediate"))
+                            .unwrap_or(0);
+                        Sia32PrivilegedOperation::WriteSystem { system_register }
+                    }
+                    ResolvedBuiltinValue::SiaSswapScratch => Sia32PrivilegedOperation::SwapScratch,
+                    ResolvedBuiltinValue::SiaSret => Sia32PrivilegedOperation::Return,
+                    ResolvedBuiltinValue::SiaSretctx => Sia32PrivilegedOperation::ReturnContext,
+                    ResolvedBuiltinValue::SiaTlbfence => Sia32PrivilegedOperation::TlbFence,
+                    ResolvedBuiltinValue::SiaTlbfenceVa => Sia32PrivilegedOperation::TlbFenceVa,
+                    ResolvedBuiltinValue::SiaTlbfenceAsid => Sia32PrivilegedOperation::TlbFenceAsid,
+                    ResolvedBuiltinValue::SiaWfi => Sia32PrivilegedOperation::WaitForInterrupt,
+                    ResolvedBuiltinValue::SiaSyncI => Sia32PrivilegedOperation::SyncInstruction,
+                    ResolvedBuiltinValue::SiaFence => Sia32PrivilegedOperation::Fence,
+                    _ => unreachable!(),
+                };
+                let instruction = FirInstructionKind::Sia32Privileged {
+                    operation: op,
+                    args: lowered_args,
+                };
+                if result_ty == Ty::Void || result_ty == Ty::Never {
+                    self.emit_void(expr.span, instruction);
+                    // Expression statements still require an internal value id from
+                    // lower_expr; keep that bookkeeping separate from the void
+                    // privileged instruction itself.
+                    self.emit_value(expr.span, Ty::Void, FirInstructionKind::Unit)
+                } else {
+                    self.emit_value(expr.span, result_ty, instruction)
+                }
+            }
             TypedExprKind::BuiltinConstructor { constructor, .. } => {
                 let HirExprKind::Call { args, .. } = &expr.kind else {
                     self.diagnostic(
@@ -1468,6 +1560,9 @@ impl<'a> FunctionLowerer<'a> {
                         result_ty,
                         FirInstructionKind::MakeResultErr { error: value },
                     ),
+                    _ => {
+                        unreachable!("SIA32 builtins are lowered by TypedExprKind::Sia32Privileged")
+                    }
                 }
             }
             TypedExprKind::UnsafeOperation {
@@ -3096,6 +3191,31 @@ impl<'a> FunctionLowerer<'a> {
         ok
     }
 
+    fn sia_immediate_u8(&mut self, expr: &HirExpr, what: &str) -> u8 {
+        if let Some(value) = integer_literal_u8(expr) {
+            return value;
+        }
+        let constant = match &expr.kind {
+            HirExprKind::Name { reference } => match reference.root {
+                ResolvedName::Def(def) => self.all_typed.constants.get(&def),
+                ResolvedName::Local(local) => self.local_constants.get(&local),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(ConstValue::Integer { value }) = constant {
+            if let Ok(value) = value.to_string().parse::<u8>() {
+                return value;
+            }
+        }
+        self.diagnostic(
+            expr.span,
+            "fir/sia32-immediate",
+            format!("{what} must be a compile-time u8 constant"),
+        );
+        0
+    }
+
     fn lower_name(&mut self, span: Span, name: ResolvedName, ty: Ty) -> FirValueId {
         match name {
             ResolvedName::Local(local) => {
@@ -3797,4 +3917,18 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
         }
     }
     diagnostics
+}
+
+fn integer_literal_u8(expr: &HirExpr) -> Option<u8> {
+    match &expr.kind {
+        HirExprKind::Integer { text } => {
+            let raw = text.split(['u', 'i']).next().unwrap_or(text);
+            if let Some(hex) = raw.strip_prefix("0x") {
+                u8::from_str_radix(hex, 16).ok()
+            } else {
+                raw.parse().ok()
+            }
+        }
+        _ => None,
+    }
 }

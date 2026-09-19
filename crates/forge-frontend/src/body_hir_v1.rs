@@ -641,13 +641,8 @@ impl<'a, 'd> Lowerer<'a, 'd> {
         if let Some(index) = self.imports.get(name).copied() {
             return ResolvedName::Import(index);
         }
-        if matches!(name, "Some" | "Ok" | "Err") {
-            return ResolvedName::BuiltinValue(match name {
-                "Some" => ResolvedBuiltinValue::Some,
-                "Ok" => ResolvedBuiltinValue::Ok,
-                "Err" => ResolvedBuiltinValue::Err,
-                _ => unreachable!(),
-            });
+        if let Some(value) = resolved_builtin_value(name) {
+            return ResolvedName::BuiltinValue(value);
         }
         self.diagnostics.push(HirDiagnostic {
             span,
@@ -1466,4 +1461,25 @@ fn is_builtin_type(name: &str) -> bool {
             | "f32"
             | "f64"
     )
+}
+
+fn resolved_builtin_value(name: &str) -> Option<ResolvedBuiltinValue> {
+    Some(match name {
+        "Some" => ResolvedBuiltinValue::Some,
+        "Ok" => ResolvedBuiltinValue::Ok,
+        "Err" => ResolvedBuiltinValue::Err,
+        "sia_trap" => ResolvedBuiltinValue::SiaTrap,
+        "sia_sread" => ResolvedBuiltinValue::SiaSread,
+        "sia_swrite" => ResolvedBuiltinValue::SiaSwrite,
+        "sia_sswap_scratch" => ResolvedBuiltinValue::SiaSswapScratch,
+        "sia_sret" => ResolvedBuiltinValue::SiaSret,
+        "sia_sretctx" => ResolvedBuiltinValue::SiaSretctx,
+        "sia_tlbfence" => ResolvedBuiltinValue::SiaTlbfence,
+        "sia_tlbfence_va" => ResolvedBuiltinValue::SiaTlbfenceVa,
+        "sia_tlbfence_asid" => ResolvedBuiltinValue::SiaTlbfenceAsid,
+        "sia_wfi" => ResolvedBuiltinValue::SiaWfi,
+        "sia_sync_i" => ResolvedBuiltinValue::SiaSyncI,
+        "sia_fence" => ResolvedBuiltinValue::SiaFence,
+        _ => return None,
+    })
 }
