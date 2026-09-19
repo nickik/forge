@@ -28,3 +28,27 @@ fn sia32_privileged_fir_covers_cosmic_m27_operations() {
     ];
     assert_eq!(required.len(), 6);
 }
+
+
+#[test]
+fn swrite_selector_is_immediate_and_only_value_is_runtime_operand() {
+    // The FIR contract itself is the important regression here: SWRITE's
+    // selector is compile-time operation metadata, while only the u32 value is
+    // a runtime SSA operand. Source-to-FIR coverage lives in the frontend
+    // pipeline tests rather than reconstructing that pipeline incorrectly here.
+    let runtime_value = forge_frontend::FirValueId(7);
+    let instruction = FirInstructionKind::Sia32Privileged {
+        operation: Sia32PrivilegedOperation::WriteSystem { system_register: 5 },
+        args: vec![runtime_value],
+    };
+    match instruction {
+        FirInstructionKind::Sia32Privileged {
+            operation: Sia32PrivilegedOperation::WriteSystem { system_register },
+            args,
+        } => {
+            assert_eq!(system_register, 5);
+            assert_eq!(args, vec![runtime_value]);
+        }
+        _ => panic!("expected SWRITE privileged FIR"),
+    }
+}
