@@ -449,9 +449,15 @@ fn lower_sia32_privileged_instruction(
         Op::WaitForInterrupt => { cursor.ins().sia_wfi(); None }
         Op::SyncInstruction => { cursor.ins().sia_sync_i(); None }
         Op::Fence => { cursor.ins().fence(); None }
-        Op::SwapScratch | Op::ReturnContext => {
+        Op::SwapScratch => {
+            let input = operand(0)?;
+            // SIA32 SSWAP is represented by the target-specific CLIF operation:
+            // result receives old SCRATCH and the input becomes new SCRATCH.
+            Some(cursor.ins().sia_sswap_scratch(input))
+        }
+        Op::ReturnContext => {
             return Err(BackendError::UnsupportedInstruction {
-                kind: "SIA32 privileged operation not yet represented in CLIF bridge",
+                kind: "SIA32 SRETCTX not yet represented in CLIF bridge",
             });
         }
     };
