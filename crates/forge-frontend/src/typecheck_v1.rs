@@ -407,6 +407,10 @@ pub enum TypedExprKind {
         constructor: ResolvedBuiltinValue,
         hir: HirExpr,
     },
+    Sia32Privileged {
+        operation: ResolvedBuiltinValue,
+        hir: HirExpr,
+    },
     OptionalPromote {
         source_type: Ty,
         inner: Box<TypedExprKind>,
@@ -713,6 +717,7 @@ fn typed_expr_hir(kind: &TypedExprKind) -> Option<&HirExpr> {
         | TypedExprKind::UnsafeOperation { hir, .. }
         | TypedExprKind::ResolvedBitField { hir, .. }
         | TypedExprKind::BuiltinConstructor { hir, .. }
+        | TypedExprKind::Sia32Privileged { hir, .. }
         | TypedExprKind::OptionalPromote { hir, .. } => Some(hir),
     }
 }
@@ -1764,6 +1769,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
         let mut resolved_match: Option<TypedMatchPlan> = None;
         let mut resolved_unsafe: Option<(UnsafeOperationKind, UnsafeProvenance)> = None;
         let mut resolved_constructor: Option<ResolvedBuiltinValue> = None;
+        let mut resolved_sia32: Option<ResolvedBuiltinValue> = None;
         let mut ty = match &expr.kind {
             HirExprKind::Integer { text } => integer_literal_ty(text),
             HirExprKind::Float { text } => float_literal_ty(text),
@@ -1887,6 +1893,32 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     _ => None,
                 };
                 if let Some(constructor) = constructor {
+                    if !matches!(constructor, ResolvedBuiltinValue::Some | ResolvedBuiltinValue::Ok | ResolvedBuiltinValue::Err) {
+                        let u8_ty = Ty::Int { signed: false, width: IntWidth::W8 };
+                        let u32_ty = Ty::Int { signed: false, width: IntWidth::W32 };
+                        let (params, result) = match constructor {
+                            ResolvedBuiltinValue::SiaTrap => (vec![u8_ty.clone()], Ty::Void),
+                            ResolvedBuiltinValue::SiaSread => (vec![u8_ty.clone()], u32_ty.clone()),
+                            ResolvedBuiltinValue::SiaSwrite => (vec![u8_ty.clone(), u32_ty.clone()], Ty::Void),
+                            ResolvedBuiltinValue::SiaSswapScratch => (vec![u32_ty.clone()], u32_ty.clone()),
+                            ResolvedBuiltinValue::SiaSret => (vec![], Ty::Never),
+                            ResolvedBuiltinValue::SiaSretctx => (vec![u32_ty.clone()], Ty::Never),
+                            ResolvedBuiltinValue::SiaTlbfence => (vec![], Ty::Void),
+                            ResolvedBuiltinValue::SiaTlbfenceVa | ResolvedBuiltinValue::SiaTlbfenceAsid => (vec![u32_ty.clone()], Ty::Void),
+                            ResolvedBuiltinValue::SiaWfi | ResolvedBuiltinValue::SiaSyncI | ResolvedBuiltinValue::SiaFence => (vec![], Ty::Void),
+                            _ => unreachable!(),
+                        };
+                        if args.len() != params.len() {
+                            self.diagnostic(expr.span, "sia32/arity", format!("SIA32 privileged operation expects {} arguments", params.len()));
+                        }
+                        for (arg, param) in args.iter().zip(params.iter()) {
+                            let value = arg_value(arg);
+                            let actual = self.check_expr(value, Some(param));
+                            self.require_assignable(value.span, param, &actual, "sia32/type");
+                        }
+                        resolved_sia32 = Some(constructor);
+                        result
+                    } else {
                     let payload = if args.len() == 1 {
                         match &args[0] {
                             HirCallArg::Positional { value } => Some(value),
@@ -1943,6 +1975,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         );
                         self.check_expr(payload.expect("checked payload"), None);
                         Ty::Error
+                    }
                     }
                 } else {
                     let (result, call) = self.check_call(expr.span, callee, args);
@@ -2221,7 +2254,9 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 ty = expected.clone();
             }
         }
-        let base_kind = if let Some(access) = resolved_bitfield {
+        let base_kind = if let Some(operation) = resolved_sia32 {
+            TypedExprKind::Sia32Privileged { operation, hir: expr.clone() }
+        } else if let Some(access) = resolved_bitfield {
             TypedExprKind::ResolvedBitField {
                 access,
                 hir: expr.clone(),
