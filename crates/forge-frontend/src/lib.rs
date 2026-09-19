@@ -27,7 +27,7 @@ pub use hir::{
 pub use parser::{parse_source, Diagnostic, ParseOutput};
 pub use resolution::{
     resolve_module_bodies, BodyResolutionOutput, HirLocal, LocalId, NameUse, ResolvedBody,
-    ResolvedName,
+    ResolvedBuiltinValue, ResolvedName,
 };
 pub use typecheck::{
     collect_type_definitions, type_check_module, CaptureMode, ConstValue, ContextSlot, IntWidth,
@@ -44,7 +44,7 @@ pub use fir::{
     verify_fir_function, FirBasicBlock, FirBlockId, FirClosure, FirClosureField, FirConst,
     FirDiagnostic, FirFunction, FirGlobal, FirGlobalInitializer, FirInstruction,
     FirInstructionKind, FirLocal, FirLocalId, FirModule, FirOutput, FirPlace, FirSelectCase,
-    FirTerminator, FirUnaryOp, FirValueId, OverflowMode,
+    FirTerminator, FirUnaryOp, FirValueId, OverflowMode, Sia32PrivilegedOperation,
 };
 pub use fir_boundary::{dump_fir_module, lower_fir, verify_fir_boundary, verify_fir_module};
 

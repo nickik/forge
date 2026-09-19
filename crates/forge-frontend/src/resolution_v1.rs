@@ -27,6 +27,18 @@ pub enum ResolvedBuiltinValue {
     Some,
     Ok,
     Err,
+    SiaTrap,
+    SiaSread,
+    SiaSwrite,
+    SiaSswapScratch,
+    SiaSret,
+    SiaSretctx,
+    SiaTlbfence,
+    SiaTlbfenceVa,
+    SiaTlbfenceAsid,
+    SiaWfi,
+    SiaSyncI,
+    SiaFence,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -296,13 +308,7 @@ impl<'a, 'd> Resolver<'a, 'd> {
             self.record_use(name, span, ResolvedName::Import(index));
             return;
         }
-        if matches!(name, "Some" | "Ok" | "Err") {
-            let value = match name {
-                "Some" => ResolvedBuiltinValue::Some,
-                "Ok" => ResolvedBuiltinValue::Ok,
-                "Err" => ResolvedBuiltinValue::Err,
-                _ => unreachable!(),
-            };
+        if let Some(value) = resolved_builtin_value(name) {
             self.record_use(name, span, ResolvedName::BuiltinValue(value));
             return;
         }
@@ -681,4 +687,25 @@ fn builtin_types() -> BTreeSet<&'static str> {
     ]
     .into_iter()
     .collect()
+}
+
+fn resolved_builtin_value(name: &str) -> Option<ResolvedBuiltinValue> {
+    Some(match name {
+        "Some" => ResolvedBuiltinValue::Some,
+        "Ok" => ResolvedBuiltinValue::Ok,
+        "Err" => ResolvedBuiltinValue::Err,
+        "sia_trap" => ResolvedBuiltinValue::SiaTrap,
+        "sia_sread" => ResolvedBuiltinValue::SiaSread,
+        "sia_swrite" => ResolvedBuiltinValue::SiaSwrite,
+        "sia_sswap_scratch" => ResolvedBuiltinValue::SiaSswapScratch,
+        "sia_sret" => ResolvedBuiltinValue::SiaSret,
+        "sia_sretctx" => ResolvedBuiltinValue::SiaSretctx,
+        "sia_tlbfence" => ResolvedBuiltinValue::SiaTlbfence,
+        "sia_tlbfence_va" => ResolvedBuiltinValue::SiaTlbfenceVa,
+        "sia_tlbfence_asid" => ResolvedBuiltinValue::SiaTlbfenceAsid,
+        "sia_wfi" => ResolvedBuiltinValue::SiaWfi,
+        "sia_sync_i" => ResolvedBuiltinValue::SiaSyncI,
+        "sia_fence" => ResolvedBuiltinValue::SiaFence,
+        _ => return None,
+    })
 }

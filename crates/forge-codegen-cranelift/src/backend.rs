@@ -11,6 +11,7 @@ use target_lexicon::Triple;
 
 use crate::c9_memory_checks::validate_c9_memory_places;
 use crate::function::lower_function;
+use crate::sia32_privileged_lowering::validate_sia32_privileged_operations;
 use crate::{BackendError, CraneliftTarget, TargetLayout, TypeLowering};
 
 /// Target-specific Cranelift state. It deliberately owns no Forge semantic
@@ -107,6 +108,7 @@ impl CraneliftBackend {
             // Preserve all scalar semantic barriers established before C9.
             validate_c4_scalar_contract(fir, &self.layout, definitions)?;
             validate_c9_memory_places(fir)?;
+            validate_sia32_privileged_operations(self.target, fir)?;
 
             // FIR block IDs remain indexes, but value dependencies are allowed
             // to be non-topological in vector order. Schedule both scalar and
@@ -474,6 +476,9 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
                 available.contains(callee) && args.iter().all(|value| available.contains(value))
             }
             FirInstructionKind::MakeResultErr { error } => available.contains(error),
+            FirInstructionKind::Sia32Privileged { args, .. } => {
+                args.iter().all(|value| available.contains(value))
+            }
         };
         if !ready {
             return false;

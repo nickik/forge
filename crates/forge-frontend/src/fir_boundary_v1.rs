@@ -42,6 +42,7 @@ fn typed_source(kind: &TypedExprKind) -> &HirExpr {
         | TypedExprKind::UnsafeOperation { hir, .. }
         | TypedExprKind::ResolvedBitField { hir, .. }
         | TypedExprKind::BuiltinConstructor { hir, .. }
+        | TypedExprKind::Sia32Privileged { hir, .. }
         | TypedExprKind::OptionalPromote { hir, .. } => hir,
     }
 }

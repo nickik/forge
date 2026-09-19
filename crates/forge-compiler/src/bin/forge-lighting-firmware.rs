@@ -42,13 +42,21 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
             "--entry" => entry = args.next().unwrap_or_else(|| usage()),
             "--text-base" => {
                 let value = args.next().unwrap_or_else(|| usage());
-                text_base = if let Some(hex) = value.strip_prefix("0x") { u32::from_str_radix(hex, 16)? } else { value.parse()? };
+                text_base = if let Some(hex) = value.strip_prefix("0x") {
+                    u32::from_str_radix(hex, 16)?
+                } else {
+                    value.parse()?
+                };
             }
             "--raw-image" => raw_image = true,
             "--embed-payload" => {
                 let path = PathBuf::from(args.next().unwrap_or_else(|| usage()));
                 let off = args.next().unwrap_or_else(|| usage());
-                let offset = if let Some(hex) = off.strip_prefix("0x") { u32::from_str_radix(hex,16)? } else { off.parse()? };
+                let offset = if let Some(hex) = off.strip_prefix("0x") {
+                    u32::from_str_radix(hex, 16)?
+                } else {
+                    off.parse()?
+                };
                 payload = Some((path, offset));
             }
             "-h" | "--help" => usage(),
@@ -109,9 +117,18 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     if raw_image {
         fs::write(&output, &image)?;
     } else {
-        if text_base != 0xffff_0014 { return Err("--text-base requires --raw-image".into()); }
-        let payload_bytes = payload.as_ref().map(|(path, off)| Ok::<_,std::io::Error>((fs::read(path)?, *off))).transpose()?;
-        let assembly = lighting_rom_assembly(&image, &entry, payload_bytes.as_ref().map(|(b,o)|(b.as_slice(),*o)));
+        if text_base != 0xffff_0014 {
+            return Err("--text-base requires --raw-image".into());
+        }
+        let payload_bytes = payload
+            .as_ref()
+            .map(|(path, off)| Ok::<_, std::io::Error>((fs::read(path)?, *off)))
+            .transpose()?;
+        let assembly = lighting_rom_assembly(
+            &image,
+            &entry,
+            payload_bytes.as_ref().map(|(b, o)| (b.as_slice(), *o)),
+        );
         fs::write(&output, assembly)?;
     }
     eprintln!(
@@ -209,8 +226,10 @@ fn lighting_rom_assembly(code: &[u8], entry: &str, payload: Option<(&[u8], u32)>
     out.push_str(".align 4\n");
     out.push_str("lit_halt: .word 0xfff02008\n");
     out.push_str("lit_stack_top: .word 0x01000000\n");
-    if payload.is_some() { out.push_str("lit_os_entry: .word 0x00100000\n"); }
-    out.push_str("\n");
+    if payload.is_some() {
+        out.push_str("lit_os_entry: .word 0x00100000\n");
+    }
+    out.push('\n');
     out.push_str(&format!("; Forge entry: {entry}\nforge_entry:\n"));
     for chunk in code.chunks(16) {
         out.push_str("    .byte ");
@@ -226,7 +245,12 @@ fn lighting_rom_assembly(code: &[u8], entry: &str, payload: Option<(&[u8], u32)>
         out.push_str(&format!("\n.romorg 0x{offset:x}\nforge_payload:\n"));
         for chunk in bytes.chunks(16) {
             out.push_str("    .byte ");
-            for (index, byte) in chunk.iter().enumerate() { if index != 0 { out.push_str(", "); } out.push_str(&format!("0x{byte:02x}")); }
+            for (index, byte) in chunk.iter().enumerate() {
+                if index != 0 {
+                    out.push_str(", ");
+                }
+                out.push_str(&format!("0x{byte:02x}"));
+            }
             out.push('\n');
         }
     }

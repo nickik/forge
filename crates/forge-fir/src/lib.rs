@@ -21,9 +21,9 @@ pub use forge_frontend::{
     ConstValue, ContextSlot, DefId, ExprId, FirBasicBlock, FirBlockId, FirClosure, FirClosureField,
     FirConst, FirDiagnostic, FirFunction, FirGlobal, FirGlobalInitializer, FirInstruction,
     FirInstructionKind, FirLocal, FirLocalId, FirModule, FirOutput, FirPlace, FirSelectCase,
-    FirTerminator, FirUnaryOp, FirValueId, IntWidth, LocalId, OverflowMode, RuntimeOperationId, Ty,
-    TypeDefinition, TypeDefinitionKind, TypeDefinitionTable, TypeFieldDefinition,
-    TypeVariantDefinition, UnsafeOperationKind, UnsafeProvenance,
+    FirTerminator, FirUnaryOp, FirValueId, IntWidth, LocalId, OverflowMode, RuntimeOperationId,
+    Sia32PrivilegedOperation, Ty, TypeDefinition, TypeDefinitionKind, TypeDefinitionTable,
+    TypeFieldDefinition, TypeVariantDefinition, UnsafeOperationKind, UnsafeProvenance,
 };
 pub use layout::{
     FieldLayout, Layout, LayoutEngine, LayoutError, LayoutKind, LayoutTarget, Niche, SumEncoding,
