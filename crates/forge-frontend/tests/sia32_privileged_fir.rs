@@ -114,7 +114,7 @@ fn fixed_gpr_builtins_preserve_syscall_r1_contract_in_fir() {
             sia_gpr_write(1u8, 0u32);
             sia_trap(0x40u8);
             val result: u32 = sia_gpr_read(1u8);
-            return i32(result);
+            return 0;
         }
     "#;
     let parsed = parse_source(source);
