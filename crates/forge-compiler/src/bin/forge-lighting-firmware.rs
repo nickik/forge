@@ -140,10 +140,13 @@ fn emit_linked_image(
         objects.push(object);
     }
 
-    let image = build_sia32_flat_image(&objects, 0, entry_name, 0)?;
-    if image.entry() != 0 {
+    // The linked bytes execute from ROM_BASE in Lighting, so relocations must
+    // contain final architectural addresses rather than zero-based image offsets.
+    const LIGHTING_ROM_BASE: u32 = 0xffff_0000;
+    let image = build_sia32_flat_image(&objects, LIGHTING_ROM_BASE, entry_name, 0)?;
+    if image.entry() != LIGHTING_ROM_BASE {
         return Err(format!(
-            "firmware entry must currently link at ROM offset 0, got 0x{:x}",
+            "firmware entry must link at Lighting ROM base 0xffff0000, got 0x{:x}",
             image.entry()
         ).into());
     }
