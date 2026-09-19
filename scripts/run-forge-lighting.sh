@@ -4,7 +4,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIGHTING_SIM="${LIGHTING_SIM:-$ROOT/../LightingSimulation}"
 #SOURCE="${1:-$ROOT/examples/lighting/firmware_strings.fg}"
-SOURCE="${1:-$ROOT/examples/lighting/firmware_functions.fg}"
+#SOURCE="${1:-$ROOT/examples/lighting/firmware_functions.fg}"
+SOURCE="${1:-$ROOT/examples/lighting/firmware_strings.fg}"
+
 OUT_DIR="${FORGE_LIGHTING_OUT:-$ROOT/build/lighting-firmware}"
 MAX_STEPS="${FORGE_LIGHTING_MAX_STEPS:-100000}"
 
