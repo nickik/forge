@@ -12,7 +12,7 @@ use forge_frontend::{
 
 fn usage() -> ! {
     eprintln!(
-        "usage: forge-lighting-firmware <source.fg> [-o firmware.s] [--entry NAME]\n\n\
+        "usage: forge-lighting-firmware <source.fg> [-o firmware.s] [--entry NAME] [--raw-image | --user-image] [--text-base ADDR]\n\n\
          Compiles one relocation-free Forge entry function through the production\n\
          SIA32 Cranelift backend and wraps it as Lighting reset-ROM assembly.\n\
          The generated assembly can be turned into a ROM blob with LightingSimulation's siaasm."
