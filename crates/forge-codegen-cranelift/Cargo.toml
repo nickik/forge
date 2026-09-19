@@ -6,5 +6,5 @@ license.workspace = true
 
 [dependencies]
 forge-fir = { path = "../forge-fir" }
-cranelift-codegen = { git = "https://github.com/nickik/crainlift", rev = "bd0c92ce8fae2208f2b51234539ce480de16ea24", default-features = false, features = ["std", "arm64", "riscv64", "sia32"] }
-target-lexicon = { git = "https://github.com/nickik/crainlift", rev = "bd0c92ce8fae2208f2b51234539ce480de16ea24", package = "target-lexicon" }
+cranelift-codegen = { git = "https://github.com/nickik/crainlift", rev = "0b9930a9e6097bf4ccbc77c8a8c5a3808f4505b6", default-features = false, features = ["std", "arm64", "riscv64", "sia32"] }
+target-lexicon = { git = "https://github.com/nickik/crainlift", rev = "0b9930a9e6097bf4ccbc77c8a8c5a3808f4505b6", package = "target-lexicon" }
