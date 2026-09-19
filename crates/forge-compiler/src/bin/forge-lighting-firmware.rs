@@ -2,7 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::process;
 
-use forge_codegen_cranelift::{build_sia32_flat_image, CraneliftBackend, CraneliftTarget, Sia32Object};
+use forge_codegen_cranelift::{
+    build_sia32_flat_image, CraneliftBackend, CraneliftTarget, Sia32Object,
+};
 use forge_frontend::{
     ast::SourceFile, collect_type_definitions, lower_fir, lower_module, lower_resolved_bodies,
     parse_source, type_check_module, IntWidth, Ty,
@@ -47,7 +49,9 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("HIR lowering failed: {:?}", hir.diagnostics).into());
     }
     if !hir.module.imports.is_empty() {
-        return Err("firmware bring-up currently requires a single source file with no imports".into());
+        return Err(
+            "firmware bring-up currently requires a single source file with no imports".into(),
+        );
     }
 
     let bodies = lower_resolved_bodies(&ast, &hir.module);
@@ -80,10 +84,9 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         width: IntWidth::W32,
     };
     if !function.params.is_empty() || function.return_type != expected_return {
-        return Err(format!(
-            "firmware entry '{entry}' must have signature fn {entry}() -> i32"
-        )
-        .into());
+        return Err(
+            format!("firmware entry '{entry}' must have signature fn {entry}() -> i32").into(),
+        );
     }
 
     let backend = CraneliftBackend::sia32()?;
@@ -115,8 +118,13 @@ fn emit_linked_image(
     entry_name: &str,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut objects = Vec::new();
-    let owners = std::iter::once(entry)
-        .chain(module.functions.keys().copied().filter(|owner| *owner != entry));
+    let owners = std::iter::once(entry).chain(
+        module
+            .functions
+            .keys()
+            .copied()
+            .filter(|owner| *owner != entry),
+    );
     for owner in owners {
         let machine = backend.emit_machine_code(prepared, owner)?;
         if machine.target() != CraneliftTarget::Sia32 {
@@ -159,7 +167,8 @@ fn emit_linked_image(
         return Err(format!(
             "firmware entry must link at Forge text base 0xffff0014, got 0x{:x}",
             image.entry()
-        ).into());
+        )
+        .into());
     }
     Ok(image.bytes().to_vec())
 }
