@@ -35,6 +35,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     let mut text_base: u32 = 0xffff_0014;
     let mut raw_image = false;
     let mut payload: Option<(PathBuf, u32)> = None;
+    let mut user_image = false;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -49,6 +50,10 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
                 };
             }
             "--raw-image" => raw_image = true,
+            "--user-image" => {
+                user_image = true;
+                raw_image = true;
+            },
             "--embed-payload" => {
                 let path = PathBuf::from(args.next().unwrap_or_else(|| usage()));
                 let off = args.next().unwrap_or_else(|| usage());
@@ -62,6 +67,13 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
             "-h" | "--help" => usage(),
             _ => usage(),
         }
+    }
+
+    if user_image && payload.is_some() {
+        return Err("--user-image cannot embed a boot payload".into());
+    }
+    if user_image && text_base == 0xffff_0014 {
+        return Err("--user-image requires an explicit --text-base user virtual address".into());
     }
 
     let source_text = fs::read_to_string(&source)?;
@@ -132,8 +144,9 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         fs::write(&output, assembly)?;
     }
     eprintln!(
-        "wrote {} bytes of SIA32 Forge code to {} (wrapped as Lighting reset ROM)",
+        "wrote {} bytes of SIA32 Forge {} to {}",
         image.len(),
+        if user_image { "user image" } else if raw_image { "raw image" } else { "reset ROM payload" },
         output.display()
     );
     Ok(())
