@@ -27,7 +27,7 @@ pub use hir::{
 pub use parser::{parse_source, Diagnostic, ParseOutput};
 pub use resolution::{
     resolve_module_bodies, BodyResolutionOutput, HirLocal, LocalId, NameUse, ResolvedBody,
-    ResolvedName,
+    ResolvedName, ResolvedBuiltinValue,
 };
 pub use typecheck::{
     collect_type_definitions, type_check_module, CaptureMode, ConstValue, ContextSlot, IntWidth,
