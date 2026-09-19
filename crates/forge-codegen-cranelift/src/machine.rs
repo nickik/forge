@@ -2,6 +2,7 @@ use cranelift_codegen::binemit::Reloc;
 use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::{ExternalName, Function};
 use cranelift_codegen::isa::TargetIsa;
+use cranelift_codegen::machinst::RelocTarget;
 use cranelift_codegen::Context;
 use forge_fir::DefId;
 
@@ -73,10 +74,10 @@ fn compile_function(
         if target != CraneliftTarget::Sia32 || reloc.kind != Reloc::Abs4 {
             return Err(BackendError::UnsupportedFir { component: "machine-code relocation kind" });
         }
-        let ExternalName::User(user_ref) = &reloc.name else {
+        let RelocTarget::ExternalName(ExternalName::User(user_ref)) = &reloc.target else {
             return Err(BackendError::UnsupportedFir { component: "non-Forge machine-code relocation target" });
         };
-        let user = function.params.user_named_funcs()[*user_ref];
+        let user = function.params.user_named_funcs()[user_ref];
         if user.namespace != 0 {
             return Err(BackendError::UnsupportedFir { component: "external machine-code relocation target" });
         }
