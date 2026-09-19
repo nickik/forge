@@ -24,18 +24,12 @@ fn main() -> i32 {
     unsafe {
         val raw_console_address: u32 = 0xfff03000;
         val console: Register = Register(raw_console_address);
-        {
-            val startup = "Forge firmware starting\n";
-            debug_write_bytes(console, startup.data, startup.len);
-        }
-        {
-            val strings_ok = "SIA32 strings: OK\n";
-            debug_write_bytes(console, strings_ok.data, strings_ok.len);
-        }
-        {
-            val diagnostics_ok = "Lighting diagnostics: OK\n";
-            debug_write_bytes(console, diagnostics_ok.data, diagnostics_ok.len);
-        }
+        val startup = "Forge firmware starting\n";
+        val strings_ok = "SIA32 strings: OK\n";
+        val diagnostics_ok = "Lighting diagnostics: OK\n";
+        debug_write_bytes(console, startup.data, startup.len);
+        debug_write_bytes(console, strings_ok.data, strings_ok.len);
+        debug_write_bytes(console, diagnostics_ok.data, diagnostics_ok.len);
     }
     return 0;
 }
