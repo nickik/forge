@@ -2,7 +2,7 @@ use crate::{
     link_sia32_sectioned_objects, BackendError, Sia32Object, Sia32Section, Sia32SectionBases,
 };
 
-pub const SIA32_TEXT_ALIGNMENT: u32 = 2;
+pub const SIA32_TEXT_ALIGNMENT: u32 = 4;
 pub const SIA32_DATA_ALIGNMENT: u32 = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -51,7 +51,7 @@ impl Sia32ExecutableImage {
 
 /// Link SIAO32 objects into the deterministic M8 flat executable image.
 ///
-/// Layout is `.text`, `.rodata`, `.data`, `.bss`; text is 2-byte aligned and
+/// Layout is `.text`, `.rodata`, `.data`, `.bss`; function text is 4-byte aligned and
 /// all data sections are 4-byte aligned. Object fragments are kept in input
 /// order inside each section. BSS occupies zero-filled bytes in the flat image
 /// so the image can be loaded directly into the SIA32 reference simulator.
