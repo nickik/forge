@@ -438,17 +438,17 @@ fn lower_sia32_privileged_instruction(
         lookup_value(values, id)
     };
 
-    let inst = match operation {
-        Op::Trap { imm8 } => cursor.ins().sia_trap(imm8.into()),
-        Op::ReadSystem { system_register } => cursor.ins().sia_sread(types::I32, system_register.into()),
-        Op::WriteSystem { system_register } => cursor.ins().sia_swrite(operand(1)?, system_register.into()),
-        Op::Return => cursor.ins().sia_sret(),
-        Op::TlbFence => cursor.ins().sia_tlbfence(),
-        Op::TlbFenceVa => cursor.ins().sia_tlbfence_va(operand(0)?),
-        Op::TlbFenceAsid => cursor.ins().sia_tlbfence_asid(operand(0)?),
-        Op::WaitForInterrupt => cursor.ins().sia_wfi(),
-        Op::SyncInstruction => cursor.ins().sia_sync_i(),
-        Op::Fence => cursor.ins().fence(),
+    let result_value = match operation {
+        Op::Trap { imm8 } => { cursor.ins().sia_trap(imm8); None }
+        Op::ReadSystem { system_register } => Some(cursor.ins().sia_sread(system_register)),
+        Op::WriteSystem { system_register } => { cursor.ins().sia_swrite(operand(1)?, system_register); None }
+        Op::Return => { cursor.ins().sia_sret(); None }
+        Op::TlbFence => { cursor.ins().sia_tlbfence(); None }
+        Op::TlbFenceVa => { cursor.ins().sia_tlbfence_va(operand(0)?); None }
+        Op::TlbFenceAsid => { cursor.ins().sia_tlbfence_asid(operand(0)?); None }
+        Op::WaitForInterrupt => { cursor.ins().sia_wfi(); None }
+        Op::SyncInstruction => { cursor.ins().sia_sync_i(); None }
+        Op::Fence => { cursor.ins().fence(); None }
         Op::SwapScratch | Op::ReturnContext => {
             return Err(BackendError::UnsupportedInstruction {
                 kind: "SIA32 privileged operation not yet represented in CLIF bridge",
@@ -456,23 +456,22 @@ fn lower_sia32_privileged_instruction(
         }
     };
 
-    let results = cursor.func.dfg.inst_results(inst);
-    match instruction.result {
-        Some(result_id) => {
-            let [value] = results else {
-                return Err(shape("result-producing SIA32 privileged operation did not produce one CLIF value"));
-            };
+    match (instruction.result, result_value) {
+        (Some(result_id), Some(value)) => {
             let declared = fir.value_types.get(&result_id)
                 .ok_or_else(|| shape("missing SIA32 privileged result type"))?;
             if *declared != (Ty::Int { signed: false, width: forge_fir::IntWidth::W32 }) {
                 return Err(shape("SIA32 system-register read must produce u32"));
             }
-            values.insert(result_id, *value);
+            values.insert(result_id, value);
         }
-        None if !results.is_empty() => {
+        (Some(_), None) => {
+            return Err(shape("result-producing SIA32 privileged operation did not produce a CLIF value"));
+        }
+        (None, Some(_)) => {
             return Err(shape("void SIA32 privileged operation unexpectedly produced a CLIF value"));
         }
-        None => {}
+        (None, None) => {}
     }
     Ok(())
 }
