@@ -34,7 +34,7 @@ pub use globals::{
     GlobalInitialization, GlobalObjectPlan, GlobalObjectSymbol, GlobalStorageClass, PreparedGlobal,
     PreparedGlobals, PreparedStaticData, PreparedStaticRelocation,
 };
-pub use machine::MachineCode;
+pub use machine::{MachineCode, MachineRelocation};
 pub use object::{NativeObject, ObjectLinkage, ObjectModulePlan, ObjectSymbol};
 pub use sia32_image::{
     build_sia32_flat_image, Sia32ExecutableImage, Sia32ImageLayout, Sia32ImageRange,
