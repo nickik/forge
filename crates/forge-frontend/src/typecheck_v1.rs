@@ -1966,6 +1966,12 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 }
                 match base_ty {
                     Ty::Array { element, .. } | Ty::Slice { element, .. } => *element,
+                    // Forge str has pointer + byte-length representation. Indexing is
+                    // byte indexing; Unicode scalar/grapheme iteration is a distinct API.
+                    Ty::Str => Ty::Int {
+                        signed: false,
+                        width: IntWidth::W8,
+                    },
                     _ => Ty::Unknown,
                 }
             }
