@@ -96,8 +96,8 @@ available on every backend merely because the frontend accepts it.
 
 ### SIA32 — C15 and later
 
-- [ ] Complete Cranelift M5 integer production lowering and Forge integration
-      before broadening Forge semantics on SIA32.
+- [x] Complete the integer/privileged production lowering required by the merged Cosmic M27 native boot path.
+- [ ] Expand SIA32 support only when demanded by the next Cosmic vertical slice; the immediate requirement is a freestanding System Task/user image and syscall ABI, not floating point.
 - [ ] Retain explicit rejection for `f32`/`f64` until the C15 prerequisites in
       `C15_TODO.md` are complete.
 - [ ] Add native SIA image and Lighting execution tests for every feature that
@@ -123,8 +123,8 @@ available on every backend merely because the frontend accepts it.
   - [x] AArch64 Forge kernel objects export the manifest-selected entry under
         its exact platform symbol and verify ELF sections, call relocations,
         and the absence of undefined hosted/runtime imports.
-  - [ ] Repeat the contract with a representative Cosmic kernel object and the
-        eventual SIA32 object/image path.
+  - [x] Repeat the contract with the representative Cosmic M27 early-kernel SIA32 image and execute it through LightingSimulation.
+  - [ ] Extend the contract to a separate freestanding System Task/user image and kernel/user ABI crossing.
 - [ ] Keep package/module visibility and dependency ordering exercised through
       real multi-package builds.
 - [ ] Define the Forge-to-Cosmic kernel/userland compile contract once the
