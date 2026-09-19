@@ -137,7 +137,7 @@ fn emit_linked_image(
     entry: forge_fir::DefId,
     entry_name: &str,
     text_base: u32,
-) -> Result<Vec<u8>>, Box<dyn std::error::Error>> {
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut objects = Vec::new();
     let owners = std::iter::once(entry).chain(
         module
