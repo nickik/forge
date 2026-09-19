@@ -400,8 +400,12 @@ fn sia32_direct_scalar_call_preserves_abs32_relocation_for_siao32_linker() {
     module.functions.insert(callee_owner, callee);
     module.functions.insert(caller_owner, caller);
     let backend = CraneliftBackend::new(CraneliftTarget::Sia32).expect("SIA backend");
-    let prepared = backend.prepare_module(&module).expect("SIA direct-call CLIF");
-    let machine = backend.emit_machine_code(&prepared, caller_owner).expect("SIA direct call machine code");
+    let prepared = backend
+        .prepare_module(&module)
+        .expect("SIA direct-call CLIF");
+    let machine = backend
+        .emit_machine_code(&prepared, caller_owner)
+        .expect("SIA direct call machine code");
     assert_eq!(machine.relocations().len(), 1);
     let relocation = &machine.relocations()[0];
     assert_eq!(relocation.target, callee_owner);
