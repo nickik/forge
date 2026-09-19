@@ -20,17 +20,16 @@ fn debug_write_bytes(console: Register, data: *u8, len: usize) -> i32 {
     return 0;
 }
 
-fn debug_write(console: Register, text: str) -> i32 {
-    return debug_write_bytes(console, text.data, text.len);
-}
-
-fn main() -> i32 {
+ fn main() -> i32 {
     unsafe {
         val raw_console_address: u32 = 0xfff03000;
         val console: Register = Register(raw_console_address);
-        debug_write(console, "Forge firmware starting\n");
-        debug_write(console, "SIA32 strings: OK\n");
-        debug_write(console, "Lighting diagnostics: OK\n");
+        val text = "Forge firmware starting\n";
+        debug_write_bytes(console, text.data, text.len);
+        val text = "SIA32 strings: OK\n";
+        debug_write_bytes(console, text.data, text.len);
+        val text = "Lighting diagnostics: OK\n";
+        debug_write_bytes(console, text.data, text.len);
     }
     return 0;
 }
