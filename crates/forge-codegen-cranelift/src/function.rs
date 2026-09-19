@@ -464,7 +464,7 @@ fn lower_sia32_privileged_instruction(
             };
             let declared = fir.value_types.get(&result_id)
                 .ok_or_else(|| shape("missing SIA32 privileged result type"))?;
-            if *declared != Ty::Int { signed: false, width: forge_fir::IntWidth::W32 } {
+            if *declared != (Ty::Int { signed: false, width: forge_fir::IntWidth::W32 }) {
                 return Err(shape("SIA32 system-register read must produce u32"));
             }
             values.insert(result_id, *value);
