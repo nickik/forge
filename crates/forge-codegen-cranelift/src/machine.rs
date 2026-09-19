@@ -2,7 +2,7 @@ use cranelift_codegen::binemit::Reloc;
 use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::{ExternalName, Function};
 use cranelift_codegen::isa::TargetIsa;
-use cranelift_codegen::machinst::RelocTarget;
+use cranelift_codegen::RelocTarget;
 use cranelift_codegen::Context;
 use forge_fir::DefId;
 
