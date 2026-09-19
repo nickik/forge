@@ -374,6 +374,45 @@ fn lower_mixed_instruction(
     let result_ty = result_id.map(|id| value_type(fir, id)).transpose()?;
 
     match &instruction.kind {
+        FirInstructionKind::Const { value: forge_fir::FirConst::String { value } }
+            if result_ty == Some(&Ty::Str) =>
+        {
+            let id = result_id.ok_or_else(|| shape("string constant has no result"))?;
+            let result = new_aggregate(&Ty::Str, layouts, types, cursor)?;
+            let layout = layouts.layout_of(&Ty::Str).map_err(layout_error)?;
+            let LayoutKind::Str { data_offset, len_offset } = layout.kind else {
+                return Err(shape("str has non-str layout"));
+            };
+            // First native string-literal slice: materialize bytes in a local
+            // immutable stack object, then build the normal {data,len} str value.
+            // This establishes correct str semantics before promoting literals
+            // into module .rodata/SIA relocations.
+            let byte_count = u32::try_from(value.len())
+                .map_err(|_| shape("string literal exceeds CLIF stack-slot size"))?;
+            let bytes_slot = cursor.func.create_sized_stack_slot(StackSlotData::new(
+                StackSlotKind::ExplicitSlot,
+                byte_count.max(1),
+                0,
+            ));
+            let data = cursor.ins().stack_addr(types.pointer_type()?, bytes_slot, 0);
+            for (offset, byte) in value.as_bytes().iter().copied().enumerate() {
+                let byte_value = cursor.ins().iconst(types.value_type(&Ty::Int {
+                    signed: false,
+                    width: forge_fir::IntWidth::W8,
+                })?, i64::from(byte));
+                cursor.ins().store(
+                    flags.stack,
+                    byte_value,
+                    data,
+                    i32::try_from(offset).map_err(|_| shape("string literal offset exceeds i32"))?,
+                );
+            }
+            cursor.ins().store(flags.stack, data, result.address, i32_offset(data_offset)?);
+            let len = cursor.ins().iconst(types.pointer_type()?, i64::try_from(value.len()).map_err(|_| shape("string literal length exceeds i64"))?);
+            cursor.ins().store(flags.stack, len, result.address, i32_offset(len_offset)?);
+            aggregates.insert(id, result);
+            return Ok(());
+        }
         FirInstructionKind::Unit => return Ok(()),
         FirInstructionKind::Load { place }
             if result_ty.is_some_and(is_memory_value) || place_needs_c9(place) =>
