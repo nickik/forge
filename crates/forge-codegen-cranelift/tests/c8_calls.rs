@@ -360,7 +360,10 @@ fn required_tail_call_remains_an_explicit_backend_boundary() {
 #[test]
 fn sia32_direct_scalar_call_preserves_abs32_relocation_for_siao32_linker() {
     let span = Span::new(0, 0);
-    let ty = Ty::Int { signed: false, width: IntWidth::W32 };
+    let ty = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
     let callee_owner = DefId(10);
     let caller_owner = DefId(11);
     let (callee_param, callee_local) = local(0, ty.clone(), true);
@@ -373,9 +376,20 @@ fn sia32_direct_scalar_call_preserves_abs32_relocation_for_siao32_linker() {
         closures: BTreeMap::new(),
         entry: FirBlockId(0),
         blocks: vec![FirBasicBlock {
-            id: FirBlockId(0), closure: None,
-            instructions: vec![FirInstruction { span, result: Some(loaded_callee), kind: FirInstructionKind::Load { place: FirPlace::Local { local: callee_param } } }],
-            terminator: Some(FirTerminator::Return { value: Some(loaded_callee) }),
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![FirInstruction {
+                span,
+                result: Some(loaded_callee),
+                kind: FirInstructionKind::Load {
+                    place: FirPlace::Local {
+                        local: callee_param,
+                    },
+                },
+            }],
+            terminator: Some(FirTerminator::Return {
+                value: Some(loaded_callee),
+            }),
         }],
         value_types: BTreeMap::from([(loaded_callee, ty.clone())]),
     };
@@ -384,15 +398,35 @@ fn sia32_direct_scalar_call_preserves_abs32_relocation_for_siao32_linker() {
     let called = FirValueId(1);
     let caller = FirFunction {
         owner: caller_owner,
-        params: vec![param], return_type: ty.clone(),
-        locals: BTreeMap::from([(param, param_local)]), closures: BTreeMap::new(), entry: FirBlockId(0),
+        params: vec![param],
+        return_type: ty.clone(),
+        locals: BTreeMap::from([(param, param_local)]),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
         blocks: vec![FirBasicBlock {
-            id: FirBlockId(0), closure: None,
+            id: FirBlockId(0),
+            closure: None,
             instructions: vec![
-                FirInstruction { span, result: Some(loaded), kind: FirInstructionKind::Load { place: FirPlace::Local { local: param } } },
-                FirInstruction { span, result: Some(called), kind: FirInstructionKind::Call { target: callee_owner, args: vec![loaded], tail: false } },
+                FirInstruction {
+                    span,
+                    result: Some(loaded),
+                    kind: FirInstructionKind::Load {
+                        place: FirPlace::Local { local: param },
+                    },
+                },
+                FirInstruction {
+                    span,
+                    result: Some(called),
+                    kind: FirInstructionKind::Call {
+                        target: callee_owner,
+                        args: vec![loaded],
+                        tail: false,
+                    },
+                },
             ],
-            terminator: Some(FirTerminator::Return { value: Some(called) }),
+            terminator: Some(FirTerminator::Return {
+                value: Some(called),
+            }),
         }],
         value_types: BTreeMap::from([(loaded, ty.clone()), (called, ty)]),
     };

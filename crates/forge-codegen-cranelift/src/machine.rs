@@ -2,8 +2,8 @@ use cranelift_codegen::binemit::Reloc;
 use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::{ExternalName, Function};
 use cranelift_codegen::isa::TargetIsa;
-use cranelift_codegen::RelocTarget;
 use cranelift_codegen::Context;
+use cranelift_codegen::RelocTarget;
 use forge_fir::DefId;
 
 use crate::{BackendError, CraneliftBackend, CraneliftTarget, PreparedModule};
@@ -55,13 +55,16 @@ impl CraneliftBackend {
             return Err(BackendError::InvalidFirShape {
                 message: format!(
                     "prepared module target {:?} does not match backend target {:?}",
-                    prepared.target(), target
+                    prepared.target(),
+                    target
                 ),
             });
         }
-        let function = prepared.function(owner).ok_or_else(|| BackendError::InvalidFirShape {
-            message: format!("prepared module has no function {owner:?}"),
-        })?;
+        let function = prepared
+            .function(owner)
+            .ok_or_else(|| BackendError::InvalidFirShape {
+                message: format!("prepared module has no function {owner:?}"),
+            })?;
         let isa = target.isa()?;
         compile_function(target, &*isa, owner, function)
     }
@@ -75,21 +78,29 @@ fn compile_function(
 ) -> Result<MachineCode, BackendError> {
     let mut context = Context::for_function(function.clone());
     let mut control = ControlPlane::default();
-    let compiled = context.compile(isa, &mut control).map_err(|error| BackendError::Cranelift {
-        message: format!("machine-code compilation failed for {owner:?}: {error:?}"),
-    })?;
+    let compiled = context
+        .compile(isa, &mut control)
+        .map_err(|error| BackendError::Cranelift {
+            message: format!("machine-code compilation failed for {owner:?}: {error:?}"),
+        })?;
 
     let mut relocations = Vec::new();
     for reloc in compiled.buffer.relocs() {
         if target != CraneliftTarget::Sia32 || reloc.kind != Reloc::Abs4 {
-            return Err(BackendError::UnsupportedFir { component: "machine-code relocation kind" });
+            return Err(BackendError::UnsupportedFir {
+                component: "machine-code relocation kind",
+            });
         }
         let RelocTarget::ExternalName(ExternalName::User(user_ref)) = &reloc.target else {
-            return Err(BackendError::UnsupportedFir { component: "non-Forge machine-code relocation target" });
+            return Err(BackendError::UnsupportedFir {
+                component: "non-Forge machine-code relocation target",
+            });
         };
         let user = &function.params.user_named_funcs()[*user_ref];
         if user.namespace != 0 {
-            return Err(BackendError::UnsupportedFir { component: "external machine-code relocation target" });
+            return Err(BackendError::UnsupportedFir {
+                component: "external machine-code relocation target",
+            });
         }
         relocations.push(MachineRelocation {
             offset: reloc.offset,
@@ -105,5 +116,10 @@ fn compile_function(
             message: format!("machine-code compilation produced no bytes for {owner:?}"),
         });
     }
-    Ok(MachineCode { target, owner, bytes, relocations })
+    Ok(MachineCode {
+        target,
+        owner,
+        bytes,
+        relocations,
+    })
 }
