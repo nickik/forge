@@ -105,7 +105,6 @@ fn named_u8_constants_are_preserved_as_privileged_selectors() {
     assert!(ops.contains(&Sia32PrivilegedOperation::ReadSystem { system_register: 0 }));
 }
 
-
 #[test]
 fn fixed_gpr_builtins_preserve_syscall_r1_contract_in_fir() {
     let source = r#"
@@ -130,11 +129,15 @@ fn fixed_gpr_builtins_preserve_syscall_r1_contract_in_fir() {
     assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
 
     let main = hir.module.symbols["main"].value_def.unwrap();
-    let ops = fir.module.functions[&main].blocks.iter().flat_map(|b| &b.instructions)
+    let ops = fir.module.functions[&main]
+        .blocks
+        .iter()
+        .flat_map(|b| &b.instructions)
         .filter_map(|i| match i.kind {
             FirInstructionKind::Sia32Privileged { operation, .. } => Some(operation),
             _ => None,
-        }).collect::<Vec<_>>();
+        })
+        .collect::<Vec<_>>();
     assert!(ops.contains(&Sia32PrivilegedOperation::WriteGpr { register: 1 }));
     assert!(ops.contains(&Sia32PrivilegedOperation::Trap { imm8: 0x40 }));
     assert!(ops.contains(&Sia32PrivilegedOperation::ReadGpr { register: 1 }));
