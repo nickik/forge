@@ -1471,6 +1471,8 @@ fn resolved_builtin_value(name: &str) -> Option<ResolvedBuiltinValue> {
         "sia_trap" => ResolvedBuiltinValue::SiaTrap,
         "sia_sread" => ResolvedBuiltinValue::SiaSread,
         "sia_swrite" => ResolvedBuiltinValue::SiaSwrite,
+        "sia_gpr_read" => ResolvedBuiltinValue::SiaGprRead,
+        "sia_gpr_write" => ResolvedBuiltinValue::SiaGprWrite,
         "sia_sswap_scratch" => ResolvedBuiltinValue::SiaSswapScratch,
         "sia_sret" => ResolvedBuiltinValue::SiaSret,
         "sia_sretctx" => ResolvedBuiltinValue::SiaSretctx,
