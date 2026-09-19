@@ -150,10 +150,14 @@ fn emit_linked_image(
     // The linked bytes execute from ROM_BASE in Lighting, so relocations must
     // contain final architectural addresses rather than zero-based image offsets.
     const LIGHTING_ROM_BASE: u32 = 0xffff_0000;
-    let image = build_sia32_flat_image(&objects, LIGHTING_ROM_BASE, entry_name, 0)?;
-    if image.entry() != LIGHTING_ROM_BASE {
+    // The reset shim occupies 0x14 bytes before forge_entry in the ROM source.
+    // SIAO32 relocations must use the address where linked Forge text actually
+    // executes, not the beginning of the containing ROM.
+    const FORGE_TEXT_BASE: u32 = LIGHTING_ROM_BASE + 0x14;
+    let image = build_sia32_flat_image(&objects, FORGE_TEXT_BASE, entry_name, 0)?;
+    if image.entry() != FORGE_TEXT_BASE {
         return Err(format!(
-            "firmware entry must link at Lighting ROM base 0xffff0000, got 0x{:x}",
+            "firmware entry must link at Forge text base 0xffff0014, got 0x{:x}",
             image.entry()
         ).into());
     }
