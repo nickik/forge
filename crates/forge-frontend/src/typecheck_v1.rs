@@ -1943,6 +1943,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         ResolvedBuiltinValue::Some => "Some",
                         ResolvedBuiltinValue::Ok => "Ok",
                         ResolvedBuiltinValue::Err => "Err",
+                        _ => unreachable!("SIA32 builtins are handled before constructor typing"),
                     };
                     if args.is_empty() && expected_payload == Some(Ty::Void) {
                         resolved_constructor = Some(constructor);
