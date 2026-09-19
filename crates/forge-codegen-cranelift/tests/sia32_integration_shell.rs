@@ -7,7 +7,7 @@ use forge_codegen_cranelift::{
 };
 use forge_fir::{
     DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction, FirInstructionKind,
-    FirModule, FirTerminator, FirValueId, IntWidth, Span, Ty,
+    FirModule, FirTerminator, FirValueId, IntWidth, Span, Ty, Sia32PrivilegedOperation,
 };
 
 #[test]
@@ -148,4 +148,56 @@ fn sia32_rejects_float_fir_before_isa_lowering() {
         Err(error) => panic!("wrong SIA32 float rejection: {error}"),
         Ok(_) => panic!("SIA32 unexpectedly accepted float FIR"),
     }
+}
+
+
+#[test]
+fn sia32_swrite_vmctx_emits_value_register_and_selector_five() {
+    let backend = CraneliftBackend::sia32().unwrap();
+    let owner = DefId(77);
+    let value = FirValueId(0);
+    let u32_ty = Ty::Int { signed: false, width: IntWidth::W32 };
+    let function = FirFunction {
+        owner,
+        params: vec![],
+        return_type: Ty::Void,
+        locals: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![
+                FirInstruction {
+                    span: Span::new(0, 0),
+                    result: Some(value),
+                    kind: FirInstructionKind::Const {
+                        value: FirConst::Integer { text: "4097u32".into() },
+                    },
+                },
+                FirInstruction {
+                    span: Span::new(0, 0),
+                    result: None,
+                    kind: FirInstructionKind::Sia32Privileged {
+                        operation: Sia32PrivilegedOperation::WriteSystem { system_register: 5 },
+                        args: vec![value],
+                    },
+                },
+            ],
+            terminator: Some(FirTerminator::Return { value: None }),
+        }],
+        value_types: BTreeMap::from([(value, u32_ty)]),
+    };
+    let mut module = FirModule::default();
+    module.functions.insert(owner, function);
+    let prepared = backend.prepare_module(&module).unwrap();
+    let code = backend.emit_machine_code(&prepared, owner).unwrap();
+    let bytes = code.bytes();
+
+    // SYSTEM encoding is F1r5 for SWRITE sr=5,rs=r. The low selector nibble
+    // must therefore be 5 regardless of the register selected by regalloc.
+    assert!(bytes.windows(2).any(|w| {
+        let word = u16::from_le_bytes([w[0], w[1]]);
+        (word & 0xFF0F) == 0xF105
+    }), "missing SWRITE VMCTX encoding in {bytes:02x?}");
 }
