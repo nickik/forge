@@ -104,3 +104,38 @@ fn named_u8_constants_are_preserved_as_privileged_selectors() {
     assert!(ops.contains(&Sia32PrivilegedOperation::ReadSystem { system_register: 1 }));
     assert!(ops.contains(&Sia32PrivilegedOperation::ReadSystem { system_register: 0 }));
 }
+
+
+#[test]
+fn fixed_gpr_builtins_preserve_syscall_r1_contract_in_fir() {
+    let source = r#"
+        module test.sia_fixed_gpr;
+        fn main() -> i32 {
+            sia_gpr_write(1u8, 0u32);
+            sia_trap(0x40u8);
+            val result: u32 = sia_gpr_read(1u8);
+            return i32(result);
+        }
+    "#;
+    let parsed = parse_source(source);
+    assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+    let ast = parsed.ast.unwrap();
+    let hir = lower_module(&ast);
+    assert!(hir.diagnostics.is_empty(), "{:?}", hir.diagnostics);
+    let bodies = lower_resolved_bodies(&ast, &hir.module);
+    assert!(bodies.diagnostics.is_empty(), "{:?}", bodies.diagnostics);
+    let typed = type_check_module(&ast, &hir.module, &bodies);
+    assert!(typed.diagnostics.is_empty(), "{:?}", typed.diagnostics);
+    let fir = lower_fir(&bodies, &typed);
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let main = hir.module.symbols["main"].value_def.unwrap();
+    let ops = fir.module.functions[&main].blocks.iter().flat_map(|b| &b.instructions)
+        .filter_map(|i| match i.kind {
+            FirInstructionKind::Sia32Privileged { operation, .. } => Some(operation),
+            _ => None,
+        }).collect::<Vec<_>>();
+    assert!(ops.contains(&Sia32PrivilegedOperation::WriteGpr { register: 1 }));
+    assert!(ops.contains(&Sia32PrivilegedOperation::Trap { imm8: 0x40 }));
+    assert!(ops.contains(&Sia32PrivilegedOperation::ReadGpr { register: 1 }));
+}
