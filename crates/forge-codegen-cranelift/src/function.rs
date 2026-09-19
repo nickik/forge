@@ -1533,6 +1533,7 @@ fn instruction_kind_name(kind: &FirInstructionKind) -> &'static str {
         FirInstructionKind::MakeResultOk { .. } => "make result ok",
         FirInstructionKind::OptionIsSome { .. } => "option is some",
         FirInstructionKind::OptionUnwrap { .. } => "option unwrap",
+        FirInstructionKind::Sia32Privileged { .. } => "sia32 privileged",
         FirInstructionKind::Poison => "poison",
     }
 }
