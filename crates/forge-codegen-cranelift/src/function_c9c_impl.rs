@@ -921,6 +921,26 @@ fn field_projection(
     base_ty: &Ty,
     field_name: &str,
 ) -> Result<(Ty, u64), BackendError> {
+    if *base_ty == Ty::Str {
+        let layout = layouts.layout_of(base_ty).map_err(layout_error)?;
+        let LayoutKind::Str { data_offset, len_offset } = layout.kind else {
+            return Err(shape("str has non-str layout"));
+        };
+        return match field_name {
+            "data" => Ok((
+                Ty::Pointer {
+                    volatile: false,
+                    inner: Box::new(Ty::Int { signed: false, width: forge_fir::IntWidth::W8 }),
+                },
+                data_offset,
+            )),
+            "len" => Ok((
+                Ty::Int { signed: false, width: forge_fir::IntWidth::Pointer },
+                len_offset,
+            )),
+            _ => Err(shape(format!("unknown str field {field_name:?}"))),
+        };
+    }
     let Ty::Nominal(owner) = base_ty else {
         return Err(shape(format!("field access on non-nominal {base_ty:?}")));
     };
