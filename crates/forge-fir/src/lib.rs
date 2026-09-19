@@ -23,7 +23,7 @@ pub use forge_frontend::{
     FirInstructionKind, FirLocal, FirLocalId, FirModule, FirOutput, FirPlace, FirSelectCase,
     FirTerminator, FirUnaryOp, FirValueId, IntWidth, LocalId, OverflowMode, RuntimeOperationId, Ty,
     TypeDefinition, TypeDefinitionKind, TypeDefinitionTable, TypeFieldDefinition,
-    TypeVariantDefinition, UnsafeOperationKind, UnsafeProvenance,
+    TypeVariantDefinition, UnsafeOperationKind, UnsafeProvenance, Sia32PrivilegedOperation,
 };
 pub use layout::{
     FieldLayout, Layout, LayoutEngine, LayoutError, LayoutKind, LayoutTarget, Niche, SumEncoding,
