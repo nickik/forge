@@ -1463,7 +1463,9 @@ impl<'a> FunctionLowerer<'a> {
                 // the FIR operation itself, not carried as runtime operands.
                 // SWRITE therefore retains only its second (u32 value) operand.
                 let lowered_args = match operation {
-                    ResolvedBuiltinValue::SiaTrap | ResolvedBuiltinValue::SiaSread | ResolvedBuiltinValue::SiaGprRead => Vec::new(),
+                    ResolvedBuiltinValue::SiaTrap
+                    | ResolvedBuiltinValue::SiaSread
+                    | ResolvedBuiltinValue::SiaGprRead => Vec::new(),
                     ResolvedBuiltinValue::SiaSwrite | ResolvedBuiltinValue::SiaGprWrite => args
                         .get(1)
                         .map(|arg| vec![self.lower_expr(arg_value(arg))])
