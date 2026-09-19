@@ -35,6 +35,25 @@ pub enum OverflowMode {
     Wrapping,
 }
 
+/// Target-owned protected-machine operations. These remain explicit in FIR so
+/// generic backends cannot accidentally assign host-call semantics to them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Sia32PrivilegedOperation {
+    Trap { imm8: u8 },
+    ReadSystem { system_register: u8 },
+    WriteSystem { system_register: u8 },
+    SwapScratch,
+    Return,
+    ReturnContext,
+    TlbFence,
+    TlbFenceVa,
+    TlbFenceAsid,
+    WaitForInterrupt,
+    SyncInstruction,
+    Fence,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FirDiagnostic {
     pub span: Span,
@@ -308,6 +327,12 @@ pub enum FirInstructionKind {
         callee: FirValueId,
         args: Vec<FirValueId>,
         tail: bool,
+    },
+    /// SIA32-P operation retained as an explicit target operation through FIR.
+    /// Operand values, when required, are carried in `args`.
+    Sia32Privileged {
+        operation: Sia32PrivilegedOperation,
+        args: Vec<FirValueId>,
     },
     ResultIsOk {
         value: FirValueId,

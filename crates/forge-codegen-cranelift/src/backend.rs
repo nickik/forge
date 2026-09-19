@@ -474,6 +474,9 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
                 available.contains(callee) && args.iter().all(|value| available.contains(value))
             }
             FirInstructionKind::MakeResultErr { error } => available.contains(error),
+            FirInstructionKind::Sia32Privileged { args, .. } => {
+                args.iter().all(|value| available.contains(value))
+            }
         };
         if !ready {
             return false;
