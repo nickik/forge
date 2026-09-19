@@ -77,7 +77,7 @@ fn compile_function(
         let RelocTarget::ExternalName(ExternalName::User(user_ref)) = &reloc.target else {
             return Err(BackendError::UnsupportedFir { component: "non-Forge machine-code relocation target" });
         };
-        let user = function.params.user_named_funcs()[*user_ref];
+        let user = &function.params.user_named_funcs()[*user_ref];
         if user.namespace != 0 {
             return Err(BackendError::UnsupportedFir { component: "external machine-code relocation target" });
         }
