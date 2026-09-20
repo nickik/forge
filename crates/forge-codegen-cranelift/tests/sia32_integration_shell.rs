@@ -208,3 +208,81 @@ fn sia32_swrite_vmctx_emits_value_register_and_selector_five() {
         "missing SWRITE VMCTX encoding in {bytes:02x?}"
     );
 }
+
+
+#[test]
+fn sia32_fixed_gpr_write_preserves_nonzero_runtime_value_through_codegen() {
+    let backend = CraneliftBackend::sia32().unwrap();
+    let owner = DefId(78);
+    let value = FirValueId(0);
+    let result = FirValueId(1);
+    let u32_ty = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let function = FirFunction {
+        owner,
+        params: vec![],
+        return_type: u32_ty.clone(),
+        locals: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![
+                FirInstruction {
+                    span: Span::new(0, 0),
+                    result: Some(value),
+                    kind: FirInstructionKind::Const {
+                        value: FirConst::Integer {
+                            text: "305419896u32".into(),
+                        },
+                    },
+                },
+                FirInstruction {
+                    span: Span::new(0, 0),
+                    result: None,
+                    kind: FirInstructionKind::Sia32Privileged {
+                        operation: Sia32PrivilegedOperation::WriteGpr { register: 1 },
+                        args: vec![value],
+                    },
+                },
+                FirInstruction {
+                    span: Span::new(0, 0),
+                    result: None,
+                    kind: FirInstructionKind::Sia32Privileged {
+                        operation: Sia32PrivilegedOperation::Trap { imm8: 0x40 },
+                        args: vec![],
+                    },
+                },
+                FirInstruction {
+                    span: Span::new(0, 0),
+                    result: Some(result),
+                    kind: FirInstructionKind::Sia32Privileged {
+                        operation: Sia32PrivilegedOperation::ReadGpr { register: 1 },
+                        args: vec![],
+                    },
+                },
+            ],
+            terminator: Some(FirTerminator::Return { value: Some(result) }),
+        }],
+        value_types: BTreeMap::from([(value, u32_ty.clone()), (result, u32_ty)]),
+    };
+    let mut module = FirModule::default();
+    module.functions.insert(owner, function);
+
+    let prepared = backend.prepare_module(&module).unwrap();
+    let code = backend.emit_machine_code(&prepared, owner).unwrap();
+    let bytes = code.bytes();
+
+    assert!(
+        bytes.windows(2).any(|w| u16::from_le_bytes([w[0], w[1]]) == 0xc40f),
+        "missing TRAP 0x40 encoding in {bytes:02x?}"
+    );
+    assert!(
+        bytes.len() > 4,
+        "fixed-GPR write/read unexpectedly collapsed to trap-only code: {bytes:02x?}"
+    );
+    eprintln!("fixed-GPR nonzero probe machine code: {bytes:02x?}");
+}
