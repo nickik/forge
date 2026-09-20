@@ -117,10 +117,15 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         signed: true,
         width: IntWidth::W32,
     };
-    if !function.params.is_empty() || function.return_type != expected_return {
-        return Err(
-            format!("firmware entry '{entry}' must have signature fn {entry}() -> i32").into(),
-        );
+    let valid_entry_params = function.params.is_empty()
+        || (raw_image && entry == "m28_trap_entry" && function.params.len() == 1);
+    if !valid_entry_params || function.return_type != expected_return {
+        let expected = if raw_image && entry == "m28_trap_entry" {
+            format!("fn {entry}() -> i32 or fn {entry}(u32) -> i32")
+        } else {
+            format!("fn {entry}() -> i32")
+        };
+        return Err(format!("firmware entry '{entry}' must have signature {expected}").into());
     }
 
     let backend = CraneliftBackend::sia32()?;
