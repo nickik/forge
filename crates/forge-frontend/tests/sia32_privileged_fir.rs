@@ -134,15 +134,27 @@ fn fixed_gpr_syscall_builtins_lower_to_explicit_fir() {
         .iter()
         .flat_map(|b| &b.instructions)
         .filter_map(|insn| {
-            if let FirInstructionKind::Sia32Privileged { operation, ref args } = insn.kind {
+            if let FirInstructionKind::Sia32Privileged {
+                operation,
+                ref args,
+            } = insn.kind
+            {
                 Some((operation, args.clone()))
             } else {
                 None
             }
         })
         .collect::<Vec<_>>();
-    let write = privileged.iter().find(|(op, _)| *op == Sia32PrivilegedOperation::WriteGpr { register: 1 })
+    let write = privileged
+        .iter()
+        .find(|(op, _)| *op == Sia32PrivilegedOperation::WriteGpr { register: 1 })
         .expect("missing fixed-GPR write");
-    assert_eq!(write.1.len(), 1, "fixed-GPR write must retain its runtime value operand");
-    assert!(privileged.iter().any(|(op, args)| *op == Sia32PrivilegedOperation::ReadGpr { register: 1 } && args.is_empty()));
+    assert_eq!(
+        write.1.len(),
+        1,
+        "fixed-GPR write must retain its runtime value operand"
+    );
+    assert!(privileged.iter().any(|(op, args)| *op
+        == Sia32PrivilegedOperation::ReadGpr { register: 1 }
+        && args.is_empty()));
 }
