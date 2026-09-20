@@ -76,16 +76,17 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("--user-image requires an explicit --text-base user virtual address".into());
     }
 
-    let source_text = fs::read_to_string(&source)?;
+    let source_text = load_source_bundle(&source)?;
     let ast = parse_clean(&source_text)?;
     let hir = lower_module(&ast);
     if !hir.diagnostics.is_empty() {
         return Err(format!("HIR lowering failed: {:?}", hir.diagnostics).into());
     }
     if !hir.module.imports.is_empty() {
-        return Err(
-            "firmware bring-up currently requires a single source file with no imports".into(),
-        );
+        return Err(format!(
+            "firmware source bundle still contains unresolved imports: {:?}",
+            hir.module.imports
+        ).into());
     }
 
     let bodies = lower_resolved_bodies(&ast, &hir.module);
@@ -161,6 +162,44 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         output.display()
     );
     Ok(())
+}
+
+fn load_source_bundle(source: &std::path::Path) -> Result<String, Box<dyn std::error::Error>> {
+    use std::collections::BTreeSet;
+    fn visit(path: &std::path::Path, root: &std::path::Path, seen: &mut BTreeSet<PathBuf>, out: &mut String) -> Result<(), Box<dyn std::error::Error>> {
+        let path = fs::canonicalize(path)?;
+        if !seen.insert(path.clone()) { return Ok(()); }
+        let text = fs::read_to_string(&path)?;
+        let mut body = String::new();
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if let Some(name) = trimmed.strip_prefix("import ").and_then(|s| s.strip_suffix(';')) {
+                let rel = format!("{}.fg", name.trim().replace('.', "/"));
+                let dep = root.join(rel);
+                visit(&dep, root, seen, out)?;
+            } else if trimmed.starts_with("module ") {
+                // A source bundle has one synthetic compilation unit; imported
+                // module declarations are namespace metadata, not executable code.
+            } else {
+                body.push_str(line);
+                body.push('\n');
+            }
+        }
+        out.push_str(&body);
+        Ok(())
+    }
+
+    // Cosmic's module names are rooted above kernel/. Walk ancestors until a
+    // directory containing kernel/ is found; single-file firmware continues to
+    // work without imports.
+    let mut root = source.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
+    while !root.join("kernel").is_dir() {
+        if !root.pop() { return fs::read_to_string(source).map_err(Into::into); }
+    }
+    let mut seen = BTreeSet::new();
+    let mut out = String::from("module forge.firmware.bundle;\n");
+    visit(source, &root, &mut seen, &mut out)?;
+    Ok(out)
 }
 
 fn parse_clean(source: &str) -> Result<SourceFile, Box<dyn std::error::Error>> {
