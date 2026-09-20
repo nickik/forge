@@ -45,6 +45,8 @@ pub enum Sia32PrivilegedOperation {
     WriteSystem { system_register: u8 },
     ReadGpr { register: u8 },
     WriteGpr { register: u8 },
+    ReadGpr { register: u8 },
+    WriteGpr { register: u8 },
     SwapScratch,
     Return,
     ReturnContext,
@@ -1503,6 +1505,18 @@ impl<'a> FunctionLowerer<'a> {
                     ResolvedBuiltinValue::SiaGprWrite => {
                         let register = first_positional(args)
                             .map(|expr| self.sia_immediate_u8(expr, "SIA32 GPR number"))
+                            .unwrap_or(0);
+                        Sia32PrivilegedOperation::WriteGpr { register }
+                    }
+                    ResolvedBuiltinValue::SiaGprRead => {
+                        let register = first_positional(args)
+                            .map(|expr| self.sia_immediate_u8(expr, "SIA32 GPR immediate"))
+                            .unwrap_or(0);
+                        Sia32PrivilegedOperation::ReadGpr { register }
+                    }
+                    ResolvedBuiltinValue::SiaGprWrite => {
+                        let register = first_positional(args)
+                            .map(|expr| self.sia_immediate_u8(expr, "SIA32 GPR immediate"))
                             .unwrap_or(0);
                         Sia32PrivilegedOperation::WriteGpr { register }
                     }
