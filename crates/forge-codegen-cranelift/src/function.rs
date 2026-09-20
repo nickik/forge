@@ -451,7 +451,11 @@ fn lower_sia32_privileged_instruction(
         Op::WaitForInterrupt => { cursor.ins().sia_wfi(); None }
         Op::SyncInstruction => { cursor.ins().sia_sync_i(); None }
         Op::Fence => { cursor.ins().fence(); None }
-        Op::SwapScratch => { Some(cursor.ins().sia_sswap_scratch(operand(0)?)) }
+        Op::SwapScratch => {
+            return Err(BackendError::UnsupportedInstruction {
+                kind: "SIA32 scratch swap not yet represented in CLIF bridge",
+            });
+        }
         Op::ReturnContext => {
             return Err(BackendError::UnsupportedInstruction {
                 kind: "SIA32 privileged operation not yet represented in CLIF bridge",
