@@ -209,7 +209,6 @@ fn sia32_swrite_vmctx_emits_value_register_and_selector_five() {
     );
 }
 
-
 #[test]
 fn sia32_fixed_gpr_write_preserves_nonzero_runtime_value_through_codegen() {
     let backend = CraneliftBackend::sia32().unwrap();
@@ -265,7 +264,9 @@ fn sia32_fixed_gpr_write_preserves_nonzero_runtime_value_through_codegen() {
                     },
                 },
             ],
-            terminator: Some(FirTerminator::Return { value: Some(result) }),
+            terminator: Some(FirTerminator::Return {
+                value: Some(result),
+            }),
         }],
         value_types: BTreeMap::from([(value, u32_ty.clone()), (result, u32_ty)]),
     };
@@ -277,7 +278,9 @@ fn sia32_fixed_gpr_write_preserves_nonzero_runtime_value_through_codegen() {
     let bytes = code.bytes();
 
     assert!(
-        bytes.windows(2).any(|w| u16::from_le_bytes([w[0], w[1]]) == 0xc40f),
+        bytes
+            .windows(2)
+            .any(|w| u16::from_le_bytes([w[0], w[1]]) == 0xc40f),
         "missing TRAP 0x40 encoding in {bytes:02x?}"
     );
     assert!(
