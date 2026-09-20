@@ -1,0 +1,15 @@
+module examples.m28_5_syscall_r1;
+
+type P32 = *volatile u32;
+
+pub fn system_task_entry() -> i32 {
+    sia_gpr_write(1u8, 0u32);
+    sia_trap(0x40u8);
+    val result: u32 = sia_gpr_read(1u8);
+    unsafe {
+        val proof: P32 = P32(0x0020f000u32);
+        *proof = result;
+    }
+    sia_trap(0x41u8);
+    return 0;
+}

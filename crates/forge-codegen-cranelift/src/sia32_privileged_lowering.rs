@@ -20,8 +20,10 @@ pub(crate) fn validate_sia32_privileged_operations(
             }
             let expected = match operation {
                 Sia32PrivilegedOperation::Trap { .. }
-                | Sia32PrivilegedOperation::ReadSystem { .. } => 1,
-                Sia32PrivilegedOperation::WriteSystem { .. } => 2,
+                | Sia32PrivilegedOperation::ReadSystem { .. } => 0,
+                Sia32PrivilegedOperation::ReadGpr { .. } => 0,
+                Sia32PrivilegedOperation::WriteSystem { .. }
+                | Sia32PrivilegedOperation::WriteGpr { .. } => 1,
                 Sia32PrivilegedOperation::SwapScratch
                 | Sia32PrivilegedOperation::ReturnContext
                 | Sia32PrivilegedOperation::TlbFenceVa
@@ -32,10 +34,8 @@ pub(crate) fn validate_sia32_privileged_operations(
                 | Sia32PrivilegedOperation::SyncInstruction
                 | Sia32PrivilegedOperation::Fence => 0,
             };
-            // TRAP/SREAD carry their immediate/system-register selector both in
-            // the explicit operation and as the typed source argument. Keeping
-            // that argument in FIR preserves source diagnostics until the
-            // dedicated SIA32 lowering consumes it.
+            // Immediate selectors are encoded in the FIR operation itself.
+            // Only value-carrying writes retain a runtime operand.
             if args.len() != expected {
                 return Err(BackendError::InvalidFirShape {
                     message: format!(
@@ -90,6 +90,8 @@ pub(crate) enum Sia32MachinePrivilegedOp {
     Trap { imm8: u8 },
     ReadSystem { selector: u8 },
     WriteSystem { selector: u8 },
+    ReadGpr { register: u8 },
+    WriteGpr { register: u8 },
     SwapScratch,
     Return,
     ReturnContext,
@@ -111,6 +113,8 @@ impl From<Sia32PrivilegedOperation> for Sia32MachinePrivilegedOp {
             Sia32PrivilegedOperation::WriteSystem { system_register } => Self::WriteSystem {
                 selector: system_register,
             },
+            Sia32PrivilegedOperation::ReadGpr { register } => Self::ReadGpr { register },
+            Sia32PrivilegedOperation::WriteGpr { register } => Self::WriteGpr { register },
             Sia32PrivilegedOperation::SwapScratch => Self::SwapScratch,
             Sia32PrivilegedOperation::Return => Self::Return,
             Sia32PrivilegedOperation::ReturnContext => Self::ReturnContext,
