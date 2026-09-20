@@ -175,12 +175,17 @@ fn load_source_bundle(source: &std::path::Path) -> Result<String, Box<dyn std::e
             let trimmed = line.trim();
             if let Some(name) = trimmed.strip_prefix("import ").and_then(|s| s.strip_suffix(';')) {
                 let module = name.trim();
-                let rel = if let Some(rest) = module.strip_prefix("cosmic.") {
-                    format!("{}.fg", rest.replace('.', "/"))
+                let dep = if let Some(rest) = module.strip_prefix("cosmic.") {
+                    root.join(format!("{}.fg", rest.replace('.', "/")))
+                } else if module.starts_with("std.") {
+                    let forge_root = std::env::var_os("LIGHTING_FORGE_REPO")
+                        .map(PathBuf::from)
+                        .or_else(|| std::env::var_os("FORGE_REPO").map(PathBuf::from))
+                        .unwrap_or_else(|| PathBuf::from("."));
+                    forge_root.join("lib").join(format!("{}.fg", module.replace('.', "/")))
                 } else {
-                    format!("{}.fg", module.replace('.', "/"))
+                    root.join(format!("{}.fg", module.replace('.', "/")))
                 };
-                let dep = root.join(rel);
                 if !dep.is_file() {
                     return Err(format!(
                         "cannot resolve import {module:?}: expected {}",
