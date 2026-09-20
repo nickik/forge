@@ -1902,8 +1902,6 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                             ResolvedBuiltinValue::SiaSwrite => (vec![u8_ty.clone(), u32_ty.clone()], Ty::Void),
                             ResolvedBuiltinValue::SiaGprRead => (vec![u8_ty.clone()], u32_ty.clone()),
                             ResolvedBuiltinValue::SiaGprWrite => (vec![u8_ty.clone(), u32_ty.clone()], Ty::Void),
-                            ResolvedBuiltinValue::SiaGprRead => (vec![u8_ty.clone()], u32_ty.clone()),
-                            ResolvedBuiltinValue::SiaGprWrite => (vec![u8_ty.clone(), u32_ty.clone()], Ty::Void),
                             ResolvedBuiltinValue::SiaSswapScratch => (vec![u32_ty.clone()], u32_ty.clone()),
                             ResolvedBuiltinValue::SiaSret => (vec![], Ty::Never),
                             ResolvedBuiltinValue::SiaSretctx => (vec![u32_ty.clone()], Ty::Never),
