@@ -177,6 +177,11 @@ fn load_source_bundle(source: &std::path::Path) -> Result<String, Box<dyn std::e
                 let module = name.trim();
                 let dep = if let Some(rest) = module.strip_prefix("cosmic.") {
                     root.join(format!("{}.fg", rest.replace('.', "/")))
+                } else if module == "std.machine.sia" {
+                    // Cosmic deliberately supplies the target-specific provider
+                    // for this std contract. Native Lighting compilation must
+                    // use Cosmic's provider, not look for a Forge stdlib file.
+                    root.join("platform/native/sia.fg")
                 } else if module.starts_with("std.") {
                     let forge_root = std::env::var_os("LIGHTING_FORGE_REPO")
                         .map(PathBuf::from)
