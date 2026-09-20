@@ -174,8 +174,19 @@ fn load_source_bundle(source: &std::path::Path) -> Result<String, Box<dyn std::e
         for line in text.lines() {
             let trimmed = line.trim();
             if let Some(name) = trimmed.strip_prefix("import ").and_then(|s| s.strip_suffix(';')) {
-                let rel = format!("{}.fg", name.trim().replace('.', "/"));
+                let module = name.trim();
+                let rel = if let Some(rest) = module.strip_prefix("cosmic.") {
+                    format!("{}.fg", rest.replace('.', "/"))
+                } else {
+                    format!("{}.fg", module.replace('.', "/"))
+                };
                 let dep = root.join(rel);
+                if !dep.is_file() {
+                    return Err(format!(
+                        "cannot resolve import {module:?}: expected {}",
+                        dep.display()
+                    ).into());
+                }
                 visit(&dep, root, seen, out)?;
             } else if trimmed.starts_with("module ") {
                 // A source bundle has one synthetic compilation unit; imported
