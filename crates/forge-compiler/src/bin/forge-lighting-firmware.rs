@@ -175,6 +175,7 @@ fn load_source_bundle(source: &std::path::Path) -> Result<String, Box<dyn std::e
             let trimmed = line.trim();
             if let Some(name) = trimmed.strip_prefix("import ").and_then(|s| s.strip_suffix(';')) {
                 let module = name.trim();
+                eprintln!("firmware bundle: {} imports {}", path.display(), module);
                 let dep = if let Some(rest) = module.strip_prefix("cosmic.") {
                     root.join(format!("{}.fg", rest.replace('.', "/")))
                 } else if module == "std.machine.sia" {
@@ -191,6 +192,7 @@ fn load_source_bundle(source: &std::path::Path) -> Result<String, Box<dyn std::e
                 } else {
                     root.join(format!("{}.fg", module.replace('.', "/")))
                 };
+                eprintln!("firmware bundle: resolve {} -> {}", module, dep.display());
                 if !dep.is_file() {
                     return Err(format!(
                         "cannot resolve import {module:?}: expected {}",
