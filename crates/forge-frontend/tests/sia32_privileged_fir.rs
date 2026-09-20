@@ -158,3 +158,40 @@ fn fixed_gpr_syscall_builtins_lower_to_explicit_fir() {
         == Sia32PrivilegedOperation::ReadGpr { register: 1 }
         && args.is_empty()));
 }
+
+
+#[test]
+fn fixed_gpr_write_can_target_architectural_sp() {
+    let source = r#"
+        module test.sia_sp_restore;
+        fn main() -> i32 {
+            sia_gpr_write(13u8, 0x01000000u32);
+            return 0;
+        }
+    "#;
+    let parsed = parse_source(source);
+    assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+    let ast = parsed.ast.unwrap();
+    let hir = lower_module(&ast);
+    assert!(hir.diagnostics.is_empty(), "{:?}", hir.diagnostics);
+    let bodies = lower_resolved_bodies(&ast, &hir.module);
+    assert!(bodies.diagnostics.is_empty(), "{:?}", bodies.diagnostics);
+    let typed = type_check_module(&ast, &hir.module, &bodies);
+    assert!(typed.diagnostics.is_empty(), "{:?}", typed.diagnostics);
+    let fir = lower_fir(&bodies, &typed);
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let main = hir.module.symbols["main"].value_def.unwrap();
+    let function = &fir.module.functions[&main];
+    assert!(function
+        .blocks
+        .iter()
+        .flat_map(|b| &b.instructions)
+        .any(|insn| matches!(
+            insn.kind,
+            FirInstructionKind::Sia32Privileged {
+                operation: Sia32PrivilegedOperation::WriteGpr { register: 13 },
+                ..
+            }
+        )));
+}
