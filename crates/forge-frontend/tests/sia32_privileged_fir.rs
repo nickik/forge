@@ -159,7 +159,6 @@ fn fixed_gpr_syscall_builtins_lower_to_explicit_fir() {
         && args.is_empty()));
 }
 
-
 #[test]
 fn fixed_gpr_write_can_target_architectural_sp() {
     let source = r#"
