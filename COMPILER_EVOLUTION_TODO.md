@@ -124,6 +124,7 @@ available on every backend merely because the frontend accepts it.
         its exact platform symbol and verify ELF sections, call relocations,
         and the absence of undefined hosted/runtime imports.
   - [x] Repeat the contract with the representative Cosmic M27 early-kernel SIA32 image and execute it through LightingSimulation.
+  - [x] Route explicitly mapped freestanding library units through Forge's semantic module linker before SIA32 raw/user-image emission, preserving visibility and dependency-cycle diagnostics.
   - [ ] Extend the contract to a separate freestanding System Task/user image and kernel/user ABI crossing.
 - [ ] Keep package/module visibility and dependency ordering exercised through
       real multi-package builds.

@@ -1,0 +1,6 @@
+module examples.m28_module_user;
+import examples.m28_module_support;
+
+pub fn system_task_entry() -> i32 {
+    return m28_module_support.answer();
+}

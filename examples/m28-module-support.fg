@@ -1,0 +1,5 @@
+module examples.m28_module_support;
+
+pub fn answer() -> i32 {
+    return 42;
+}

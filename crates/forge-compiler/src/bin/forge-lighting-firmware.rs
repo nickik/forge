@@ -5,14 +5,15 @@ use std::process;
 use forge_codegen_cranelift::{
     build_sia32_flat_image, CraneliftBackend, CraneliftTarget, Sia32Object,
 };
+use forge_compiler::{link_source_with_library_sources, LibraryInput};
 use forge_frontend::{
     ast::SourceFile, collect_type_definitions, lower_fir, lower_module, lower_resolved_bodies,
-    parse_source, type_check_module, IntWidth, Ty,
+    type_check_module, IntWidth, Ty,
 };
 
 fn usage() -> ! {
     eprintln!(
-        "usage: forge-lighting-firmware <source.fg> [-o firmware.s] [--entry NAME] [--raw-image | --user-image] [--text-base ADDR]\n\n\
+        "usage: forge-lighting-firmware <source.fg> [-o firmware.s] [--entry NAME] [--library NAME=PATH]... [--raw-image | --user-image] [--text-base ADDR]\n\n\
          Compiles one relocation-free Forge entry function through the production\n\
          SIA32 Cranelift backend and wraps it as Lighting reset-ROM assembly.\n\
          The generated assembly can be turned into a ROM blob with LightingSimulation's siaasm."
@@ -36,6 +37,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     let mut raw_image = false;
     let mut payload: Option<(PathBuf, u32)> = None;
     let mut user_image = false;
+    let mut library_specs = Vec::new();
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -54,6 +56,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
                 user_image = true;
                 raw_image = true;
             }
+            "--library" => library_specs.push(args.next().unwrap_or_else(|| usage())),
             "--embed-payload" => {
                 let path = PathBuf::from(args.next().unwrap_or_else(|| usage()));
                 let off = args.next().unwrap_or_else(|| usage());
@@ -76,17 +79,69 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("--user-image requires an explicit --text-base user virtual address".into());
     }
 
+    let libraries = library_specs
+        .iter()
+        .map(|spec| LibraryInput::parse(spec))
+        .collect::<Result<Vec<_>, _>>()?;
     let source_text = fs::read_to_string(&source)?;
-    let ast = parse_clean(&source_text)?;
+    let library_sources = libraries
+        .iter()
+        .map(|library| {
+            Ok::<_, std::io::Error>((
+                library.name().to_owned(),
+                fs::read_to_string(library.path())?,
+            ))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let ast = link_source_with_library_sources(&source_text, &library_sources)?;
+    let image = compile_sia32_image(ast, &entry, raw_image, text_base)?;
+
+    if raw_image {
+        fs::write(&output, &image)?;
+    } else {
+        if text_base != 0xffff_0014 {
+            return Err("--text-base requires --raw-image".into());
+        }
+        let payload_bytes = payload
+            .as_ref()
+            .map(|(path, off)| Ok::<_, std::io::Error>((fs::read(path)?, *off)))
+            .transpose()?;
+        let assembly = lighting_rom_assembly(
+            &image,
+            &entry,
+            payload_bytes.as_ref().map(|(b, o)| (b.as_slice(), *o)),
+        );
+        fs::write(&output, assembly)?;
+    }
+    eprintln!(
+        "wrote {} bytes of SIA32 Forge {} to {}",
+        image.len(),
+        if user_image {
+            "user image"
+        } else if raw_image {
+            "raw image"
+        } else {
+            "reset ROM payload"
+        },
+        output.display()
+    );
+    Ok(())
+}
+
+fn compile_sia32_image(
+    ast: SourceFile,
+    entry: &str,
+    raw_image: bool,
+    text_base: u32,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let hir = lower_module(&ast);
     if !hir.diagnostics.is_empty() {
         return Err(format!("HIR lowering failed: {:?}", hir.diagnostics).into());
     }
-    if !hir.module.imports.is_empty() {
-        return Err(
-            "firmware bring-up currently requires a single source file with no imports".into(),
-        );
-    }
+    debug_assert!(
+        hir.module.imports.is_empty(),
+        "module linker must consume imports"
+    );
 
     let bodies = lower_resolved_bodies(&ast, &hir.module);
     if !bodies.diagnostics.is_empty() {
@@ -130,45 +185,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
 
     let backend = CraneliftBackend::sia32()?;
     let prepared = backend.prepare_module_with_types(&fir.module, &definitions)?;
-    let image = emit_linked_image(&backend, &prepared, &fir.module, owner, &entry, text_base)?;
-    if raw_image {
-        fs::write(&output, &image)?;
-    } else {
-        if text_base != 0xffff_0014 {
-            return Err("--text-base requires --raw-image".into());
-        }
-        let payload_bytes = payload
-            .as_ref()
-            .map(|(path, off)| Ok::<_, std::io::Error>((fs::read(path)?, *off)))
-            .transpose()?;
-        let assembly = lighting_rom_assembly(
-            &image,
-            &entry,
-            payload_bytes.as_ref().map(|(b, o)| (b.as_slice(), *o)),
-        );
-        fs::write(&output, assembly)?;
-    }
-    eprintln!(
-        "wrote {} bytes of SIA32 Forge {} to {}",
-        image.len(),
-        if user_image {
-            "user image"
-        } else if raw_image {
-            "raw image"
-        } else {
-            "reset ROM payload"
-        },
-        output.display()
-    );
-    Ok(())
-}
-
-fn parse_clean(source: &str) -> Result<SourceFile, Box<dyn std::error::Error>> {
-    let parsed = parse_source(source);
-    if parsed.ast.is_none() || !parsed.diagnostics.is_empty() {
-        return Err(format!("parse failed: {:?}", parsed.diagnostics).into());
-    }
-    Ok(parsed.ast.expect("checked above"))
+    emit_linked_image(&backend, &prepared, &fir.module, owner, entry, text_base)
 }
 
 fn emit_linked_image(
@@ -282,4 +299,37 @@ fn lighting_rom_assembly(code: &[u8], entry: &str, payload: Option<(&[u8], u32)>
     out.push_str("unexpected_trap:\n");
     out.push_str("    B unexpected_trap\n");
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn linked_library_call_emits_a_freestanding_sia32_image() {
+        let root = r#"
+module test.user;
+import support.math;
+
+pub fn system_task_entry() -> i32 {
+    return math.answer();
+}
+"#;
+        let library = r#"
+module support.math;
+
+pub fn answer() -> i32 {
+    return 42;
+}
+"#;
+        let ast = link_source_with_library_sources(
+            root,
+            &[("support.math".to_owned(), library.to_owned())],
+        )
+        .expect("semantic module link");
+        let image = compile_sia32_image(ast, "system_task_entry", true, 0x0020_0000)
+            .expect("SIA32 image emission");
+
+        assert!(!image.is_empty());
+    }
 }
