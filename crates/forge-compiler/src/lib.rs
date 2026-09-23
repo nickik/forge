@@ -153,6 +153,20 @@ fn compile_source_with_library_sources_for_entry(
             "native entry point name must not be empty",
         ));
     }
+    let ast = link_source_with_library_sources(source, libraries)?;
+    compile_ast(ast, entry, external_entry_symbol)
+}
+
+/// Parse and semantically link one root compilation unit with explicitly
+/// supplied library units.
+///
+/// Freestanding drivers use this entry point so they preserve the same import,
+/// visibility, and dependency-cycle contract as the hosted compiler instead of
+/// concatenating source files.
+pub fn link_source_with_library_sources(
+    source: &str,
+    libraries: &[(String, String)],
+) -> Result<SourceFile, CompilerError> {
     let root = parse_ast("root source", source)?;
     let mut parsed_libraries = Vec::with_capacity(libraries.len());
     for (name, source) in libraries {
@@ -161,9 +175,8 @@ fn compile_source_with_library_sources_for_entry(
             ast: parse_ast(&format!("library `{name}`"), source)?,
         });
     }
-    let ast = link_modules(root, parsed_libraries)
-        .map_err(|error| CompilerError::message(format!("module linking failed: {error}")))?;
-    compile_ast(ast, entry, external_entry_symbol)
+    link_modules(root, parsed_libraries)
+        .map_err(|error| CompilerError::message(format!("module linking failed: {error}")))
 }
 
 fn parse_ast(label: &str, source: &str) -> Result<SourceFile, CompilerError> {

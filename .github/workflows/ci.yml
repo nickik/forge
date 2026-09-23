@@ -75,6 +75,17 @@ jobs:
           else
             grep -Eq 'relocation|machine-code relocations|SIA32' /tmp/forge-lighting-functions.err
           fi
+      - name: M28 semantic-module user image
+        timeout-minutes: 3
+        run: |
+          cargo run --quiet -p forge-compiler --bin forge-lighting-firmware -- \
+            "$PWD/examples/m28-module-user.fg" \
+            --library examples.m28_module_support="$PWD/examples/m28-module-support.fg" \
+            --entry system_task_entry \
+            --user-image \
+            --text-base 0x00200000 \
+            -o /tmp/forge-m28-module-user.bin
+          test -s /tmp/forge-m28-module-user.bin
 
       - name: Generated native collections snapshot
         timeout-minutes: 3
