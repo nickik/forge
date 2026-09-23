@@ -18,6 +18,18 @@ pub(crate) fn validate_sia32_privileged_operations(
                     kind: "SIA32 privileged operation on non-SIA32 target",
                 });
             }
+            let register = match operation {
+                Sia32PrivilegedOperation::ReadGpr { register }
+                | Sia32PrivilegedOperation::WriteGpr { register } => Some(*register),
+                _ => None,
+            };
+            if let Some(register) = register.filter(|register| *register > 15) {
+                return Err(BackendError::InvalidFirShape {
+                    message: format!(
+                        "SIA32 GPR selector r{register} is outside the architectural r0..r15 range"
+                    ),
+                });
+            }
             let expected = match operation {
                 Sia32PrivilegedOperation::Trap { .. }
                 | Sia32PrivilegedOperation::ReadSystem { .. } => 0,
@@ -52,7 +64,7 @@ pub(crate) fn validate_sia32_privileged_operations(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use forge_fir::{FirBasicBlock, FirBlockId, FirFunction};
+    use forge_fir::{FirBasicBlock, FirBlockId, FirFunction, FirInstruction, Span};
     use std::collections::BTreeMap;
 
     fn empty_function() -> FirFunction {
@@ -78,6 +90,28 @@ mod tests {
         let function = empty_function();
         assert!(validate_sia32_privileged_operations(CraneliftTarget::Sia32, &function).is_ok());
         assert!(validate_sia32_privileged_operations(CraneliftTarget::Aarch64, &function).is_ok());
+    }
+
+    #[test]
+    fn rejects_gpr_selector_outside_the_architectural_register_file() {
+        let mut function = empty_function();
+        function.blocks[0].instructions.push(FirInstruction {
+            span: Span::new(0, 1),
+            result: None,
+            kind: FirInstructionKind::Sia32Privileged {
+                operation: Sia32PrivilegedOperation::ReadGpr { register: 16 },
+                args: vec![],
+            },
+        });
+
+        let error = validate_sia32_privileged_operations(CraneliftTarget::Sia32, &function)
+            .expect_err("r16 must be rejected before CLIF lowering");
+        assert!(matches!(
+            error,
+            BackendError::InvalidFirShape { message }
+                if message
+                    == "SIA32 GPR selector r16 is outside the architectural r0..r15 range"
+        ));
     }
 }
 

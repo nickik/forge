@@ -1496,13 +1496,13 @@ impl<'a> FunctionLowerer<'a> {
                     }
                     ResolvedBuiltinValue::SiaGprRead => {
                         let register = first_positional(args)
-                            .map(|expr| self.sia_immediate_u8(expr, "SIA32 GPR number"))
+                            .map(|expr| self.sia_gpr_number(expr))
                             .unwrap_or(0);
                         Sia32PrivilegedOperation::ReadGpr { register }
                     }
                     ResolvedBuiltinValue::SiaGprWrite => {
                         let register = first_positional(args)
-                            .map(|expr| self.sia_immediate_u8(expr, "SIA32 GPR number"))
+                            .map(|expr| self.sia_gpr_number(expr))
                             .unwrap_or(0);
                         Sia32PrivilegedOperation::WriteGpr { register }
                     }
@@ -3230,6 +3230,19 @@ impl<'a> FunctionLowerer<'a> {
             format!("{what} must be a compile-time u8 constant"),
         );
         0
+    }
+
+    fn sia_gpr_number(&mut self, expr: &HirExpr) -> u8 {
+        let register = self.sia_immediate_u8(expr, "SIA32 GPR number");
+        if register > 15 {
+            self.diagnostic(
+                expr.span,
+                "fir/sia32-gpr-range",
+                format!("SIA32 GPR number must be in r0..r15, got r{register}"),
+            );
+            return 0;
+        }
+        register
     }
 
     fn lower_name(&mut self, span: Span, name: ResolvedName, ty: Ty) -> FirValueId {
