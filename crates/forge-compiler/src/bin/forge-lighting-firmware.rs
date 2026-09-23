@@ -160,7 +160,7 @@ fn compile_sia32_image(
     let owner = hir
         .module
         .symbols
-        .get(&entry)
+        .get(entry)
         .and_then(|symbols| symbols.value_def)
         .ok_or_else(|| format!("firmware requires entry function '{entry}'"))?;
     let function = fir
