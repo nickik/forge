@@ -70,8 +70,14 @@ pub fn answer() -> i32 {
     assert!(String::from_utf8_lossy(&first.stderr).contains("SIA32 Forge user image"));
     let first_bytes = std::fs::read(&first_image).expect("read first user image");
     let second_bytes = std::fs::read(&second_image).expect("read second user image");
-    assert!(!first_bytes.is_empty(), "user image must contain linked text");
-    assert_eq!(first_bytes, second_bytes, "user image must be deterministic");
+    assert!(
+        !first_bytes.is_empty(),
+        "user image must contain linked text"
+    );
+    assert_eq!(
+        first_bytes, second_bytes,
+        "user image must be deterministic"
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }
