@@ -1621,11 +1621,24 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 body,
             } => {
                 let iter_ty = self.check_expr(iterable, None);
-                let element = match iter_ty {
-                    Ty::Array { element, .. } | Ty::Slice { element, .. } => *element,
-                    _ => Ty::Unknown,
+                let element = match &iter_ty {
+                    Ty::Array { element, .. } | Ty::Slice { element, .. } => {
+                        element.as_ref().clone()
+                    }
+                    Ty::Unknown | Ty::Error => Ty::Unknown,
+                    _ => {
+                        self.diagnostic(
+                            iterable.span,
+                            "type/for-each-iterable",
+                            format!(
+                                "value iteration requires an array or slice, found {iter_ty:?}"
+                            ),
+                        );
+                        Ty::Unknown
+                    }
                 };
                 self.check_pattern(pattern, &element);
+                self.check_irrefutable_binding_pattern(pattern, &element);
                 if *mutable {
                     self.mark_pattern_mutable(pattern);
                 }
