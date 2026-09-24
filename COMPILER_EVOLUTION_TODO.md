@@ -7,7 +7,9 @@
 - [x] SIA32 direct-call literals preserve the required 4-byte function alignment through final image layout.
 - [x] The merged Forge image is consumed by LightingSimulation's end-to-end Cosmic boot proof.
 - [x] M27 proof reaches Cosmic, installs VMCTX/page tables, enables translation, enters and returns from TRAP 0x27, and halts intentionally.
-- [ ] Next vertical target: compile the smallest System Task/userspace image and support the kernel/user crossing required to run it.
+- [x] The pinned M28.6 Cosmic kernel, trap dispatcher and System Task compile
+      through current Forge and execute across the kernel/user boundary on
+      LightingSimulation, including `r1` syscall exchange, `SRET` and the proof word.
 
 
 This is the top-level implementation order for the Forge compiler after C14.
@@ -112,6 +114,8 @@ available on every backend merely because the frontend accepts it.
       `C15_TODO.md` are complete.
 - [ ] Add native SIA image and Lighting execution tests for every feature that
       becomes supported; object creation alone is insufficient.
+  - [x] Forge CI non-skippably executes the pinned Cosmic M28.6 kernel, trap
+        dispatcher and System Task on pinned LightingSimulation revisions.
 - [ ] Keep SIA-specific ABI and lowering changes isolated from AArch64/RISC-V
       unless a shared defect is proven.
 
@@ -149,7 +153,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Compile the checked-in M28.5 System Task source through the production
         SIA32 user-image path, including fixed `r1` syscall exchange, traps and
         the userspace proof-word store.
-  - [ ] Extend the contract to a separate freestanding System Task/user image and kernel/user ABI crossing.
+  - [x] Execute the separate freestanding System Task/user image through the
+        Cosmic kernel/user ABI crossing on LightingSimulation, including fixed
+        `r1`, `SRET`, dedicated user stack restoration and the proof word.
 - [ ] Keep package/module visibility and dependency ordering exercised through
       real multi-package builds.
 - [ ] Define the Forge-to-Cosmic kernel/userland compile contract once the
