@@ -239,12 +239,15 @@ pub fn verify_fir_boundary(bodies: &BodyHirOutput, typed: &TypeCheckOutput) -> V
 
 fn verify_no_poison(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
     for block in &function.blocks {
-        for instruction in &block.instructions {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
             if matches!(&instruction.kind, FirInstructionKind::Poison) {
                 diagnostics.push(diagnostic(
                     instruction.span,
                     "fir/verify-poison",
-                    format!("FIR function {:?} contains Poison", function.owner),
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} contains Poison",
+                        function.owner, block.id
+                    ),
                 ));
             }
             if let Some(result) = instruction.result {
@@ -253,7 +256,10 @@ fn verify_no_poison(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagno
                         diagnostics.push(diagnostic(
                             instruction.span,
                             "fir/verify-type",
-                            format!("value {result:?} has non-concrete type {ty:?}"),
+                            format!(
+                                "FIR function {:?} block {:?} instruction {instruction_index} value {result:?} has non-concrete type {ty:?}",
+                                function.owner, block.id
+                            ),
                         ));
                     }
                 }

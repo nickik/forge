@@ -97,6 +97,49 @@ fn module_verifier_rejects_poison_and_bad_initializer_order() {
 }
 
 #[test]
+fn value_verifier_reports_function_block_instruction_and_value_context() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_value_context;
+        fn main() -> u32 { return 7u32; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let owner = function.owner;
+    let (block, instruction_index, value, span) = function
+        .blocks
+        .iter()
+        .flat_map(|block| {
+            block
+                .instructions
+                .iter()
+                .enumerate()
+                .filter_map(move |(index, instruction)| {
+                    instruction
+                        .result
+                        .map(|value| (block.id, index, value, instruction.span))
+                })
+        })
+        .next()
+        .expect("value-producing instruction");
+    function.value_types.remove(&value);
+
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-value")
+        .expect("missing-value-type diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic.message.contains(&format!("function {owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic.message.contains(&format!("value {value:?}")));
+}
+
+#[test]
 fn duration_reader_form_is_semantically_closed_at_boundary() {
     let (bodies, typed, fir) = pipeline(
         r#"
