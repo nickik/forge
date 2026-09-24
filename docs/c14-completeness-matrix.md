@@ -47,7 +47,7 @@ Legend:
 | Freestanding `:kernel`, `:std false` | 4 | AArch64 object emission exports the manifest-selected entry under its exact platform symbol and verifies ELF sections, call relocations, and no undefined hosted/runtime imports. The representative Cosmic M27 SIA32 kernel image executes through LightingSimulation; explicit semantic library mappings and the checked-in M28.5 `r1` syscall/proof source reach production SIA32 user-image emission. The separate System Task kernel/user crossing still lacks Lighting execution. |
 | `select` / channels | 6 | Explicitly deferred by the C14 acceptance request. Existing frontend/FIR scaffolding is not completion. |
 | SIA machine-code backend | 6 | C15. |
-| Tail calls | 6 | Not a C14 requirement. Direct and indirect tail intent remains explicit in FIR and is rejected on AArch64/RISC-V rather than silently lowered as an ordinary call. |
+| Tail calls | 6 | Not a C14 requirement. Direct, indirect and local-closure tail intent remains explicit in FIR and is rejected before object emission rather than silently lowered as an ordinary call. |
 | `switch`, `internal`, compound assignment | 7 | Reserved/rejected by the syntax decisions. |
 | Pattern conjunction/negation | 7 | Removed from normative v1. |
 | `extern "C"`, C varargs | 7 | Deferred from v1 by the syntax decisions. |
