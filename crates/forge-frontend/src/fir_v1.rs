@@ -3787,8 +3787,8 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
             span: Span::new(0, 0),
             code: "fir/verify-type".into(),
             message: format!(
-                "non-concrete function return type {:?}",
-                function.return_type
+                "function {:?} has return type {:?}; expected a concrete FIR type",
+                function.owner, function.return_type
             ),
         });
     }
@@ -3797,18 +3797,30 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
             diagnostics.push(FirDiagnostic {
                 span: Span::new(0, 0),
                 code: "fir/verify-type".into(),
-                message: format!("non-concrete local {:?}: {:?}", local.id, local.ty),
+                message: format!(
+                    "function {:?} local {:?} has type {:?}; expected a concrete FIR type",
+                    function.owner, local.id, local.ty
+                ),
             });
         }
     }
     for closure in function.closures.values() {
-        if closure.entry.0 >= block_count
-            || function.blocks[closure.entry.0 as usize].closure != Some(closure.id)
-        {
+        let entry_owner = function
+            .blocks
+            .get(closure.entry.0 as usize)
+            .and_then(|block| block.closure);
+        if entry_owner != Some(closure.id) {
             diagnostics.push(FirDiagnostic {
                 span: Span::new(0, 0),
                 code: "fir/verify-closure-entry".into(),
-                message: format!("closure {:?} has an invalid entry block", closure.id),
+                message: format!(
+                    "function {:?} closure {:?} has entry block {:?} with closure owner {:?}; expected {:?} within {block_count} blocks",
+                    function.owner,
+                    closure.id,
+                    closure.entry,
+                    entry_owner,
+                    Some(closure.id)
+                ),
             });
         }
         if !fir_type_is_concrete(&closure.return_type)
@@ -3821,8 +3833,15 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                 span: Span::new(0, 0),
                 code: "fir/verify-closure-type".into(),
                 message: format!(
-                    "closure {:?} contains a non-concrete semantic type",
-                    closure.id
+                    "function {:?} closure {:?} has return type {:?} and capture types {:?}; expected concrete FIR types",
+                    function.owner,
+                    closure.id,
+                    closure.return_type,
+                    closure
+                        .captures
+                        .iter()
+                        .map(|capture| (&capture.local, &capture.ty))
+                        .collect::<Vec<_>>()
                 ),
             });
         }
