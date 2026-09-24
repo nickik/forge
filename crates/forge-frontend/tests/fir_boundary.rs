@@ -1,7 +1,7 @@
 use forge_frontend::{
     dump_fir_module, lower_fir, lower_module, lower_resolved_bodies, parse_source,
-    type_check_module, verify_fir_boundary, verify_fir_module, FirBlockId,
-    FirInstructionKind, FirModule, FirTerminator, Ty,
+    type_check_module, verify_fir_boundary, verify_fir_module, FirBlockId, FirInstructionKind,
+    FirModule, FirTerminator, Ty,
 };
 
 fn pipeline(
@@ -207,8 +207,7 @@ fn signature_local_and_closure_verifiers_report_owner_context() {
     let return_type = diagnostics
         .iter()
         .find(|diagnostic| {
-            diagnostic.code == "fir/verify-type"
-                && diagnostic.message.contains("return type")
+            diagnostic.code == "fir/verify-type" && diagnostic.message.contains("return type")
         })
         .expect("function-return diagnostic");
     assert!(return_type.message.contains(&format!("function {owner:?}")));
