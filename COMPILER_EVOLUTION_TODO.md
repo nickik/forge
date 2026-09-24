@@ -68,8 +68,12 @@ available on every backend merely because the frontend accepts it.
       returns, recursion and indirect calls.
 - [x] Define and execute the AArch64 floating-point aggregate ABI class before
       enabling float aggregate calls; RISC-V and SIA remain explicit boundaries.
-- [ ] Audit object sections, relocations, visibility and deterministic symbol
+- [x] Audit object sections, relocations, visibility and deterministic symbol
       naming for every supported target.
+  - [x] AArch64 and RISC-V ELF objects pin deterministic sections, symbol
+        names/bindings, explicit imports/exports/locals and text/data
+        relocations; SIAO32 separately pins its sections, symbols and `ABS32`
+        relocation contract.
 - [ ] Add malformed-object, unresolved-symbol and relocation-overflow negative
       tests at each object/image boundary.
   - [x] SIAO32 parsing/linking pins exact diagnostics for malformed objects,
