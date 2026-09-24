@@ -189,10 +189,7 @@ fn duration_roundtrip_module() -> (FirModule, DefId) {
                 value: Some(loaded_scratch),
             }),
         }],
-        value_types: BTreeMap::from([
-            (loaded_param, Ty::Duration),
-            (loaded_scratch, Ty::Duration),
-        ]),
+        value_types: BTreeMap::from([(loaded_param, Ty::Duration), (loaded_scratch, Ty::Duration)]),
     };
 
     let mut module = FirModule::default();
@@ -212,7 +209,9 @@ fn compile_choose() -> MachineCode {
 fn compile_duration_roundtrip() -> MachineCode {
     let backend = CraneliftBackend::riscv64().expect("RV64 backend");
     let (module, owner) = duration_roundtrip_module();
-    let prepared = backend.prepare_module(&module).expect("verified duration FIR");
+    let prepared = backend
+        .prepare_module(&module)
+        .expect("verified duration FIR");
     backend
         .emit_machine_code(&prepared, owner)
         .expect("RV64 duration machine code")
