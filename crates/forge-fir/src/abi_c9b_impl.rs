@@ -1,10 +1,11 @@
 use std::fmt;
 
 use forge_frontend::{DefId, IntWidth, Ty, TypeDefinitionKind, TypeDefinitionTable};
+use serde::Serialize;
 
 use crate::layout::{Layout, LayoutEngine, LayoutError, LayoutKind, LayoutTarget, SumEncoding};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct AbiTarget {
     pub word_bits: u16,
     pub pointer_bits: u16,
@@ -49,21 +50,22 @@ impl AbiTarget {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AbiPieceKind {
     Integer,
     Pointer,
 }
 
 /// Mapping from a byte-addressed Forge representation into one ABI scalar.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AbiFragment {
     pub source_offset: u64,
     pub bits: u16,
     pub piece_bit_offset: u16,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AbiPiece {
     pub kind: AbiPieceKind,
     /// Scalar width presented to the target ABI. Integer pieces are widened to
@@ -73,13 +75,14 @@ pub struct AbiPiece {
     pub fragments: Vec<AbiFragment>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AbiPassing {
     Direct,
     Indirect,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AbiDecomposition {
     pub passing: AbiPassing,
     pub size: u64,
@@ -87,6 +90,21 @@ pub struct AbiDecomposition {
     /// Indirect values have no direct pieces; the later call ABI supplies the
     /// pointer to caller-owned value storage.
     pub pieces: Vec<AbiPiece>,
+}
+
+/// Types represented by one or more Forge ABI pieces rather than one native
+/// scalar. Keep this classification shared with backend signature lowering so
+/// debug output cannot reconstruct a different ABI policy.
+pub fn is_abi_aggregate_type(ty: &Ty) -> bool {
+    matches!(
+        ty,
+        Ty::Str
+            | Ty::Nominal(_)
+            | Ty::Optional { .. }
+            | Ty::Slice { .. }
+            | Ty::Array { .. }
+            | Ty::Result { .. }
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

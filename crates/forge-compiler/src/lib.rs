@@ -11,7 +11,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use forge_codegen_cranelift::CraneliftBackend;
 use forge_fir::{
-    BinaryOp, ConstValue, FirConst, FirFunction, FirGlobal, FirInstructionKind, FirModule,
+    is_abi_aggregate_type, AbiDecomposer, AbiDecomposition, AbiPassing, AbiTarget, BinaryOp,
+    ConstValue, FirConst, FirFunction, FirGlobal, FirInstructionKind, FirLocalId, FirModule,
     StaticGlobalInitializer, StaticGlobalInitializerTable, StaticSymbol, StaticValue,
 };
 use forge_frontend::{
@@ -109,6 +110,40 @@ struct TypedFrontEndOutput {
     hir: HirOutput,
     bodies: BodyHirOutput,
     typed: TypeCheckOutput,
+}
+
+#[derive(serde::Serialize)]
+struct AbiModuleDump {
+    target: &'static str,
+    functions: BTreeMap<DefId, AbiFunctionDump>,
+    global_initializers: BTreeMap<DefId, AbiFunctionDump>,
+}
+
+#[derive(serde::Serialize)]
+struct AbiFunctionDump {
+    parameters: Vec<AbiParameterDump>,
+    result: AbiValueDump,
+}
+
+#[derive(serde::Serialize)]
+struct AbiParameterDump {
+    local: FirLocalId,
+    value: AbiValueDump,
+}
+
+#[derive(serde::Serialize)]
+#[serde(tag = "passing", rename_all = "snake_case")]
+enum AbiValueDump {
+    Void,
+    Scalar { ty: Ty },
+    Direct {
+        ty: Ty,
+        decomposition: AbiDecomposition,
+    },
+    Indirect {
+        ty: Ty,
+        decomposition: AbiDecomposition,
+    },
 }
 
 impl CompiledProgram {
@@ -216,6 +251,94 @@ pub fn dump_typed_hir_source_with_library_sources(
     let ast = link_source_with_library_sources(source, libraries)?;
     let lowered = type_check_ast(&ast)?;
     Ok(dump_typed_hir(&lowered.typed))
+}
+
+/// Decompose every linked FIR function signature through the Forge-owned
+/// AArch64 ABI policy and return a deterministic JSON view. This stops before
+/// CLIF construction and object planning.
+pub fn dump_abi_source_with_library_sources(
+    source: &str,
+    libraries: &[(String, String)],
+) -> Result<String, CompilerError> {
+    let ast = link_source_with_library_sources(source, libraries)?;
+    let lowered = lower_ast(&ast)?;
+    let definitions = collect_type_definitions(
+        &ast,
+        &lowered.hir.module,
+        &lowered.bodies,
+        &lowered.typed,
+    );
+    let mut decomposer = AbiDecomposer::new(AbiTarget::aarch64(), &definitions)
+        .map_err(|error| CompilerError::message(format!("ABI setup failed: {error}")))?;
+    let mut functions = BTreeMap::new();
+    for (owner, function) in &lowered.fir.module.functions {
+        functions.insert(*owner, dump_abi_function(function, &mut decomposer)?);
+    }
+    let mut global_initializers = BTreeMap::new();
+    for (owner, initializer) in &lowered.fir.module.global_initializers {
+        global_initializers.insert(
+            *owner,
+            dump_abi_function(&initializer.function, &mut decomposer)?,
+        );
+    }
+    let dump = AbiModuleDump {
+        target: "aarch64-unknown-linux-gnu",
+        functions,
+        global_initializers,
+    };
+    Ok(serde_json::to_string_pretty(&dump).expect("ABI dump serialization"))
+}
+
+fn dump_abi_function(
+    function: &FirFunction,
+    decomposer: &mut AbiDecomposer<'_>,
+) -> Result<AbiFunctionDump, CompilerError> {
+    let mut parameters = Vec::with_capacity(function.params.len());
+    for local in &function.params {
+        let ty = function
+            .locals
+            .get(local)
+            .map(|parameter| &parameter.ty)
+            .ok_or_else(|| {
+                CompilerError::message(format!(
+                    "ABI dump function {:?} is missing parameter local {local:?}",
+                    function.owner
+                ))
+            })?;
+        parameters.push(AbiParameterDump {
+            local: *local,
+            value: dump_abi_value(ty, decomposer)?,
+        });
+    }
+    Ok(AbiFunctionDump {
+        parameters,
+        result: dump_abi_value(&function.return_type, decomposer)?,
+    })
+}
+
+fn dump_abi_value(
+    ty: &Ty,
+    decomposer: &mut AbiDecomposer<'_>,
+) -> Result<AbiValueDump, CompilerError> {
+    if *ty == Ty::Void {
+        return Ok(AbiValueDump::Void);
+    }
+    if !is_abi_aggregate_type(ty) {
+        return Ok(AbiValueDump::Scalar { ty: ty.clone() });
+    }
+    let decomposition = decomposer
+        .decompose(ty)
+        .map_err(|error| CompilerError::message(format!("ABI decomposition failed: {error}")))?;
+    Ok(match decomposition.passing {
+        AbiPassing::Direct => AbiValueDump::Direct {
+            ty: ty.clone(),
+            decomposition,
+        },
+        AbiPassing::Indirect => AbiValueDump::Indirect {
+            ty: ty.clone(),
+            decomposition,
+        },
+    })
 }
 
 fn parse_ast(label: &str, source: &str) -> Result<SourceFile, CompilerError> {
@@ -747,6 +870,15 @@ pub fn dump_typed_hir_file_with_libraries(
     let source = read_source(path)?;
     let sources = read_library_sources(libraries)?;
     dump_typed_hir_source_with_library_sources(&source, &sources)
+}
+
+pub fn dump_abi_file_with_libraries(
+    path: &Path,
+    libraries: &[LibraryInput],
+) -> Result<String, CompilerError> {
+    let source = read_source(path)?;
+    let sources = read_library_sources(libraries)?;
+    dump_abi_source_with_library_sources(&source, &sources)
 }
 
 pub fn emit_object_file(path: &Path, output: &Path) -> Result<(), CompilerError> {

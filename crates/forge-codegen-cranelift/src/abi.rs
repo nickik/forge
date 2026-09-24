@@ -1,8 +1,8 @@
 use cranelift_codegen::ir::{types as clif_types, AbiParam, Signature};
 use cranelift_codegen::isa::CallConv;
 use forge_fir::{
-    AbiDecomposer, AbiDecomposition, AbiError, AbiPassing, AbiPiece, AbiPieceKind, AbiTarget,
-    FirFunction, Ty, TypeDefinitionTable,
+    is_abi_aggregate_type, AbiDecomposer, AbiDecomposition, AbiError, AbiPassing, AbiPiece,
+    AbiPieceKind, AbiTarget, FirFunction, Ty, TypeDefinitionTable,
 };
 
 use crate::{BackendError, TypeLowering};
@@ -139,18 +139,6 @@ pub(crate) struct C9SignaturePlan {
     pub(crate) result: C9ReturnPlan,
 }
 
-pub(crate) fn is_c9_aggregate_type(ty: &Ty) -> bool {
-    matches!(
-        ty,
-        Ty::Str
-            | Ty::Nominal(_)
-            | Ty::Optional { .. }
-            | Ty::Slice { .. }
-            | Ty::Array { .. }
-            | Ty::Result { .. }
-    )
-}
-
 pub(crate) fn lower_c9_fir_signature(
     fir: &FirFunction,
     definitions: &TypeDefinitionTable,
@@ -208,7 +196,7 @@ fn lower_c9_signature(
         if *ty == Ty::Void {
             return Err(shape("void FIR parameter reached C9 ABI lowering"));
         }
-        let plan = if is_c9_aggregate_type(ty) {
+        let plan = if is_abi_aggregate_type(ty) {
             let decomposition = decomposer.decompose(ty).map_err(abi_error)?;
             match decomposition.passing {
                 AbiPassing::Direct => {
@@ -265,7 +253,7 @@ fn lower_c9_return(
     if *ty == Ty::Void {
         return Ok(C9ReturnPlan::Void);
     }
-    if !is_c9_aggregate_type(ty) {
+    if !is_abi_aggregate_type(ty) {
         return Ok(C9ReturnPlan::Scalar { ty: ty.clone() });
     }
     let decomposition = decomposer.decompose(ty).map_err(abi_error)?;
