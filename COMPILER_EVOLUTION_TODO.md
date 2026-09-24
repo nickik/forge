@@ -64,8 +64,8 @@ available on every backend merely because the frontend accepts it.
 
 - [x] Add cross-target ABI fixtures for mixed scalar/aggregate calls, hidden
       returns, recursion and indirect calls.
-- [ ] Define floating-point aggregate ABI classes for native targets before
-      enabling float aggregate calls beyond the current scalar/field coverage.
+- [x] Define and execute the AArch64 floating-point aggregate ABI class before
+      enabling float aggregate calls; RISC-V and SIA remain explicit boundaries.
 - [ ] Audit object sections, relocations, visibility and deterministic symbol
       naming for every supported target.
 - [ ] Add malformed-object, unresolved-symbol and relocation-overflow negative
@@ -82,13 +82,14 @@ available on every backend merely because the frontend accepts it.
 
 ### AArch64 hosted native
 
-- [ ] Complete `f32`/`f64` call/return ABI, aggregate ABI and exceptional-value
+- [x] Complete `f32`/`f64` call/return ABI, aggregate ABI and exceptional-value
       execution matrices.
   - [x] AArch64 hosted execution covers unordered `NaN` comparisons, signed
         zero through division, and integer-to-`f64` conversion.
   - [x] AArch64 mixed-`f32`/`f64` aggregate arguments and returns execute
         through the production ABI.
-  - [ ] Complete the remaining float conversion matrix.
+  - [x] Explicit `f32`↔`f64` FIR promotion/demotion executes natively without
+        weakening generic integer conversion rules.
 - [x] Keep hosted executable fixtures as the acceptance proof, not object
       emission alone.
 
