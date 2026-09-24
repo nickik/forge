@@ -272,11 +272,11 @@ fn verifier_requires_local_initialization_on_every_incoming_path() {
         .iter()
         .position(|instruction| {
             matches!(
-                instruction.kind,
+                &instruction.kind,
                 FirInstructionKind::Store {
                     place: FirPlace::Local { local: stored },
                     ..
-                } if stored == local
+                } if *stored == local
             )
         })
         .expect("initial local store");
@@ -293,11 +293,11 @@ fn verifier_requires_local_initialization_on_every_incoming_path() {
         .find(|block| {
             block.instructions.iter().any(|instruction| {
                 matches!(
-                    instruction.kind,
+                    &instruction.kind,
                     FirInstructionKind::Store {
                         place: FirPlace::Local { local: stored },
                         ..
-                    } if stored == local
+                    } if *stored == local
                 )
             })
         })
@@ -307,11 +307,11 @@ fn verifier_requires_local_initialization_on_every_incoming_path() {
         .iter()
         .position(|instruction| {
             matches!(
-                instruction.kind,
+                &instruction.kind,
                 FirInstructionKind::Store {
                     place: FirPlace::Local { local: stored },
                     ..
-                } if stored == local
+                } if *stored == local
             )
         })
         .unwrap();
