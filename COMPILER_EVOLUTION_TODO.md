@@ -52,8 +52,8 @@ available on every backend merely because the frontend accepts it.
       reads, stores and mutable field addresses.
 - [x] globals follow-up: static aggregate-pointer initializer execution on
       AArch64 and RISC-V.
-- [x] `defer`: direct and `?` early return, loop exits and nested LIFO
-      ordering execute natively.
+- [x] `defer`: direct and `?` early return, single and nested-loop exits, and
+      nested LIFO ordering execute natively.
 - [x] `match`: resolved map-protocol lookup/closed-key calls execute natively,
       including required and optional bindings.
 - [x] `match`: mixed fieldless, narrow-scalar and multi-field tagged payloads
