@@ -77,9 +77,7 @@ pub(crate) fn validate_sia32_privileged_operations(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use forge_fir::{
-        FirBasicBlock, FirBlockId, FirFunction, FirInstruction, FirValueId, Span,
-    };
+    use forge_fir::{FirBasicBlock, FirBlockId, FirFunction, FirInstruction, FirValueId, Span};
     use std::collections::BTreeMap;
 
     fn empty_function() -> FirFunction {
