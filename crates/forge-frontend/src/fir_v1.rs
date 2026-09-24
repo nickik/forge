@@ -1780,16 +1780,12 @@ impl<'a> FunctionLowerer<'a> {
                         );
                     }
                 }
-                if matches!(source_ty, Ty::Int { .. } | Ty::Byte)
-                    && matches!(ty, Ty::Float { .. })
+                if matches!(source_ty, Ty::Int { .. } | Ty::Byte) && matches!(ty, Ty::Float { .. })
                 {
                     return self.emit_value(
                         expr.span,
                         ty.clone(),
-                        FirInstructionKind::IntegerToFloat {
-                            value,
-                            target: ty,
-                        },
+                        FirInstructionKind::IntegerToFloat { value, target: ty },
                     );
                 }
                 self.emit_value(
