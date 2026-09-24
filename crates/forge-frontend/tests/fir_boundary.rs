@@ -1,7 +1,7 @@
 use forge_frontend::{
     dump_fir_module, lower_fir, lower_module, lower_resolved_bodies, parse_source,
-    type_check_module, verify_fir_boundary, verify_fir_module, FirInstructionKind, FirModule,
-    FirTerminator, Ty,
+    type_check_module, verify_fir_boundary, verify_fir_module, FirBlockId,
+    FirInstructionKind, FirModule, FirTerminator, Ty,
 };
 
 fn pipeline(
@@ -175,6 +175,73 @@ fn branch_verifier_reports_function_block_value_and_type_context() {
         .message
         .contains(&format!("condition {condition:?}")));
     assert!(diagnostic.message.contains("has type None; expected Bool"));
+}
+
+#[test]
+fn signature_local_and_closure_verifiers_report_owner_context() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_signature_context;
+        fn main(input: u32) -> u32 {
+            val factor: u32 = input;
+            val scale = [factor](value: u32) -> u32 { return value * factor; };
+            return scale(3u32);
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let owner = function.owner;
+    function.return_type = Ty::Unknown;
+    let local_id = *function.locals.keys().next().expect("function local");
+    function.locals.get_mut(&local_id).unwrap().ty = Ty::Unknown;
+
+    let closure = function.closures.values_mut().next().expect("closure");
+    let closure_id = closure.id;
+    closure.entry = FirBlockId(u32::MAX);
+    closure.return_type = Ty::Unknown;
+    closure.captures[0].ty = Ty::Unknown;
+
+    let diagnostics = verify_fir_module(&fir.module);
+    let return_type = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.code == "fir/verify-type"
+                && diagnostic.message.contains("return type")
+        })
+        .expect("function-return diagnostic");
+    assert!(return_type.message.contains(&format!("function {owner:?}")));
+    assert!(return_type.message.contains("expected a concrete FIR type"));
+
+    let local = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.code == "fir/verify-type"
+                && diagnostic.message.contains(&format!("local {local_id:?}"))
+        })
+        .expect("local-type diagnostic");
+    assert!(local.message.contains(&format!("function {owner:?}")));
+
+    let entry = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-closure-entry")
+        .expect("closure-entry diagnostic");
+    assert!(entry.message.contains(&format!("function {owner:?}")));
+    assert!(entry.message.contains(&format!("closure {closure_id:?}")));
+    assert!(entry.message.contains("entry block FirBlockId(4294967295)"));
+
+    let closure_type = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-closure-type")
+        .expect("closure-type diagnostic");
+    assert!(closure_type
+        .message
+        .contains(&format!("function {owner:?}")));
+    assert!(closure_type
+        .message
+        .contains(&format!("closure {closure_id:?}")));
+    assert!(closure_type.message.contains("expected concrete FIR types"));
 }
 
 #[test]
