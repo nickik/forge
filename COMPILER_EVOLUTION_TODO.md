@@ -43,6 +43,8 @@ available on every backend merely because the frontend accepts it.
         diagnostic; local closure calls and capture-free function pointers remain supported.
   - [x] Pin required direct, indirect and local-closure tail calls as explicit
         hosted backend boundaries; they must not silently become ordinary calls.
+  - [x] Pin SIA32 scratch swap and context return as explicit CLIF-bridge
+        boundaries until a Cosmic vertical slice requires their implementation.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
