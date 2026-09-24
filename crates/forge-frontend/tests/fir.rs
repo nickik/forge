@@ -75,11 +75,10 @@ fn value_for_array_and_slice_lower_to_explicit_iteration_cfg() {
             .count(),
         2
     );
-    assert!(output
-        .module
-        .functions
-        .values()
-        .all(|function| function.blocks.iter().all(|block| block.terminator.is_some())));
+    assert!(output.module.functions.values().all(|function| function
+        .blocks
+        .iter()
+        .all(|block| block.terminator.is_some())));
 }
 
 #[test]
