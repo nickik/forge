@@ -2724,8 +2724,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             Ty::Function { params, result, .. } => {
                 for (arg, param) in args.iter().zip(params.iter()) {
                     let value = arg_value(arg);
-                    let actual = self.check_expr(value, Some(param));
-                    self.require_assignable(value.span, param, &actual, "type/mismatch");
+                    self.check_call_argument(value, param);
                 }
                 if args.len() != params.len() {
                     self.diagnostic(
@@ -2749,8 +2748,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 }
                 for (arg, param) in args.iter().zip(params.iter()) {
                     let value = arg_value(arg);
-                    let actual = self.check_expr(value, Some(param));
-                    self.require_assignable(value.span, param, &actual, "type/mismatch");
+                    self.check_call_argument(value, param);
                 }
                 if args.len() != params.len() {
                     self.diagnostic(span, "call/arity", "closure call has wrong argument count");
@@ -2760,6 +2758,20 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             Ty::Error => (Ty::Error, None),
             _ => (Ty::Unknown, None),
         }
+    }
+
+    fn check_call_argument(&mut self, value: &HirExpr, parameter: &Ty) {
+        let actual = self.check_expr(value, Some(parameter));
+        if matches!(actual, Ty::Closure { .. }) {
+            self.diagnostic(
+                value.span,
+                "closure/escape",
+                format!(
+                    "Forge v1 closure value {actual:?} cannot cross a call boundary; call it locally or pass a capture-free function pointer"
+                ),
+            );
+        }
+        self.require_assignable(value.span, parameter, &actual, "type/mismatch");
     }
 
     fn check_method_receiver(&mut self, receiver: &HirExpr, actual: &Ty, sig: &FunctionSig) {
@@ -2867,8 +2879,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     sig.params.iter().enumerate().find(|(_, p)| p.name == *name)
                 {
                     slots[parameter] = Some(ResolvedCallArgument::Explicit { argument });
-                    let actual = self.check_expr(value, Some(&param.ty));
-                    self.require_assignable(value.span, &param.ty, &actual, "type/mismatch");
+                    self.check_call_argument(value, &param.ty);
                 } else {
                     self.diagnostic(
                         value.span,
@@ -2885,8 +2896,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 let value = arg_value(arg);
                 if let Some(param) = sig.params.get(argument) {
                     slots[argument] = Some(ResolvedCallArgument::Explicit { argument });
-                    let actual = self.check_expr(value, Some(&param.ty));
-                    self.require_assignable(value.span, &param.ty, &actual, "type/mismatch");
+                    self.check_call_argument(value, &param.ty);
                 } else {
                     self.diagnostic(value.span, "call/arity", "too many arguments");
                 }

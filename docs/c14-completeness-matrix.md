@@ -38,7 +38,7 @@ Legend:
 | `match` | 1 | Bool, scalar, enum, tagged, Option, Result, nested projections, guards, OR/as, ranges, sequence-rest, and resolved map-protocol required/optional bindings execute natively. |
 | Functions and calls | 1 | Direct/indirect, named/default, method calls, scalar/aggregate ABI and non-main entry covered. |
 | Function pointers | 1 | Named functions cross call boundaries; anonymous closure coercion is rejected. |
-| Local captured closures | 1 | Explicit capture lists and local calls execute. Escaping/cross-function closure ABI is intentionally not part of C14. |
+| Local captured closures | 1 | Explicit capture lists and local calls execute. Return and call-argument escape are rejected with stable diagnostics; a cross-function closure ABI is intentionally not part of C14. |
 | `defer` | 1 | Normal/direct return and `?` cleanup, break/continue exits, nested LIFO ordering, and cleanup-body control-flow rejection are covered. |
 | Globals | 1 | Static data, function/global pointer relocations, ordered runtime initialization, mutable scalar/whole-aggregate stores, shared/mutable addresses, direct global-rooted field reads/stores/addresses, and static aggregate pointers execute. AArch64 native and RISC-V/QEMU object tests cover the relocation paths. |
 | Overflow and traps | 1 | Checked/wrapping add/sub/mul, div/rem, shifts and divide-by-zero coverage exists. Ordinary integer conversions use dedicated lossless FIR semantics; narrowing and signed-to-unsigned conversions remain rejected until a future operation defines their policy. |

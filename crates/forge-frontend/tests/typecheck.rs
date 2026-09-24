@@ -1517,6 +1517,30 @@ fn closure_values_cannot_escape_by_return() {
 }
 
 #[test]
+fn closure_values_cannot_cross_function_call_boundaries() {
+    let source = r#"
+        module test.closure_call_escape;
+        fn apply(op: closure(u32) -> u32, value: u32) -> u32 {
+            return op(value);
+        }
+        fn bad(value: u32) -> u32 {
+            val add = [value](x: u32) -> u32 { return x + value; };
+            return apply(add, 1u32);
+        }
+        "#;
+    let output = check(source);
+    let diagnostic = output
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "closure/escape")
+        .expect("cross-function closure diagnostic");
+    assert_eq!(diagnostic.span.start, source.find("add, 1u32").unwrap());
+    assert!(diagnostic.message.contains("cannot cross a call boundary"));
+    assert!(diagnostic.message.contains("Closure"));
+    assert!(diagnostic.message.contains("capture-free function pointer"));
+}
+
+#[test]
 fn execution_context_resolves_slots_and_scoped_types() {
     let output = check(
         r#"
