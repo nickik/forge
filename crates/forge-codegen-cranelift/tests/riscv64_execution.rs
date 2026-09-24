@@ -205,24 +205,23 @@ fn compile_choose() -> MachineCode {
         .expect("RV64 machine code")
 }
 
-fn compile_duration_roundtrip() -> MachineCode {
+fn compile_scalar_roundtrip(owner: DefId, ty: Ty) -> MachineCode {
     let backend = CraneliftBackend::riscv64().expect("RV64 backend");
-    let (module, owner) = scalar_roundtrip_module(DefId(1), Ty::Duration);
+    let (module, owner) = scalar_roundtrip_module(owner, ty);
     let prepared = backend
         .prepare_module(&module)
-        .expect("verified duration FIR");
+        .expect("verified scalar roundtrip FIR");
     backend
         .emit_machine_code(&prepared, owner)
-        .expect("RV64 duration machine code")
+        .expect("RV64 scalar roundtrip machine code")
+}
+
+fn compile_duration_roundtrip() -> MachineCode {
+    compile_scalar_roundtrip(DefId(1), Ty::Duration)
 }
 
 fn compile_char_roundtrip() -> MachineCode {
-    let backend = CraneliftBackend::riscv64().expect("RV64 backend");
-    let (module, owner) = scalar_roundtrip_module(DefId(2), Ty::Char);
-    let prepared = backend.prepare_module(&module).expect("verified char FIR");
-    backend
-        .emit_machine_code(&prepared, owner)
-        .expect("RV64 char machine code")
+    compile_scalar_roundtrip(DefId(2), Ty::Char)
 }
 
 #[test]
@@ -281,7 +280,72 @@ fn executes_char_argument_local_and_return_under_qemu() {
     assert_eq!(run_under_qemu(&machine, 195), 195);
 }
 
-fn run_under_qemu(machine: &MachineCode, argument: u16) -> i32 {
+#[test]
+fn executes_bool_and_narrow_integer_roundtrips_under_qemu() {
+    if std::env::var_os("FORGE_RISCV64_EXECUTION").is_none() {
+        return;
+    }
+
+    let bool_machine = compile_scalar_roundtrip(DefId(3), Ty::Bool);
+    assert_eq!(run_under_qemu(&bool_machine, 0), 0);
+    assert_eq!(run_under_qemu(&bool_machine, 1), 1);
+
+    for (ty, argument, expected) in [
+        (
+            Ty::Int {
+                signed: false,
+                width: IntWidth::W8,
+            },
+            211,
+            211,
+        ),
+        (
+            Ty::Int {
+                signed: true,
+                width: IntWidth::W8,
+            },
+            -7,
+            249,
+        ),
+        (
+            Ty::Int {
+                signed: false,
+                width: IntWidth::W16,
+            },
+            212,
+            212,
+        ),
+        (
+            Ty::Int {
+                signed: true,
+                width: IntWidth::W16,
+            },
+            -37,
+            219,
+        ),
+        (
+            Ty::Int {
+                signed: false,
+                width: IntWidth::W32,
+            },
+            213,
+            213,
+        ),
+        (
+            Ty::Int {
+                signed: true,
+                width: IntWidth::W32,
+            },
+            -91,
+            165,
+        ),
+    ] {
+        let machine = compile_scalar_roundtrip(DefId(4), ty);
+        assert_eq!(run_under_qemu(&machine, argument), expected);
+    }
+}
+
+fn run_under_qemu(machine: &MachineCode, argument: i64) -> i32 {
     let dir = temporary_directory(argument);
     fs::create_dir_all(&dir).expect("create RV64 test directory");
     let function = dir.join("function.bin");
@@ -356,6 +420,6 @@ fn run_tool<const N: usize>(program: &str, args: [&str; N]) {
     );
 }
 
-fn temporary_directory(argument: u16) -> PathBuf {
+fn temporary_directory(argument: i64) -> PathBuf {
     std::env::temp_dir().join(format!("forge-rv64-{}-{argument}", std::process::id()))
 }
