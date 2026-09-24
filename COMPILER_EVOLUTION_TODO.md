@@ -116,6 +116,8 @@ available on every backend merely because the frontend accepts it.
   - [x] Value-definition, Poison and non-concrete instruction diagnostics carry
         function/block/instruction/value context while retaining source spans
         and stable verifier codes.
+  - [x] Control-flow terminator diagnostics carry function/block/value context
+        plus expected/actual type or operation facts.
 - [ ] Keep lowering phases one-way: parser/HIR/typechecking decisions must be
       represented in FIR rather than reconstructed in codegen.
 - [ ] Add compiler debug dumps for typed HIR, FIR, ABI decomposition, CLIF and

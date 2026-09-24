@@ -1,6 +1,7 @@
 use forge_frontend::{
     dump_fir_module, lower_fir, lower_module, lower_resolved_bodies, parse_source,
-    type_check_module, verify_fir_boundary, verify_fir_module, FirInstructionKind, FirModule, Ty,
+    type_check_module, verify_fir_boundary, verify_fir_module, FirInstructionKind, FirModule,
+    FirTerminator, Ty,
 };
 
 fn pipeline(
@@ -137,6 +138,43 @@ fn value_verifier_reports_function_block_instruction_and_value_context() {
         .message
         .contains(&format!("instruction {instruction_index}")));
     assert!(diagnostic.message.contains(&format!("value {value:?}")));
+}
+
+#[test]
+fn branch_verifier_reports_function_block_value_and_type_context() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_branch_context;
+        fn choose(flag: bool) -> u32 {
+            if (flag) { return 1u32; }
+            return 2u32;
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let owner = function.owner;
+    let (block, condition) = function
+        .blocks
+        .iter()
+        .find_map(|block| match &block.terminator {
+            Some(FirTerminator::Branch { condition, .. }) => Some((block.id, *condition)),
+            _ => None,
+        })
+        .expect("branch terminator");
+    function.value_types.remove(&condition);
+
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-branch")
+        .expect("branch-condition diagnostic");
+    assert!(diagnostic.message.contains(&format!("function {owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("condition {condition:?}")));
+    assert!(diagnostic.message.contains("has type None; expected Bool"));
 }
 
 #[test]
