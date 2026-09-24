@@ -2,10 +2,7 @@ use std::{path::PathBuf, process::Command};
 
 #[test]
 fn dump_fir_is_deterministic_verified_json_on_stdout() {
-    let source = std::env::temp_dir().join(format!(
-        "forgec-dump-fir-{}.fg",
-        std::process::id()
-    ));
+    let source = std::env::temp_dir().join(format!("forgec-dump-fir-{}.fg", std::process::id()));
     std::fs::write(
         &source,
         r#"
@@ -36,14 +33,29 @@ fn answer(value: u32) -> u32 { return value + 1u32; }
         "second dump failed:\n{}",
         String::from_utf8_lossy(&second.stderr)
     );
-    assert_eq!(first.stdout, second.stdout, "FIR dump must be deterministic");
-    assert!(first.stderr.is_empty(), "successful dump must keep stderr clean");
+    assert_eq!(
+        first.stdout, second.stdout,
+        "FIR dump must be deterministic"
+    );
+    assert!(
+        first.stderr.is_empty(),
+        "successful dump must keep stderr clean"
+    );
 
     let dump = String::from_utf8(first.stdout).expect("FIR dump should be UTF-8 JSON");
     assert!(dump.starts_with("{\n"), "FIR dump should be pretty JSON");
-    assert!(dump.ends_with("\n"), "CLI should terminate the dump with a newline");
-    assert!(dump.contains("\"functions\""), "FIR dump should include functions");
-    assert!(dump.contains("\"answer\""), "FIR dump should preserve function names");
+    assert!(
+        dump.ends_with("\n"),
+        "CLI should terminate the dump with a newline"
+    );
+    assert!(
+        dump.contains("\"functions\""),
+        "FIR dump should include functions"
+    );
+    assert!(
+        dump.contains("\"answer\""),
+        "FIR dump should preserve function names"
+    );
 }
 
 #[test]
