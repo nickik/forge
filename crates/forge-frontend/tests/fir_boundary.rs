@@ -1,7 +1,7 @@
 use forge_frontend::{
     dump_fir_module, lower_fir, lower_module, lower_resolved_bodies, parse_source,
-    type_check_module, verify_fir_boundary, verify_fir_module, FirBlockId, FirInstructionKind,
-    FirModule, FirTerminator, Ty,
+    type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module, FirBlockId,
+    FirInstructionKind, FirModule, FirPlace, FirTerminator, Ty,
 };
 
 fn pipeline(
@@ -241,6 +241,111 @@ fn signature_local_and_closure_verifiers_report_owner_context() {
         .message
         .contains(&format!("closure {closure_id:?}")));
     assert!(closure_type.message.contains("expected concrete FIR types"));
+}
+
+#[test]
+fn verifier_requires_local_initialization_on_every_incoming_path() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_definite_initialization;
+        fn choose(flag: bool) -> u32 {
+            var value: u32 = 0u32;
+            if (flag) { value = 1u32; } else { value = 2u32; }
+            return value;
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let owner = function.owner;
+    let local = function
+        .locals
+        .values()
+        .find(|local| local.mutable && !local.parameter)
+        .expect("mutable value local")
+        .id;
+    let entry = function.entry;
+    let entry_block = function.blocks.get_mut(entry.0 as usize).unwrap();
+    let initial_store = entry_block
+        .instructions
+        .iter()
+        .position(|instruction| {
+            matches!(
+                instruction.kind,
+                FirInstructionKind::Store {
+                    place: FirPlace::Local { local: stored },
+                    ..
+                } if stored == local
+            )
+        })
+        .expect("initial local store");
+    entry_block.instructions.remove(initial_store);
+
+    assert!(verify_fir_function(function)
+        .iter()
+        .all(|diagnostic| diagnostic.code != "fir/verify-initialization"));
+
+    let branch_block = function
+        .blocks
+        .iter_mut()
+        .filter(|block| block.id != entry)
+        .find(|block| {
+            block.instructions.iter().any(|instruction| {
+                matches!(
+                    instruction.kind,
+                    FirInstructionKind::Store {
+                        place: FirPlace::Local { local: stored },
+                        ..
+                    } if stored == local
+                )
+            })
+        })
+        .expect("branch local store");
+    let branch_store = branch_block
+        .instructions
+        .iter()
+        .position(|instruction| {
+            matches!(
+                instruction.kind,
+                FirInstructionKind::Store {
+                    place: FirPlace::Local { local: stored },
+                    ..
+                } if stored == local
+            )
+        })
+        .unwrap();
+    branch_block.instructions.remove(branch_store);
+
+    let (load_block, load_index, load_span) = function
+        .blocks
+        .iter()
+        .find_map(|block| {
+            block
+                .instructions
+                .iter()
+                .enumerate()
+                .find_map(|(index, instruction)| match &instruction.kind {
+                    FirInstructionKind::Load {
+                        place: FirPlace::Local { local: loaded },
+                    } if *loaded == local => Some((block.id, index, instruction.span)),
+                    _ => None,
+                })
+        })
+        .expect("merged local load");
+
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-initialization")
+        .expect("definite-initialization diagnostic");
+    assert_eq!(diagnostic.span, load_span);
+    assert!(diagnostic.message.contains(&format!("function {owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {load_block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {load_index}")));
+    assert!(diagnostic.message.contains(&format!("local {local:?}")));
+    assert!(diagnostic.message.contains("every incoming control-flow path"));
 }
 
 #[test]
