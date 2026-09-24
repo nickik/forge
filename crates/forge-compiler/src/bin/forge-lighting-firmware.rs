@@ -332,4 +332,14 @@ pub fn answer() -> i32 {
 
         assert!(!image.is_empty());
     }
+
+    #[test]
+    fn m28_5_system_task_source_emits_a_freestanding_user_image() {
+        let source = include_str!("../../../../examples/m28-5-syscall-r1.fg");
+        let ast = link_source_with_library_sources(source, &[]).expect("semantic module link");
+        let image = compile_sia32_image(ast, "system_task_entry", true, 0x0020_0000)
+            .expect("M28.5 System Task SIA32 image emission");
+
+        assert!(!image.is_empty());
+    }
 }
