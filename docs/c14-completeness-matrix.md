@@ -34,7 +34,7 @@ Legend:
 | Bitstructs | 1 | Native storage projection/rebuild, checked writes, explicit field extract/extend, narrow numeric and boolean fields, and `u8`/`u16`/`u32`/`u64` value ABI execute. |
 | `if`, `while`, C-style `for` | 1 | Typed CFG/FIR and executable corpus. |
 | value `for` iteration | 5 | Parsed and represented; protocol/static/native completion remains to be proven. |
-| `break`, `continue` | 4 | FIR cleanup paths exist; add nested-loop/defer executable matrix. |
+| `break`, `continue` | 1 | Single and nested-loop transfers execute with scope-correct deferred cleanup on continue and break paths. |
 | `match` | 1 | Bool, scalar, enum, tagged, Option, Result, nested projections, guards, OR/as, ranges, sequence-rest, and resolved map-protocol required/optional bindings execute natively. |
 | Functions and calls | 1 | Direct/indirect, named/default, method calls, scalar/aggregate ABI and non-main entry covered. |
 | Function pointers | 1 | Named functions cross call boundaries; anonymous closure coercion is rejected. |
