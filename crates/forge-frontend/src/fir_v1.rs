@@ -3812,12 +3812,10 @@ fn fir_type_is_concrete(ty: &Ty) -> bool {
 fn fir_place_root_local(place: &FirPlace) -> Option<FirLocalId> {
     match place {
         FirPlace::Local { local } => Some(*local),
-        FirPlace::Field { base, .. } | FirPlace::Index { base, .. } => {
-            fir_place_root_local(base)
+        FirPlace::Field { base, .. } | FirPlace::Index { base, .. } => fir_place_root_local(base),
+        FirPlace::ClosureCapture { .. } | FirPlace::Deref { .. } | FirPlace::RawDeref { .. } => {
+            None
         }
-        FirPlace::ClosureCapture { .. }
-        | FirPlace::Deref { .. }
-        | FirPlace::RawDeref { .. } => None,
     }
 }
 
@@ -3901,8 +3899,7 @@ fn verify_fir_definite_initialization(
                         .into_iter()
                         .filter(|(target, _)| target == block_id)
                     {
-                        let mut initialized =
-                            outputs.get(predecessor).cloned().unwrap_or_default();
+                        let mut initialized = outputs.get(predecessor).cloned().unwrap_or_default();
                         if let Some(local) = edge_local {
                             initialized.insert(local);
                         }
