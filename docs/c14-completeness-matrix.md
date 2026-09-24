@@ -17,7 +17,7 @@ Legend:
 | Language family | Status | Evidence / remaining work |
 | --- | ---: | --- |
 | Modules, imports, visibility | 1 | Parser, resolver, multi-library compiler and build tests. |
-| `val`, `var`, `const`, assignment | 1 | Typecheck/FIR/native integer corpus; definite initialization still needs a dedicated whole-CFG audit. |
+| `val`, `var`, `const`, assignment | 1 | Typecheck/FIR/native integer corpus; the FIR verifier performs a whole-CFG must-initialization audit and rejects local access unless every incoming path initializes it. |
 | Integer, bool, byte scalars | 1 | Checked/wrapping arithmetic, comparisons, shifts, conversions and ABI tests. |
 | `char` | 1 | Native constants, locals, comparison, argument and return fixture. |
 | `duration` | 1 | Source builtin and reader form lower as signed nanoseconds; native argument, return, local, field load and field store execution is covered. |

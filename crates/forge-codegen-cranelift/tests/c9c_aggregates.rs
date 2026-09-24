@@ -324,9 +324,10 @@ fn option_reference_uses_null_niche_operations() {
     let option_ty = Ty::Optional {
         inner: Box::new(reference_ty.clone()),
     };
-    let address = FirValueId(0);
-    let some = FirValueId(1);
-    let is_some = FirValueId(2);
+    let initial = FirValueId(0);
+    let address = FirValueId(1);
+    let some = FirValueId(2);
+    let is_some = FirValueId(3);
     let function = FirFunction {
         owner: DefId(4),
         params: vec![],
@@ -348,6 +349,15 @@ fn option_reference_uses_null_niche_operations() {
             id: FirBlockId(0),
             closure: None,
             instructions: vec![
+                scalar_const(span, initial, "0"),
+                FirInstruction {
+                    span,
+                    result: None,
+                    kind: FirInstructionKind::Store {
+                        place: FirPlace::Local { local: byte_local },
+                        value: initial,
+                    },
+                },
                 FirInstruction {
                     span,
                     result: Some(address),
@@ -372,6 +382,7 @@ fn option_reference_uses_null_niche_operations() {
             }),
         }],
         value_types: BTreeMap::from([
+            (initial, Ty::Byte),
             (address, reference_ty),
             (some, option_ty),
             (is_some, Ty::Bool),
