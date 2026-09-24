@@ -3889,24 +3889,28 @@ fn verify_fir_definite_initialization(
             let next_input = if *block_id == entry {
                 initial.clone()
             } else {
-                let incoming = reachable.iter().filter_map(|predecessor| {
-                    let block = function.blocks.get(predecessor.0 as usize)?;
-                    let terminator = block.terminator.as_ref()?;
-                    fir_terminator_edges(terminator)
+                let mut incoming = Vec::new();
+                for predecessor in &reachable {
+                    let Some(block) = function.blocks.get(predecessor.0 as usize) else {
+                        continue;
+                    };
+                    let Some(terminator) = block.terminator.as_ref() else {
+                        continue;
+                    };
+                    for (_, edge_local) in fir_terminator_edges(terminator)
                         .into_iter()
-                        .find(|(target, _)| target == block_id)
-                        .map(|(_, edge_local)| {
-                            let mut initialized = outputs
-                                .get(predecessor)
-                                .cloned()
-                                .unwrap_or_default();
-                            if let Some(local) = edge_local {
-                                initialized.insert(local);
-                            }
-                            initialized
-                        })
-                });
+                        .filter(|(target, _)| target == block_id)
+                    {
+                        let mut initialized =
+                            outputs.get(predecessor).cloned().unwrap_or_default();
+                        if let Some(local) = edge_local {
+                            initialized.insert(local);
+                        }
+                        incoming.push(initialized);
+                    }
+                }
                 incoming
+                    .into_iter()
                     .reduce(|left, right| left.intersection(&right).copied().collect())
                     .unwrap_or_default()
             };
