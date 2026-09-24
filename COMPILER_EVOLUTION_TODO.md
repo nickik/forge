@@ -113,6 +113,9 @@ available on every backend merely because the frontend accepts it.
       expected/actual semantic facts, and a regression asserting the code.
 - [ ] Improve FIR verifier diagnostics so invalid producer contracts identify
       the function, block, instruction and value involved.
+  - [x] Value-definition, Poison and non-concrete instruction diagnostics carry
+        function/block/instruction/value context while retaining source spans
+        and stable verifier codes.
 - [ ] Keep lowering phases one-way: parser/HIR/typechecking decisions must be
       represented in FIR rather than reconstructed in codegen.
 - [ ] Add compiler debug dumps for typed HIR, FIR, ABI decomposition, CLIF and
