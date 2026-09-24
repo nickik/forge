@@ -115,6 +115,8 @@ available on every backend merely because the frontend accepts it.
       aggregate, global and runtime-initialization features.
   - [x] Execute `duration` arguments, local load/store and return values through
         production RISC-V machine code under QEMU.
+  - [x] Execute `char` arguments, local load/store and return values through
+        production RISC-V machine code under QEMU.
 - [ ] Add float only when the RISC-V ISA/ABI configuration and execution
       contract are intentionally selected and tested.
 
