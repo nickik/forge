@@ -37,7 +37,9 @@ available on every backend merely because the frontend accepts it.
       downgrade a row when a regression invalidates its executable evidence.
 - [ ] Turn each remaining backend `Unsupported*` path into either a documented
       target boundary or a named milestone with a focused regression.
-- [ ] Continue rejecting compiler-internal sentinel types at the FIR boundary.
+- [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
+      The verified FIR module rejects every semantic sentinel with stable
+      function, block, instruction and value context before code generation.
 
 ## 2. Close the remaining native C14 matrices
 
