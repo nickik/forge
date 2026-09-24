@@ -948,8 +948,8 @@ fn main() -> i32 {
             .expect("dump linked FIR again");
 
         assert_eq!(first, second);
-        assert!(first.contains("\"main\""));
-        assert!(first.contains("\"add_two\""));
+        assert!(first.matches("\"return_type\"").count() >= 3);
+        assert!(first.contains("\"instruction\": \"call\""));
     }
 
     #[test]
