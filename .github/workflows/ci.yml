@@ -86,6 +86,13 @@ jobs:
             --text-base 0x00200000 \
             -o /tmp/forge-m28-module-user.bin
           test -s /tmp/forge-m28-module-user.bin
+          cargo run --quiet -p forge-compiler --bin forge-lighting-firmware -- \
+            "$PWD/examples/m28-5-syscall-r1.fg" \
+            --entry system_task_entry \
+            --user-image \
+            --text-base 0x00200000 \
+            -o /tmp/forge-m28-5-system-task.bin
+          test -s /tmp/forge-m28-5-system-task.bin
 
       - name: Generated native collections snapshot
         timeout-minutes: 3
