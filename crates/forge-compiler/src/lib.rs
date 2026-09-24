@@ -16,8 +16,9 @@ use forge_fir::{
 };
 use forge_frontend::{
     ast::{DeclKind, SourceFile},
-    collect_type_definitions, lower_fir, lower_module, lower_resolved_bodies, parse_source,
-    type_check_module, DefId, IntWidth, Ty,
+    collect_type_definitions, dump_fir_module, lower_fir, lower_module, lower_resolved_bodies,
+    parse_source, type_check_module, BodyHirOutput, DefId, FirOutput, HirOutput, IntWidth, Ty,
+    TypeCheckOutput,
 };
 use module_linker::{link_modules, ParsedLibrary};
 
@@ -95,6 +96,13 @@ pub struct CompiledProgram {
     initializer_symbol: Option<String>,
     console_symbol: Option<String>,
     hosted_providers: BTreeMap<String, String>,
+}
+
+struct FrontEndOutput {
+    hir: HirOutput,
+    bodies: BodyHirOutput,
+    typed: TypeCheckOutput,
+    fir: FirOutput,
 }
 
 impl CompiledProgram {
@@ -179,6 +187,20 @@ pub fn link_source_with_library_sources(
         .map_err(|error| CompilerError::message(format!("module linking failed: {error}")))
 }
 
+/// Lower one semantically linked compilation unit to deterministic FIR JSON.
+///
+/// This is the stable frontend debug boundary: it includes explicit library
+/// mappings and whole-module FIR verification, but deliberately stops before
+/// target-specific ABI decomposition and backend rewrites.
+pub fn dump_fir_source_with_library_sources(
+    source: &str,
+    libraries: &[(String, String)],
+) -> Result<String, CompilerError> {
+    let ast = link_source_with_library_sources(source, libraries)?;
+    let lowered = lower_ast(&ast)?;
+    Ok(dump_fir_module(&lowered.fir.module))
+}
+
 fn parse_ast(label: &str, source: &str) -> Result<SourceFile, CompilerError> {
     let parsed = parse_source(source);
     if parsed.ast.is_none() || !parsed.diagnostics.is_empty() {
@@ -205,13 +227,12 @@ fn compile_ast(
         })
         .collect::<BTreeMap<_, _>>();
 
-    let hir = lower_module(&ast);
-    if !hir.diagnostics.is_empty() {
-        return Err(CompilerError::message(format!(
-            "HIR lowering failed: {:?}",
-            hir.diagnostics
-        )));
-    }
+    let FrontEndOutput {
+        hir,
+        bodies,
+        typed,
+        mut fir,
+    } = lower_ast(&ast)?;
     debug_assert!(
         hir.module.imports.is_empty(),
         "C12c module linker must consume all imports"
@@ -228,31 +249,7 @@ fn compile_ast(
             })?;
         provider_owners.insert(owner, intrinsic);
     }
-
-    let bodies = lower_resolved_bodies(&ast, &hir.module);
-    if !bodies.diagnostics.is_empty() {
-        return Err(CompilerError::message(format!(
-            "body HIR lowering failed: {:?}",
-            bodies.diagnostics
-        )));
-    }
-
-    let typed = type_check_module(&ast, &hir.module, &bodies);
-    if !typed.diagnostics.is_empty() {
-        return Err(CompilerError::message(format!(
-            "type checking failed: {:?}",
-            typed.diagnostics
-        )));
-    }
-
     let definitions = collect_type_definitions(&ast, &hir.module, &bodies, &typed);
-    let mut fir = lower_fir(&bodies, &typed);
-    if !fir.diagnostics.is_empty() {
-        return Err(CompilerError::message(format!(
-            "FIR lowering failed: {:?}",
-            fir.diagnostics
-        )));
-    }
 
     rewrite_string_comparisons(&mut fir.module, &provider_owners)?;
     let static_initializers = materialize_string_literals(&mut fir.module)?;
@@ -334,6 +331,50 @@ fn compile_ast(
         initializer_symbol,
         console_symbol,
         hosted_providers,
+    })
+}
+
+fn lower_ast(ast: &SourceFile) -> Result<FrontEndOutput, CompilerError> {
+    let hir = lower_module(ast);
+    if !hir.diagnostics.is_empty() {
+        return Err(CompilerError::message(format!(
+            "HIR lowering failed: {:?}",
+            hir.diagnostics
+        )));
+    }
+    debug_assert!(
+        hir.module.imports.is_empty(),
+        "C12c module linker must consume all imports"
+    );
+    let bodies = lower_resolved_bodies(ast, &hir.module);
+    if !bodies.diagnostics.is_empty() {
+        return Err(CompilerError::message(format!(
+            "body HIR lowering failed: {:?}",
+            bodies.diagnostics
+        )));
+    }
+
+    let typed = type_check_module(ast, &hir.module, &bodies);
+    if !typed.diagnostics.is_empty() {
+        return Err(CompilerError::message(format!(
+            "type checking failed: {:?}",
+            typed.diagnostics
+        )));
+    }
+
+    let fir = lower_fir(&bodies, &typed);
+    if !fir.diagnostics.is_empty() {
+        return Err(CompilerError::message(format!(
+            "FIR lowering failed: {:?}",
+            fir.diagnostics
+        )));
+    }
+
+    Ok(FrontEndOutput {
+        hir,
+        bodies,
+        typed,
+        fir,
     })
 }
 
@@ -668,6 +709,15 @@ pub fn check_file_with_libraries(
     compile_source_with_library_sources_for_entry(&source, &sources, CHECK_ENTRY, None).map(|_| ())
 }
 
+pub fn dump_fir_file_with_libraries(
+    path: &Path,
+    libraries: &[LibraryInput],
+) -> Result<String, CompilerError> {
+    let source = read_source(path)?;
+    let sources = read_library_sources(libraries)?;
+    dump_fir_source_with_library_sources(&source, &sources)
+}
+
 pub fn emit_object_file(path: &Path, output: &Path) -> Result<(), CompilerError> {
     emit_object_file_with_libraries(path, output, &[])
 }
@@ -887,6 +937,19 @@ fn main() -> i32 {
         assert_eq!(&compiled.object()[..4], b"\x7fELF");
         assert!(compiled.main_symbol().starts_with("__forge_fn_"));
         assert!(compiled.initializer_symbol().is_none());
+    }
+
+    #[test]
+    fn fir_dump_links_explicit_libraries_deterministically() {
+        let libraries = [("math".to_owned(), LIBRARY.to_owned())];
+        let first = dump_fir_source_with_library_sources(WITH_LIBRARY, &libraries)
+            .expect("dump linked FIR");
+        let second = dump_fir_source_with_library_sources(WITH_LIBRARY, &libraries)
+            .expect("dump linked FIR again");
+
+        assert_eq!(first, second);
+        assert!(first.contains("\"main\""));
+        assert!(first.contains("\"add_two\""));
     }
 
     #[test]
