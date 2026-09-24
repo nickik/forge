@@ -83,8 +83,12 @@ available on every backend merely because the frontend accepts it.
 ### AArch64 hosted native
 
 - [ ] Complete `f32`/`f64` call/return ABI, aggregate ABI and exceptional-value
-      (`NaN`, signed zero, conversion) execution matrices.
-- [ ] Keep hosted executable fixtures as the acceptance proof, not object
+      execution matrices.
+  - [x] AArch64 hosted execution covers unordered `NaN` comparisons, signed
+        zero through division, and integer-to-`f64` conversion.
+  - [ ] Complete aggregate argument/return ABI and the remaining conversion
+        matrix.
+- [x] Keep hosted executable fixtures as the acceptance proof, not object
       emission alone.
 
 ### RISC-V 64
