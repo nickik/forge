@@ -9,6 +9,7 @@ pub struct AbiTarget {
     pub word_bits: u16,
     pub pointer_bits: u16,
     pub direct_value_words: u8,
+    pub indirect_float_aggregates: bool,
 }
 
 impl AbiTarget {
@@ -17,6 +18,7 @@ impl AbiTarget {
             word_bits: 32,
             pointer_bits: 32,
             direct_value_words: 4,
+            indirect_float_aggregates: false,
         }
     }
 
@@ -25,6 +27,16 @@ impl AbiTarget {
             word_bits: 64,
             pointer_bits: 64,
             direct_value_words: 4,
+            indirect_float_aggregates: false,
+        }
+    }
+
+    pub const fn aarch64() -> Self {
+        Self {
+            word_bits: 64,
+            pointer_bits: 64,
+            direct_value_words: 4,
+            indirect_float_aggregates: true,
         }
     }
 
@@ -331,6 +343,9 @@ impl<'a> AbiDecomposer<'a> {
                 }
             }
             Ty::Void | Ty::Never => {}
+            Ty::Float { .. } if self.target.indirect_float_aggregates => {
+                out.overflow = true;
+            }
             Ty::Float { .. } => {
                 return Err(AbiError::UnsupportedType(
                     "floating-point ABI classes are deferred",
@@ -677,6 +692,32 @@ mod tests {
             .unwrap()
             .decompose(ty)
             .unwrap()
+    }
+
+    #[test]
+    fn aarch64_float_aggregates_use_the_indirect_class() {
+        let defs = BTreeMap::from([struct_def(
+            1,
+            vec![
+                field("single", 0, Ty::Float { bits: 32 }),
+                field("double", 1, Ty::Float { bits: 64 }),
+            ],
+        )]);
+        let value = AbiDecomposer::new(AbiTarget::aarch64(), &defs)
+            .unwrap()
+            .decompose(&Ty::Nominal(DefId(1)))
+            .unwrap();
+        assert_eq!(value.passing, AbiPassing::Indirect);
+        assert!(value.pieces.is_empty());
+
+        let error = AbiDecomposer::new(AbiTarget::native64(), &defs)
+            .unwrap()
+            .decompose(&Ty::Nominal(DefId(1)))
+            .expect_err("RV64 float aggregate ABI must remain unavailable");
+        assert_eq!(
+            error,
+            AbiError::UnsupportedType("floating-point ABI classes are deferred")
+        );
     }
 
     #[test]
