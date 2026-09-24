@@ -128,6 +128,8 @@ available on every backend merely because the frontend accepts it.
         plus expected/actual type or operation facts.
   - [x] Function signatures, locals and closures identify their owning function
         and expose the invalid entry/type facts.
+  - [x] Whole-CFG must-initialization rejects local access unless every incoming
+        control-flow path initializes it, including branch joins and loops.
 - [ ] Keep lowering phases one-way: parser/HIR/typechecking decisions must be
       represented in FIR rather than reconstructed in codegen.
   - [x] Represent ordinary integer conversions as explicitly lossless FIR;
