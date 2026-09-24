@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use forge_codegen_cranelift::{CraneliftBackend, CraneliftTarget};
+use forge_codegen_cranelift::{CraneliftBackend, CraneliftTarget, ObjectLinkage};
 use forge_fir::{
     BinaryOp, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction,
     FirInstructionKind, FirLocal, FirLocalId, FirModule, FirTerminator, FirValueId, IntWidth,
@@ -338,6 +338,97 @@ fn c10b_c_object_is_deterministic_and_contains_real_relocations() {
             "function-address relocation missing:\n{report}"
         );
         assert!(report.contains(".rela.text"), "{report}");
+        let _ = fs::remove_dir_all(dir);
+    }
+}
+
+#[test]
+fn c10b_elf_visibility_and_import_relocations_are_explicit_on_both_targets() {
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let (module, definitions) = fixture();
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let prepared = backend
+            .prepare_module_with_types(&module, &definitions)
+            .expect("visibility fixture should prepare");
+        let plan = backend
+            .plan_object_module_with_export_names_and_imports(
+                &prepared,
+                [AGGREGATE_ENTRY],
+                [(AGGREGATE_ENTRY, "forge_entry".to_owned())],
+                [AGGREGATE_IDENTITY],
+            )
+            .expect("visibility fixture should plan");
+
+        assert_eq!(
+            plan.symbol(AGGREGATE_ENTRY).expect("export").linkage(),
+            ObjectLinkage::Export
+        );
+        assert_eq!(
+            plan.symbol(AGGREGATE_ENTRY).expect("export").name(),
+            "forge_entry"
+        );
+        assert_eq!(
+            plan.symbol(AGGREGATE_IDENTITY)
+                .expect("import")
+                .linkage(),
+            ObjectLinkage::Import
+        );
+        assert_eq!(
+            plan.symbol(SCALAR_ADD_ONE).expect("local").linkage(),
+            ObjectLinkage::Local
+        );
+
+        let first = backend
+            .emit_object(&prepared, &plan)
+            .expect("visibility object should emit")
+            .into_bytes();
+        let second = backend
+            .emit_object(&prepared, &plan)
+            .expect("visibility object should emit deterministically")
+            .into_bytes();
+        assert_eq!(first, second, "{target:?} visibility object changed");
+
+        if !tool_available("readelf") {
+            continue;
+        }
+        let dir = temporary_directory("visibility");
+        let object = dir.join("forge.o");
+        fs::write(&object, &first).expect("write visibility object");
+        let mut command = Command::new("readelf");
+        command.args(["--wide", "-s", "-r"]).arg(&object);
+        let output = successful_output(&mut command, "inspect visibility object");
+        let report = String::from_utf8_lossy(&output.stdout);
+
+        assert!(
+            report.lines().any(|line| {
+                line.contains("forge_entry")
+                    && line.contains("GLOBAL")
+                    && line.contains("FUNC")
+                    && !line.contains("UND")
+            }),
+            "missing defined global export:\n{report}"
+        );
+        assert!(
+            report.lines().any(|line| {
+                line.contains("__forge_fn_0000000a")
+                    && line.contains("GLOBAL")
+                    && line.contains("FUNC")
+                    && line.contains("UND")
+            }),
+            "missing undefined global import:\n{report}"
+        );
+        assert!(
+            report.lines().any(|line| {
+                line.contains("__forge_fn_00000014")
+                    && line.contains("LOCAL")
+                    && line.contains("FUNC")
+            }),
+            "missing defined local symbol:\n{report}"
+        );
+        assert!(
+            report.contains(".rela.text") && report.contains("__forge_fn_0000000a"),
+            "missing relocation to imported function:\n{report}"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 }
