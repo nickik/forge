@@ -1262,6 +1262,27 @@ fn pointer_conversions_are_not_plain_fir_converts() {
 }
 
 #[test]
+fn lossless_integer_conversion_has_dedicated_fir_semantics() {
+    let output = lower(
+        r#"
+        module test.fir_lossless_integer_convert;
+        fn widen(value: u8) -> u64 { return u64(value); }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::LosslessIntegerConvert {
+            target: forge_frontend::Ty::Int {
+                signed: false,
+                width: forge_frontend::IntWidth::W64,
+            },
+            ..
+        }
+    )));
+}
+
+#[test]
 fn integer_to_float_is_a_dedicated_fir_operation() {
     let output = lower(
         r#"
@@ -1279,7 +1300,7 @@ fn integer_to_float_is_a_dedicated_fir_operation() {
     )));
     assert!(!instructions(&output).any(|instruction| matches!(
         instruction,
-        FirInstructionKind::Convert {
+        FirInstructionKind::LosslessIntegerConvert {
             target: forge_frontend::Ty::Float { .. },
             ..
         }
@@ -1312,7 +1333,7 @@ fn float_width_conversion_is_a_dedicated_fir_operation() {
     )));
     assert!(!instructions(&output).any(|instruction| matches!(
         instruction,
-        FirInstructionKind::Convert {
+        FirInstructionKind::LosslessIntegerConvert {
             target: forge_frontend::Ty::Float { .. },
             ..
         }
