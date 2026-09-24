@@ -397,6 +397,14 @@ fn lower_instruction(
                 lower_scalar_binary(fir, *op, *left, *right, *overflow, values, cursor)?
             }
         }
+        FirInstructionKind::IntegerToFloat { value, target } => {
+            if target != result_ty {
+                return Err(shape(format!(
+                    "FIR integer-to-float target {target:?} does not match result type {result_ty:?}"
+                )));
+            }
+            lower_scalar_convert(fir, *value, target, values, types, cursor)?
+        }
         FirInstructionKind::Convert { value, target } => {
             if target != result_ty {
                 return Err(shape(format!(
@@ -1564,6 +1572,7 @@ fn instruction_kind_name(kind: &FirInstructionKind) -> &'static str {
         FirInstructionKind::Unary { .. } => "unary",
         FirInstructionKind::Binary { .. } => "binary",
         FirInstructionKind::Convert { .. } => "convert",
+        FirInstructionKind::IntegerToFloat { .. } => "integer to float",
         FirInstructionKind::SliceFromArrayRef { .. } => "slice from array reference",
         FirInstructionKind::BitStructStorage { .. } => "bitstruct storage",
         FirInstructionKind::BitStructFromStorage { .. } => "bitstruct from storage",
