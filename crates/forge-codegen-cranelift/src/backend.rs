@@ -202,6 +202,21 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
+                FirInstructionKind::IntegerToFloat { value, target } => {
+                    if target != result_ty {
+                        return Err(shape(format!(
+                            "FIR integer-to-float target {target:?} does not match result type {result_ty:?}"
+                        )));
+                    }
+                    let source = value_type(fir, *value, "integer-to-float input")?;
+                    if !matches!(source, Ty::Int { .. } | Ty::Byte)
+                        || !matches!(target, Ty::Float { .. })
+                    {
+                        return Err(shape(format!(
+                            "invalid integer-to-float conversion from {source:?} to {target:?}"
+                        )));
+                    }
+                }
                 FirInstructionKind::Convert { value, target } => {
                     if target != result_ty {
                         return Err(shape(format!(
@@ -410,6 +425,7 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
             | FirInstructionKind::StoreGlobal { value, .. }
             | FirInstructionKind::Unary { value, .. }
             | FirInstructionKind::Convert { value, .. }
+            | FirInstructionKind::IntegerToFloat { value, .. }
             | FirInstructionKind::DistinctFromUnderlying { value, .. }
             | FirInstructionKind::DistinctToUnderlying { value, .. }
             | FirInstructionKind::SliceFromArrayRef { value }
