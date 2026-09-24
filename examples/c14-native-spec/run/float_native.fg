@@ -36,5 +36,4 @@ fn main() -> i32 {
     if (x >= 0.0f32) { return 1i32; }
     if (y != 1.0f64) { return 2i32; }
     return exceptional_values();
-
 }
