@@ -3836,20 +3836,26 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                 message: format!("block {:?} has no terminator", block.id),
             });
         }
-        for instruction in &block.instructions {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
             if let Some(result) = instruction.result {
                 if !definitions.insert(result) {
                     diagnostics.push(FirDiagnostic {
                         span: instruction.span,
                         code: "fir/verify-value".into(),
-                        message: format!("value {result:?} is defined more than once"),
+                        message: format!(
+                            "function {:?} block {:?} instruction {instruction_index} defines value {result:?} more than once",
+                            function.owner, block.id
+                        ),
                     });
                 }
                 if !function.value_types.contains_key(&result) {
                     diagnostics.push(FirDiagnostic {
                         span: instruction.span,
                         code: "fir/verify-value".into(),
-                        message: format!("value {result:?} has no type"),
+                        message: format!(
+                            "function {:?} block {:?} instruction {instruction_index} defines value {result:?} with no type",
+                            function.owner, block.id
+                        ),
                     });
                 }
             }
