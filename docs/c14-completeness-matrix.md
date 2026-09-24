@@ -61,7 +61,8 @@ Legend:
   prove instruction lowering or ABI execution.
 - `LoadGlobal` has real object/relocation coverage; comments describing it as future work must be
   reviewed for staleness.
-- `select` occurrences are intentionally retained but excluded from C14 completion.
+- `select` occurrences are intentionally retained but excluded from C14 completion; a focused
+  AArch64/RISC-V backend regression pins the explicit rejection before object emission.
 - Generic `panic!` occurrences in compiler tests/runtime generation are not automatically language
   gaps; production fallible paths remain subject to the Rust-quality audit.
 
