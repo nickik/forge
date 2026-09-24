@@ -74,3 +74,49 @@ fn dump_fir_rejects_output_paths() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn dump_typed_hir_is_deterministic_resolved_json_on_stdout() {
+    let source =
+        std::env::temp_dir().join(format!("forgec-dump-typed-hir-{}.fg", std::process::id()));
+    std::fs::write(
+        &source,
+        r#"
+module test.typed_dump;
+fn increment(value: u32) -> u32 { return value + 1u32; }
+fn answer() -> u32 { return increment(41u32); }
+"#,
+    )
+    .expect("write typed-HIR dump fixture");
+
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_forgec"))
+            .arg("--dump-typed-hir")
+            .arg(&source)
+            .output()
+            .expect("forgec should start")
+    };
+    let first = run();
+    let second = run();
+    let _ = std::fs::remove_file(&source);
+
+    assert!(
+        first.status.success(),
+        "first dump failed:\n{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert!(
+        second.status.success(),
+        "second dump failed:\n{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert_eq!(first.stdout, second.stdout);
+    assert!(first.stderr.is_empty());
+
+    let dump = String::from_utf8(first.stdout).expect("typed-HIR dump should be UTF-8 JSON");
+    assert!(dump.starts_with("{\n"));
+    assert!(dump.ends_with("\n"));
+    assert!(dump.contains("\"functions\""));
+    assert!(dump.contains("\"expr\": \"resolved_call\""));
+    assert!(dump.contains("\"diagnostics\": []"));
+}

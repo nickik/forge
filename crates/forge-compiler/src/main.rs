@@ -4,15 +4,16 @@ use std::process;
 
 use forge_compiler::{
     build_executable_with_libraries, build_executable_with_libraries_and_entry,
-    check_file_with_libraries, dump_fir_file_with_libraries, emit_object_file_with_libraries,
-    emit_object_file_with_libraries_and_entry, run_file_with_libraries,
-    run_file_with_libraries_and_entry, LibraryInput,
+    check_file_with_libraries, dump_fir_file_with_libraries, dump_typed_hir_file_with_libraries,
+    emit_object_file_with_libraries, emit_object_file_with_libraries_and_entry,
+    run_file_with_libraries, run_file_with_libraries_and_entry, LibraryInput,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
     Check,
     DumpFir,
+    DumpTypedHir,
     EmitObject,
     Build,
     Run,
@@ -38,7 +39,7 @@ fn usage() -> ! {
     eprintln!(
         "usage: forgec [--target aarch64-unknown-linux-gnu] [--platform host] \
          [--library NAME=PATH]... [--entry NAME] [--program-arg ARG]... \
-         <--check|--dump-fir|--emit-object|--build|--run> FILE [-o OUTPUT]"
+         <--check|--dump-typed-hir|--dump-fir|--emit-object|--build|--run> FILE [-o OUTPUT]"
     );
     process::exit(64);
 }
@@ -111,6 +112,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
             }
             "--check" => set_mode(&mut mode, Mode::Check),
             "--dump-fir" => set_mode(&mut mode, Mode::DumpFir),
+            "--dump-typed-hir" => set_mode(&mut mode, Mode::DumpTypedHir),
             "--emit-object" => set_mode(&mut mode, Mode::EmitObject),
             "--build" => set_mode(&mut mode, Mode::Build),
             "--run" => set_mode(&mut mode, Mode::Run),
@@ -130,15 +132,15 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     if mode != Mode::Run && !program_args.is_empty() {
         return Err("--program-arg is valid only with --run".into());
     }
-    if matches!(mode, Mode::Check | Mode::DumpFir) && entry.is_some() {
+    if matches!(mode, Mode::Check | Mode::DumpFir | Mode::DumpTypedHir) && entry.is_some() {
         return Err(
-            "--entry is not needed with --check or --dump-fir; neither requires an entry point"
+            "--entry is not needed with --check or dump modes; they do not require an entry point"
                 .into(),
         );
     }
-    if mode == Mode::DumpFir && output.is_some() {
+    if matches!(mode, Mode::DumpFir | Mode::DumpTypedHir) && output.is_some() {
         return Err(
-            "-o/--output is not valid with --dump-fir; the dump is written to stdout".into(),
+            "-o/--output is not valid with dump modes; the dump is written to stdout".into(),
         );
     }
     let libraries = library_specs
@@ -156,6 +158,10 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         Mode::DumpFir => println!(
             "{}",
             dump_fir_file_with_libraries(compile_source, &libraries)?
+        ),
+        Mode::DumpTypedHir => println!(
+            "{}",
+            dump_typed_hir_file_with_libraries(compile_source, &libraries)?
         ),
         Mode::EmitObject => {
             let output = output.unwrap_or_else(|| source.with_extension("o"));

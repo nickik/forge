@@ -138,6 +138,8 @@ available on every backend merely because the frontend accepts it.
       object plans behind stable, testable flags.
   - [x] `forgec --dump-fir` emits deterministic verified FIR JSON for the
         semantically linked root and explicit library mappings.
+  - [x] `forgec --dump-typed-hir` emits deterministic resolved typed-HIR JSON
+        for the same semantically linked compilation unit.
 
 ## 6. Build, package and Cosmic readiness
 

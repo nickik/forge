@@ -49,3 +49,11 @@ pub use fir::{
 pub use fir_boundary::{dump_fir_module, lower_fir, verify_fir_boundary, verify_fir_module};
 
 pub use typecheck::{RuntimeOperationId, TypedSelectArm, TypedSelectPlan};
+
+/// Emit the resolved typed-HIR boundary as deterministic pretty JSON.
+///
+/// Typed-HIR outputs use ordered maps, so this is suitable for stable compiler
+/// diagnostics, golden tests, and comparisons across builds.
+pub fn dump_typed_hir(output: &TypeCheckOutput) -> String {
+    serde_json::to_string_pretty(output).expect("typed HIR serialization")
+}
