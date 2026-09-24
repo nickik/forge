@@ -113,9 +113,7 @@ pub fn answer() -> i32 { return alpha.answer(); }
     )
     .expect_err("library cycle must be rejected");
     assert!(
-        error
-            .to_string()
-            .contains("library import cycle includes"),
+        error.to_string().contains("library import cycle includes"),
         "unexpected diagnostic: {error}"
     );
 }
