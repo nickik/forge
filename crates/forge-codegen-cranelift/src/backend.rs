@@ -232,7 +232,7 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
-                FirInstructionKind::Convert { value, target } => {
+                FirInstructionKind::LosslessIntegerConvert { value, target } => {
                     if target != result_ty {
                         return Err(shape(format!(
                             "FIR convert target {target:?} does not match result type {result_ty:?}"
@@ -439,7 +439,7 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
             FirInstructionKind::ContextSet { value, .. }
             | FirInstructionKind::StoreGlobal { value, .. }
             | FirInstructionKind::Unary { value, .. }
-            | FirInstructionKind::Convert { value, .. }
+            | FirInstructionKind::LosslessIntegerConvert { value, .. }
             | FirInstructionKind::IntegerToFloat { value, .. }
             | FirInstructionKind::FloatConvert { value, .. }
             | FirInstructionKind::DistinctFromUnderlying { value, .. }

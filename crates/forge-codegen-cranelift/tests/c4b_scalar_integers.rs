@@ -184,7 +184,7 @@ fn conversion(source: Ty, target: Ty) -> FirFunction {
                 FirInstruction {
                     span,
                     result: Some(v1),
-                    kind: FirInstructionKind::Convert {
+                    kind: FirInstructionKind::LosslessIntegerConvert {
                         value: v0,
                         target: target.clone(),
                     },

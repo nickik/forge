@@ -198,7 +198,10 @@ pub enum FirInstructionKind {
         left: FirValueId,
         right: FirValueId,
     },
-    Convert {
+    /// Perform an integer conversion only when it is lossless for the selected
+    /// target layout. Narrowing and signed-to-unsigned conversions require a
+    /// future FIR operation with an explicit lossy policy.
+    LosslessIntegerConvert {
         value: FirValueId,
         target: Ty,
     },
@@ -1805,7 +1808,7 @@ impl<'a> FunctionLowerer<'a> {
                 self.emit_value(
                     expr.span,
                     ty.clone(),
-                    FirInstructionKind::Convert { value, target: ty },
+                    FirInstructionKind::LosslessIntegerConvert { value, target: ty },
                 )
             }
             HirExprKind::Index { base, index } => {

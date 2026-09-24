@@ -413,10 +413,10 @@ fn lower_instruction(
             }
             lower_float_convert(fir, *value, target, values, types, cursor)?
         }
-        FirInstructionKind::Convert { value, target } => {
+        FirInstructionKind::LosslessIntegerConvert { value, target } => {
             if target != result_ty {
                 return Err(shape(format!(
-                    "FIR convert target {target:?} does not match result type {result_ty:?}"
+                    "FIR lossless integer conversion target {target:?} does not match result type {result_ty:?}"
                 )));
             }
             lower_scalar_convert(fir, *value, target, values, types, cursor)?
@@ -1605,7 +1605,7 @@ fn instruction_kind_name(kind: &FirInstructionKind) -> &'static str {
         FirInstructionKind::Store { .. } => "store",
         FirInstructionKind::Unary { .. } => "unary",
         FirInstructionKind::Binary { .. } => "binary",
-        FirInstructionKind::Convert { .. } => "convert",
+        FirInstructionKind::LosslessIntegerConvert { .. } => "lossless integer convert",
         FirInstructionKind::IntegerToFloat { .. } => "integer to float",
         FirInstructionKind::FloatConvert { .. } => "float convert",
         FirInstructionKind::SliceFromArrayRef { .. } => "slice from array reference",
