@@ -217,6 +217,21 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
+                FirInstructionKind::FloatConvert { value, target } => {
+                    if target != result_ty {
+                        return Err(shape(format!(
+                            "FIR float conversion target {target:?} does not match result type {result_ty:?}"
+                        )));
+                    }
+                    let source = value_type(fir, *value, "float conversion input")?;
+                    if !matches!(source, Ty::Float { .. })
+                        || !matches!(target, Ty::Float { .. })
+                    {
+                        return Err(shape(format!(
+                            "invalid float conversion from {source:?} to {target:?}"
+                        )));
+                    }
+                }
                 FirInstructionKind::Convert { value, target } => {
                     if target != result_ty {
                         return Err(shape(format!(
@@ -426,6 +441,7 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
             | FirInstructionKind::Unary { value, .. }
             | FirInstructionKind::Convert { value, .. }
             | FirInstructionKind::IntegerToFloat { value, .. }
+            | FirInstructionKind::FloatConvert { value, .. }
             | FirInstructionKind::DistinctFromUnderlying { value, .. }
             | FirInstructionKind::DistinctToUnderlying { value, .. }
             | FirInstructionKind::SliceFromArrayRef { value }
