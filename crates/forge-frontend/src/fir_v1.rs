@@ -209,6 +209,13 @@ pub enum FirInstructionKind {
         value: FirValueId,
         target: Ty,
     },
+    /// Convert between floating-point widths. This is separate from
+    /// `Convert` because demotion can round and must not weaken the generic
+    /// lossless-integer conversion contract.
+    FloatConvert {
+        value: FirValueId,
+        target: Ty,
+    },
     /// Form a non-owning slice view from an explicit reference to a fixed
     /// array. This is separate from `Convert`: it constructs the slice's
     /// pointer/length representation and must never relax numeric conversion
@@ -1786,6 +1793,13 @@ impl<'a> FunctionLowerer<'a> {
                         expr.span,
                         ty.clone(),
                         FirInstructionKind::IntegerToFloat { value, target: ty },
+                    );
+                }
+                if matches!(source_ty, Ty::Float { .. }) && matches!(ty, Ty::Float { .. }) {
+                    return self.emit_value(
+                        expr.span,
+                        ty.clone(),
+                        FirInstructionKind::FloatConvert { value, target: ty },
                     );
                 }
                 self.emit_value(
