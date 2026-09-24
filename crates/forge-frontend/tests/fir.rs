@@ -977,6 +977,26 @@ fn capture_free_closure_function_pointer_has_no_environment() {
 }
 
 #[test]
+fn required_tail_calls_remain_explicit_in_direct_and_indirect_fir() {
+    let output = lower(
+        r#"
+        module test.fir_tail_calls;
+        fn add_one(value: u64) -> u64 { return value + 1u64; }
+        fn direct(value: u64) -> u64 { return tail add_one(value); }
+        fn indirect(op: fn(u64) -> u64, value: u64) -> u64 {
+            return tail op(value);
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(
+        instructions(&output).any(|op| matches!(op, FirInstructionKind::Call { tail: true, .. }))
+    );
+    assert!(instructions(&output)
+        .any(|op| matches!(op, FirInstructionKind::CallIndirect { tail: true, .. })));
+}
+
+#[test]
 fn execution_context_lowers_save_set_load_and_restore() {
     let output = lower(
         r#"

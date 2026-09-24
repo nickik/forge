@@ -344,17 +344,93 @@ fn required_tail_call_remains_an_explicit_backend_boundary() {
     module.functions.insert(callee_owner, add_one(callee_owner));
     module.functions.insert(caller_owner, caller);
 
-    let backend = CraneliftBackend::aarch64().expect("backend");
-    let error = match backend.prepare_module(&module) {
-        Ok(_) => panic!("required tail calls must not silently become ordinary calls"),
-        Err(error) => error,
+    for target in targets() {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("required tail calls must not silently become ordinary calls"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::UnsupportedInstruction {
+                kind: "required tail call"
+            }
+        );
+    }
+}
+
+#[test]
+fn required_indirect_tail_call_remains_an_explicit_backend_boundary() {
+    let span = Span::new(0, 0);
+    let ty = u64_ty();
+    let fn_ty = function_ty(vec![ty.clone()], ty.clone());
+    let owner = DefId(42);
+    let (callee_local, callee_data) = local(0, fn_ty.clone(), true);
+    let (arg_local, arg_data) = local(1, ty.clone(), true);
+    let callee = FirValueId(0);
+    let arg = FirValueId(1);
+    let result = FirValueId(2);
+
+    let function = FirFunction {
+        owner,
+        params: vec![callee_local, arg_local],
+        return_type: ty.clone(),
+        locals: BTreeMap::from([(callee_local, callee_data), (arg_local, arg_data)]),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![
+                FirInstruction {
+                    span,
+                    result: Some(callee),
+                    kind: FirInstructionKind::Load {
+                        place: FirPlace::Local {
+                            local: callee_local,
+                        },
+                    },
+                },
+                FirInstruction {
+                    span,
+                    result: Some(arg),
+                    kind: FirInstructionKind::Load {
+                        place: FirPlace::Local { local: arg_local },
+                    },
+                },
+                FirInstruction {
+                    span,
+                    result: Some(result),
+                    kind: FirInstructionKind::CallIndirect {
+                        callee,
+                        args: vec![arg],
+                        tail: true,
+                    },
+                },
+            ],
+            terminator: Some(FirTerminator::Return {
+                value: Some(result),
+            }),
+        }],
+        value_types: BTreeMap::from([(callee, fn_ty), (arg, ty.clone()), (result, ty)]),
     };
-    assert_eq!(
-        error,
-        BackendError::UnsupportedInstruction {
-            kind: "required tail call"
-        }
-    );
+
+    let mut module = FirModule::default();
+    module.functions.insert(owner, function);
+
+    for target in targets() {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("required indirect tail calls must not become ordinary calls"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::UnsupportedInstruction {
+                kind: "required tail call"
+            }
+        );
+    }
 }
 
 #[test]
