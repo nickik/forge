@@ -27,7 +27,8 @@ impl CraneliftTarget {
 
     pub const fn layout(self) -> TargetLayout {
         match self {
-            Self::Aarch64 | Self::Riscv64 => TargetLayout::new(64),
+            Self::Aarch64 => TargetLayout::new(64).with_indirect_float_aggregates(),
+            Self::Riscv64 => TargetLayout::new(64),
             Self::Sia32 => TargetLayout::new(32),
         }
     }
@@ -82,10 +83,19 @@ pub enum ExecutableFormat {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TargetLayout {
     pub pointer_bits: u16,
+    pub indirect_float_aggregates: bool,
 }
 
 impl TargetLayout {
     pub const fn new(pointer_bits: u16) -> Self {
-        Self { pointer_bits }
+        Self {
+            pointer_bits,
+            indirect_float_aggregates: false,
+        }
+    }
+
+    pub const fn with_indirect_float_aggregates(mut self) -> Self {
+        self.indirect_float_aggregates = true;
+        self
     }
 }

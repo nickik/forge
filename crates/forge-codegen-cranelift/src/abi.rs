@@ -309,10 +309,14 @@ pub(crate) fn c9_piece_type(
 }
 
 fn c9_abi_target(types: &TypeLowering<'_>) -> Result<AbiTarget, BackendError> {
-    match types.target().pointer_bits {
-        32 => Ok(AbiTarget::sia32()),
-        64 => Ok(AbiTarget::native64()),
-        pointer_bits => Err(BackendError::UnsupportedTargetLayout { pointer_bits }),
+    match (
+        types.target().pointer_bits,
+        types.target().indirect_float_aggregates,
+    ) {
+        (32, false) => Ok(AbiTarget::sia32()),
+        (64, true) => Ok(AbiTarget::aarch64()),
+        (64, false) => Ok(AbiTarget::native64()),
+        (pointer_bits, _) => Err(BackendError::UnsupportedTargetLayout { pointer_bits }),
     }
 }
 
