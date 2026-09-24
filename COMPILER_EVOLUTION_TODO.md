@@ -136,6 +136,8 @@ available on every backend merely because the frontend accepts it.
         target-aware narrowing and signedness loss stay rejected.
 - [ ] Add compiler debug dumps for typed HIR, FIR, ABI decomposition, CLIF and
       object plans behind stable, testable flags.
+  - [x] `forgec --dump-fir` emits deterministic verified FIR JSON for the
+        semantically linked root and explicit library mappings.
 
 ## 6. Build, package and Cosmic readiness
 

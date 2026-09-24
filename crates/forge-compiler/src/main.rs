@@ -4,7 +4,7 @@ use std::process;
 
 use forge_compiler::{
     build_executable_with_libraries, build_executable_with_libraries_and_entry,
-    check_file_with_libraries, emit_object_file_with_libraries,
+    check_file_with_libraries, dump_fir_file_with_libraries, emit_object_file_with_libraries,
     emit_object_file_with_libraries_and_entry, run_file_with_libraries,
     run_file_with_libraries_and_entry, LibraryInput,
 };
@@ -12,6 +12,7 @@ use forge_compiler::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
     Check,
+    DumpFir,
     EmitObject,
     Build,
     Run,
@@ -37,7 +38,7 @@ fn usage() -> ! {
     eprintln!(
         "usage: forgec [--target aarch64-unknown-linux-gnu] [--platform host] \
          [--library NAME=PATH]... [--entry NAME] [--program-arg ARG]... \
-         <--check|--emit-object|--build|--run> FILE [-o OUTPUT]"
+         <--check|--dump-fir|--emit-object|--build|--run> FILE [-o OUTPUT]"
     );
     process::exit(64);
 }
@@ -109,6 +110,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
                 output = Some(PathBuf::from(args.next().unwrap_or_else(|| usage())))
             }
             "--check" => set_mode(&mut mode, Mode::Check),
+            "--dump-fir" => set_mode(&mut mode, Mode::DumpFir),
             "--emit-object" => set_mode(&mut mode, Mode::EmitObject),
             "--build" => set_mode(&mut mode, Mode::Build),
             "--run" => set_mode(&mut mode, Mode::Run),
@@ -128,9 +130,15 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     if mode != Mode::Run && !program_args.is_empty() {
         return Err("--program-arg is valid only with --run".into());
     }
-    if mode == Mode::Check && entry.is_some() {
+    if matches!(mode, Mode::Check | Mode::DumpFir) && entry.is_some() {
         return Err(
-            "--entry is not needed with --check; checks do not require an entry point".into(),
+            "--entry is not needed with --check or --dump-fir; neither requires an entry point"
+                .into(),
+        );
+    }
+    if mode == Mode::DumpFir && output.is_some() {
+        return Err(
+            "-o/--output is not valid with --dump-fir; the dump is written to stdout".into(),
         );
     }
     let libraries = library_specs
@@ -145,6 +153,10 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
 
     match mode {
         Mode::Check => check_file_with_libraries(compile_source, &libraries)?,
+        Mode::DumpFir => println!(
+            "{}",
+            dump_fir_file_with_libraries(compile_source, &libraries)?
+        ),
         Mode::EmitObject => {
             let output = output.unwrap_or_else(|| source.with_extension("o"));
             if let Some(entry) = entry.as_deref() {
