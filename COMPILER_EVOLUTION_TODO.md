@@ -39,6 +39,8 @@ available on every backend merely because the frontend accepts it.
       target boundary or a named milestone with a focused regression.
   - [x] Pin `select` terminators as a deliberate C14 backend boundary on both
         hosted targets; frontend/FIR scaffolding does not imply codegen support.
+  - [x] Reject closure-valued call arguments with a stable `closure/escape`
+        diagnostic; local closure calls and capture-free function pointers remain supported.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
