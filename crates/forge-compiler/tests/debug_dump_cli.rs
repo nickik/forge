@@ -211,3 +211,49 @@ fn answer(value: u32) -> u32 { return value + 1u32; }
     assert!(dump.contains("function "));
     assert!(dump.contains("uadd_overflow"));
 }
+
+#[test]
+fn dump_object_plan_is_deterministic_production_aarch64_json() {
+    let source =
+        std::env::temp_dir().join(format!("forgec-dump-object-plan-{}.fg", std::process::id()));
+    std::fs::write(
+        &source,
+        r#"
+module test.object_plan_dump;
+fn answer(value: u32) -> u32 { return value + 1u32; }
+"#,
+    )
+    .expect("write object-plan dump fixture");
+
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_forgec"))
+            .arg("--dump-object-plan")
+            .arg(&source)
+            .output()
+            .expect("forgec should start")
+    };
+    let first = run();
+    let second = run();
+    let _ = std::fs::remove_file(&source);
+
+    assert!(
+        first.status.success(),
+        "first dump failed:\n{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert!(
+        second.status.success(),
+        "second dump failed:\n{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert_eq!(first.stdout, second.stdout);
+    assert!(first.stderr.is_empty());
+
+    let dump = String::from_utf8(first.stdout).expect("object-plan dump should be UTF-8 JSON");
+    assert!(dump.starts_with("{\n"));
+    assert!(dump.ends_with("\n"));
+    assert!(dump.contains("\"target\": \"aarch64-unknown-linux-gnu\""));
+    assert!(dump.contains("\"name\": \"__forge_fn_"));
+    assert!(dump.contains("\"linkage\": \"local\""));
+    assert!(dump.contains("\"global_init_order\": []"));
+}
