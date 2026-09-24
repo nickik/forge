@@ -997,6 +997,23 @@ fn required_tail_calls_remain_explicit_in_direct_and_indirect_fir() {
 }
 
 #[test]
+fn required_local_closure_tail_call_remains_explicit_in_fir() {
+    let output = lower(
+        r#"
+        module test.fir_closure_tail_call;
+        fn main() -> u32 {
+            val offset: u32 = 7u32;
+            val add = [offset](value: u32) -> u32 { return value + offset; };
+            return tail add(5u32);
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output)
+        .any(|op| matches!(op, FirInstructionKind::CallClosure { tail: true, .. })));
+}
+
+#[test]
 fn execution_context_lowers_save_set_load_and_restore() {
     let output = lower(
         r#"

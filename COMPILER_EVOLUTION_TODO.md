@@ -41,8 +41,8 @@ available on every backend merely because the frontend accepts it.
         hosted targets; frontend/FIR scaffolding does not imply codegen support.
   - [x] Reject closure-valued call arguments with a stable `closure/escape`
         diagnostic; local closure calls and capture-free function pointers remain supported.
-  - [x] Pin required direct and indirect tail calls as an explicit AArch64 and
-        RISC-V backend boundary; they must not silently become ordinary calls.
+  - [x] Pin required direct, indirect and local-closure tail calls as explicit
+        hosted backend boundaries; they must not silently become ordinary calls.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
