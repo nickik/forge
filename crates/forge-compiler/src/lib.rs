@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use forge_codegen_cranelift::CraneliftBackend;
+use forge_codegen_cranelift::{
+    CraneliftBackend, GlobalInitialization, GlobalStorageClass, ObjectLinkage,
+};
 use forge_fir::{
     is_abi_aggregate_type, AbiDecomposer, AbiDecomposition, AbiPassing, AbiTarget, BinaryOp,
     ConstValue, FirConst, FirFunction, FirGlobal, FirInstructionKind, FirLocalId, FirModule,
@@ -129,6 +131,30 @@ struct AbiFunctionDump {
 struct AbiParameterDump {
     local: FirLocalId,
     value: AbiValueDump,
+}
+
+#[derive(serde::Serialize)]
+struct ObjectPlanDump {
+    target: &'static str,
+    functions: BTreeMap<DefId, ObjectFunctionSymbolDump>,
+    globals: BTreeMap<DefId, ObjectGlobalSymbolDump>,
+    global_init_order: Vec<DefId>,
+}
+
+#[derive(serde::Serialize)]
+struct ObjectFunctionSymbolDump {
+    name: String,
+    linkage: &'static str,
+    signature: String,
+}
+
+#[derive(serde::Serialize)]
+struct ObjectGlobalSymbolDump {
+    name: String,
+    linkage: &'static str,
+    storage: &'static str,
+    layout: String,
+    initialization: String,
 }
 
 #[derive(serde::Serialize)]
@@ -433,6 +459,79 @@ pub fn dump_clif_source_with_library_sources(
         }
     }
     Ok(dump)
+}
+
+/// Build the production AArch64 object plan and return a deterministic JSON
+/// view before section construction, relocation encoding, or serialization.
+pub fn dump_object_plan_source_with_library_sources(
+    source: &str,
+    libraries: &[(String, String)],
+) -> Result<String, CompilerError> {
+    let ast = link_source_with_library_sources(source, libraries)?;
+    let lowered = lower_ast(&ast)?;
+    let definitions =
+        collect_type_definitions(&ast, &lowered.hir.module, &lowered.bodies, &lowered.typed);
+    let backend = CraneliftBackend::aarch64()?;
+    let prepared = backend.prepare_module_with_types(&lowered.fir.module, &definitions)?;
+    let plan = backend.plan_object_module(&prepared)?;
+
+    let functions = plan
+        .function_symbols()
+        .iter()
+        .map(|(owner, symbol)| {
+            (
+                *owner,
+                ObjectFunctionSymbolDump {
+                    name: symbol.name().to_owned(),
+                    linkage: dump_object_linkage(symbol.linkage()),
+                    signature: format!("{:?}", symbol.signature()),
+                },
+            )
+        })
+        .collect();
+    let globals = plan
+        .global_symbols()
+        .iter()
+        .map(|(owner, symbol)| {
+            (
+                *owner,
+                ObjectGlobalSymbolDump {
+                    name: symbol.name().to_owned(),
+                    linkage: dump_object_linkage(symbol.linkage()),
+                    storage: match symbol.storage() {
+                        GlobalStorageClass::ReadOnlyData => "read_only_data",
+                        GlobalStorageClass::WritableData => "writable_data",
+                        GlobalStorageClass::ZeroFill => "zero_fill",
+                    },
+                    layout: format!("{:?}", symbol.layout()),
+                    initialization: match symbol.initialization() {
+                        GlobalInitialization::Constant(_) => "constant".to_owned(),
+                        GlobalInitialization::Static(_) => "static".to_owned(),
+                        GlobalInitialization::Runtime {
+                            dependencies,
+                            order,
+                        } => format!("runtime(order={order}, dependencies={dependencies:?})"),
+                        GlobalInitialization::Zero => "zero".to_owned(),
+                    },
+                },
+            )
+        })
+        .collect();
+    let dump = ObjectPlanDump {
+        target: "aarch64-unknown-linux-gnu",
+        functions,
+        globals,
+        global_init_order: plan.global_init_order().to_vec(),
+    };
+    Ok(serde_json::to_string_pretty(&dump).expect("object-plan dump serialization"))
+}
+
+fn dump_object_linkage(linkage: ObjectLinkage) -> &'static str {
+    match linkage {
+        ObjectLinkage::Local => "local",
+        ObjectLinkage::Export => "export",
+        ObjectLinkage::Import => "import",
+    }
 }
 
 fn dump_abi_function(
@@ -1036,6 +1135,15 @@ pub fn dump_clif_file_with_libraries(
     let source = read_source(path)?;
     let sources = read_library_sources(libraries)?;
     dump_clif_source_with_library_sources(&source, &sources)
+}
+
+pub fn dump_object_plan_file_with_libraries(
+    path: &Path,
+    libraries: &[LibraryInput],
+) -> Result<String, CompilerError> {
+    let source = fs::read_to_string(path)?;
+    let sources = read_library_sources(libraries)?;
+    dump_object_plan_source_with_library_sources(&source, &sources)
 }
 
 pub fn emit_object_file(path: &Path, output: &Path) -> Result<(), CompilerError> {

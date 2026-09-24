@@ -134,7 +134,7 @@ available on every backend merely because the frontend accepts it.
       represented in FIR rather than reconstructed in codegen.
   - [x] Represent ordinary integer conversions as explicitly lossless FIR;
         target-aware narrowing and signedness loss stay rejected.
-- [ ] Add compiler debug dumps for typed HIR, FIR, ABI decomposition, CLIF and
+- [x] Add compiler debug dumps for typed HIR, FIR, ABI decomposition, CLIF and
       object plans behind stable, testable flags.
   - [x] `forgec --dump-fir` emits deterministic verified FIR JSON for the
         semantically linked root and explicit library mappings.
@@ -144,6 +144,9 @@ available on every backend merely because the frontend accepts it.
         decomposition, including direct pieces and indirect aggregate passing.
   - [x] `forgec --dump-clif` emits deterministic production AArch64 CLIF after
         FIR verification and ABI lowering, before machine-code/object emission.
+  - [x] `forgec --dump-object-plan` emits deterministic production AArch64
+        function/global symbols, linkage, layouts and initializer ordering
+        before section construction, relocation encoding or serialization.
 
 ## 6. Build, package and Cosmic readiness
 
