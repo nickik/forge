@@ -368,9 +368,7 @@ fn c10b_elf_visibility_and_import_relocations_are_explicit_on_both_targets() {
             "forge_entry"
         );
         assert_eq!(
-            plan.symbol(AGGREGATE_IDENTITY)
-                .expect("import")
-                .linkage(),
+            plan.symbol(AGGREGATE_IDENTITY).expect("import").linkage(),
             ObjectLinkage::Import
         );
         assert_eq!(
