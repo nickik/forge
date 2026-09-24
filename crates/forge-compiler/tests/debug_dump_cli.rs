@@ -209,5 +209,5 @@ fn answer(value: u32) -> u32 { return value + 1u32; }
     assert!(dump.starts_with("; Forge function DefId("));
     assert!(dump.ends_with("\n"));
     assert!(dump.contains("function "));
-    assert!(dump.contains("iadd"));
+    assert!(dump.contains("uadd_overflow"));
 }
