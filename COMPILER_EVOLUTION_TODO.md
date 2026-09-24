@@ -165,8 +165,11 @@ available on every backend merely because the frontend accepts it.
         SIA32 user-image path, including fixed `r1` syscall exchange, traps and
         the userspace proof-word store.
   - [ ] Extend the contract to a separate freestanding System Task/user image and kernel/user ABI crossing.
-- [ ] Keep package/module visibility and dependency ordering exercised through
+- [x] Keep package/module visibility and dependency ordering exercised through
       real multi-package builds.
+  - [x] Production compilation accepts transitive public dependencies
+        independent of supplied library order and rejects private transitive
+        access and dependency cycles before object emission.
 - [ ] Define the Forge-to-Cosmic kernel/userland compile contract once the
       target-independent freestanding object path is stable.
 - [ ] Validate each claimed Forge backend against one representative Cosmic
