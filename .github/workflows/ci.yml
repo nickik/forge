@@ -19,7 +19,7 @@ concurrency:
 jobs:
   ci:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -116,3 +116,35 @@ jobs:
         env:
           FORGE_RISCV64_EXECUTION: "1"
         run: cargo test --workspace --exclude forge-frontend --locked -- --nocapture
+
+      # This is deliberately last: cheap Forge-local failures should surface
+      # before the pinned cross-repository acceptance proof is built.
+      - name: Check out pinned LightingSimulation
+        uses: actions/checkout@v4
+        with:
+          repository: nickik/LightingSimulation
+          ref: c91b5d00001805a19771887c926b8ee491d289cd
+          path: integration/LightingSimulation
+      - name: Check out pinned Cosmic
+        uses: actions/checkout@v4
+        with:
+          repository: nickik/Cosmic
+          ref: ca977f3334101b7a7c13fd75a3d77cc7c172c676
+          path: integration/Cosmic
+      - name: Cosmic M28 kernel/user boot on LightingSimulation
+        timeout-minutes: 15
+        env:
+          LIGHTING_FORGE_REPO: ${{ github.workspace }}
+          LIGHTING_COSMIC_REPO: ${{ github.workspace }}/integration/Cosmic
+          CARGO_TARGET_DIR: ${{ runner.temp }}/forge-lighting-m28-target
+        run: |
+          # Lighting's integration helper checks this historical capability
+          # ref before invoking the current checkout. Main contains that
+          # capability, so provide the local ref without fetching mutable code.
+          git branch --force sia32-load-address-image "$GITHUB_SHA"
+          cargo test \
+            --manifest-path integration/LightingSimulation/Cargo.toml \
+            --locked \
+            --test cosmic_m28_full_boot \
+            m28_full_boot_enters_forge_system_task_and_returns_from_syscall \
+            -- --exact --nocapture
