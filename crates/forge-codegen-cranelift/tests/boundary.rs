@@ -127,10 +127,12 @@ fn select_remains_an_explicit_backend_boundary_on_host_targets() {
 
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("select/channel lowering is deferred"),
+            Err(error) => error,
+        };
         assert_eq!(
-            backend
-                .prepare_module(&module)
-                .expect_err("select/channel lowering is deferred"),
+            error,
             BackendError::UnsupportedInstruction {
                 kind: "select terminator before C14 select/channel stage",
             }
