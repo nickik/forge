@@ -111,13 +111,15 @@ available on every backend merely because the frontend accepts it.
 
 - [ ] Make diagnostics consistently carry the failing source span, stable code,
       expected/actual semantic facts, and a regression asserting the code.
-- [ ] Improve FIR verifier diagnostics so invalid producer contracts identify
+- [x] Improve FIR verifier diagnostics so invalid producer contracts identify
       the function, block, instruction and value involved.
   - [x] Value-definition, Poison and non-concrete instruction diagnostics carry
         function/block/instruction/value context while retaining source spans
         and stable verifier codes.
   - [x] Control-flow terminator diagnostics carry function/block/value context
         plus expected/actual type or operation facts.
+  - [x] Function signatures, locals and closures identify their owning function
+        and expose the invalid entry/type facts.
 - [ ] Keep lowering phases one-way: parser/HIR/typechecking decisions must be
       represented in FIR rather than reconstructed in codegen.
 - [ ] Add compiler debug dumps for typed HIR, FIR, ABI decomposition, CLIF and
