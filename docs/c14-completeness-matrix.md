@@ -21,7 +21,7 @@ Legend:
 | Integer, bool, byte scalars | 1 | Checked/wrapping arithmetic, comparisons, shifts, conversions and ABI tests. |
 | `char` | 1 | Native constants, locals, comparison, argument and return fixture. |
 | `duration` | 1 | Source builtin and reader form lower as signed nanoseconds; native argument, return, local, field load and field store execution is covered. |
-| `f32`, `f64` | 4 | Native AArch64 scalar constants, arithmetic, negation, comparisons, integer-to-float conversion, `f32`/`f64` argument-return calls, aggregate field storage, and executable fixture are implemented. SIA32 deliberately rejects float FIR until C15; see `C15_TODO.md`. Aggregate and exceptional-value ABI coverage remains. |
+| `f32`, `f64` | 4 | Native AArch64 scalar constants, arithmetic, negation, comparisons, integer-to-float conversion, `f32`/`f64` argument-return calls, aggregate field storage, and executable fixtures are implemented. Unordered `NaN` comparisons, signed zero through division, and integer-to-`f64` conversion execute in the hosted acceptance lane. SIA32 deliberately rejects float FIR until C15; see `C15_TODO.md`. Aggregate argument/return ABI and the remaining conversion matrix remain. |
 | Structs and enums | 1 | Construction, projection, layout, ABI and matching tests. |
 | Tagged unions | 1 | Construction, payload extraction, nested match, and mixed fieldless/narrow-scalar/multi-field payload argument-return ABI execute. |
 | `Option[T]` | 1 | `None`, explicit `Some(value)`, implicit promotion, patterns and native layout/lowering. |
