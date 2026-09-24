@@ -214,6 +214,8 @@ dependencies = [
  "forge-codegen-cranelift",
  "forge-fir",
  "forge-frontend",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -229,6 +231,7 @@ name = "forge-fir"
 version = "0.1.0"
 dependencies = [
  "forge-frontend",
+ "serde",
 ]
 
 [[package]]

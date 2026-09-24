@@ -140,6 +140,8 @@ available on every backend merely because the frontend accepts it.
         semantically linked root and explicit library mappings.
   - [x] `forgec --dump-typed-hir` emits deterministic resolved typed-HIR JSON
         for the same semantically linked compilation unit.
+  - [x] `forgec --dump-abi` emits deterministic AArch64 parameter/return
+        decomposition, including direct pieces and indirect aggregate passing.
 
 ## 6. Build, package and Cosmic readiness
 

@@ -12,8 +12,8 @@ mod layout;
 mod static_data;
 
 pub use abi::{
-    AbiDecomposer, AbiDecomposition, AbiError, AbiFragment, AbiPassing, AbiPiece, AbiPieceKind,
-    AbiTarget,
+    is_abi_aggregate_type, AbiDecomposer, AbiDecomposition, AbiError, AbiFragment, AbiPassing,
+    AbiPiece, AbiPieceKind, AbiTarget,
 };
 pub use forge_frontend::ast::{BinaryOp, Span};
 pub use forge_frontend::{

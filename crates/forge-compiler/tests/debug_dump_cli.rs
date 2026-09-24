@@ -120,3 +120,51 @@ fn answer() -> u32 { return increment(41u32); }
     assert!(dump.contains("\"expr\": \"resolved_call\""));
     assert!(dump.contains("\"diagnostics\": []"));
 }
+
+#[test]
+fn dump_abi_is_deterministic_and_exposes_direct_and_indirect_plans() {
+    let source = std::env::temp_dir().join(format!("forgec-dump-abi-{}.fg", std::process::id()));
+    std::fs::write(
+        &source,
+        r#"
+module test.abi_dump;
+struct Pair { left: u32; right: u32; }
+struct Big { a: u64; b: u64; c: u64; d: u64; e: u64; }
+fn pair(value: Pair) -> Pair { return value; }
+fn big(value: Big) -> Big { return value; }
+"#,
+    )
+    .expect("write ABI dump fixture");
+
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_forgec"))
+            .arg("--dump-abi")
+            .arg(&source)
+            .output()
+            .expect("forgec should start")
+    };
+    let first = run();
+    let second = run();
+    let _ = std::fs::remove_file(&source);
+
+    assert!(
+        first.status.success(),
+        "first dump failed:\n{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert!(
+        second.status.success(),
+        "second dump failed:\n{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert_eq!(first.stdout, second.stdout);
+    assert!(first.stderr.is_empty());
+
+    let dump = String::from_utf8(first.stdout).expect("ABI dump should be UTF-8 JSON");
+    assert!(dump.starts_with("{\n"));
+    assert!(dump.ends_with("\n"));
+    assert!(dump.contains("\"target\": \"aarch64-unknown-linux-gnu\""));
+    assert!(dump.contains("\"passing\": \"direct\""));
+    assert!(dump.contains("\"passing\": \"indirect\""));
+    assert!(dump.contains("\"kind\": \"integer\""));
+}
