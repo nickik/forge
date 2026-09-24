@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 fn fixture_dir(name: &str) -> PathBuf {
@@ -8,7 +8,7 @@ fn fixture_dir(name: &str) -> PathBuf {
     ))
 }
 
-fn run_user_image(source: &PathBuf, library: &PathBuf, output: &PathBuf) -> Output {
+fn run_user_image(source: &Path, library: &Path, output: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_forge-lighting-firmware"))
         .arg(source)
         .args(["--library", &format!("cosmic.abi={}", library.display())])
