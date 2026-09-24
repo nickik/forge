@@ -67,7 +67,7 @@ fn value_for_array_and_slice_lower_to_explicit_iteration_cfg() {
         instructions(&output)
             .filter(|op| matches!(op, FirInstructionKind::Len { .. }))
             .count(),
-        2
+        1
     );
     assert_eq!(
         instructions(&output)
