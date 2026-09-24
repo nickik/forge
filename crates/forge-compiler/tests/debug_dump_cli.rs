@@ -53,8 +53,8 @@ fn answer(value: u32) -> u32 { return value + 1u32; }
         "FIR dump should include functions"
     );
     assert!(
-        dump.contains("\"answer\""),
-        "FIR dump should preserve function names"
+        dump.contains("\"instruction\": \"binary\""),
+        "FIR dump should contain lowered instructions"
     );
 }
 
