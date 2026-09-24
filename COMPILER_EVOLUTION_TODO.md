@@ -142,6 +142,8 @@ available on every backend merely because the frontend accepts it.
         for the same semantically linked compilation unit.
   - [x] `forgec --dump-abi` emits deterministic AArch64 parameter/return
         decomposition, including direct pieces and indirect aggregate passing.
+  - [x] `forgec --dump-clif` emits deterministic production AArch64 CLIF after
+        FIR verification and ABI lowering, before machine-code/object emission.
 
 ## 6. Build, package and Cosmic readiness
 

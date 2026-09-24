@@ -168,3 +168,46 @@ fn big(value: Big) -> Big { return value; }
     assert!(dump.contains("\"passing\": \"indirect\""));
     assert!(dump.contains("\"kind\": \"integer\""));
 }
+
+#[test]
+fn dump_clif_is_deterministic_production_aarch64_ir() {
+    let source = std::env::temp_dir().join(format!("forgec-dump-clif-{}.fg", std::process::id()));
+    std::fs::write(
+        &source,
+        r#"
+module test.clif_dump;
+fn answer(value: u32) -> u32 { return value + 1u32; }
+"#,
+    )
+    .expect("write CLIF dump fixture");
+
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_forgec"))
+            .arg("--dump-clif")
+            .arg(&source)
+            .output()
+            .expect("forgec should start")
+    };
+    let first = run();
+    let second = run();
+    let _ = std::fs::remove_file(&source);
+
+    assert!(
+        first.status.success(),
+        "first dump failed:\n{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert!(
+        second.status.success(),
+        "second dump failed:\n{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert_eq!(first.stdout, second.stdout);
+    assert!(first.stderr.is_empty());
+
+    let dump = String::from_utf8(first.stdout).expect("CLIF dump should be UTF-8 text");
+    assert!(dump.starts_with("; Forge function DefId("));
+    assert!(dump.ends_with("\n"));
+    assert!(dump.contains("function "));
+    assert!(dump.contains("uadd_overflow"));
+}
