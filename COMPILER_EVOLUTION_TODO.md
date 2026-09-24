@@ -170,8 +170,11 @@ available on every backend merely because the frontend accepts it.
   - [x] Production compilation accepts transitive public dependencies
         independent of supplied library order and rejects private transitive
         access and dependency cycles before object emission.
-- [ ] Define the Forge-to-Cosmic kernel/userland compile contract once the
+- [x] Define the Forge-to-Cosmic kernel/userland compile contract once the
       target-independent freestanding object path is stable.
+  - [x] Pin semantic library mappings, the explicit SIA32 user entry/base,
+        deterministic headerless output and the boundary between image emission
+        and Lighting execution with CLI acceptance tests.
 - [ ] Validate each claimed Forge backend against one representative Cosmic
       component only after its ordinary compiler gate is green.
 

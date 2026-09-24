@@ -16,6 +16,7 @@
 - [Core Allocation Architecture](core-allocation.md) — explicit provider capabilities, variable-sized allocators, fixed-size object caches, reclaim, and kernel/user reuse.
 - [OS Foundation Profile](os-foundation.md) — the minimal `core` facilities to stabilize before a production kernel depends on Forge.
 - [Freestanding Library Roadmap](freestanding-libraries.md) — `--no-std` libraries for memory, bits, MMIO, atomics, bounded containers, intrusive collections, layout, output, and target facts, with per-library TODOs and the pre-Cosmic integration gate.
+- [Forge-to-Cosmic Compile Contract](cosmic-compile-contract.md) — semantic library inputs, SIA32 user-image output, address/entry requirements, and the boundary between Forge emission and Lighting execution.
 - [Hosted Console Library](hosted-console.md) — portable `std.console` API with Unix/CForge/Cosmic provider backends and its relationship to freestanding `core.io.Writer`.
 
 ## Build system
