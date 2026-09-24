@@ -120,8 +120,7 @@ fn choose_module() -> (FirModule, DefId) {
     (module, owner)
 }
 
-fn duration_roundtrip_module() -> (FirModule, DefId) {
-    let owner = DefId(1);
+fn scalar_roundtrip_module(owner: DefId, ty: Ty) -> (FirModule, DefId) {
     let param = FirLocalId(0);
     let scratch = FirLocalId(1);
     let span = Span::new(0, 0);
@@ -131,14 +130,14 @@ fn duration_roundtrip_module() -> (FirModule, DefId) {
     let function = FirFunction {
         owner,
         params: vec![param],
-        return_type: Ty::Duration,
+        return_type: ty.clone(),
         locals: BTreeMap::from([
             (
                 param,
                 FirLocal {
                     id: param,
                     source: None,
-                    ty: Ty::Duration,
+                    ty: ty.clone(),
                     mutable: false,
                     parameter: true,
                     synthetic: false,
@@ -149,7 +148,7 @@ fn duration_roundtrip_module() -> (FirModule, DefId) {
                 FirLocal {
                     id: scratch,
                     source: None,
-                    ty: Ty::Duration,
+                    ty: ty.clone(),
                     mutable: true,
                     parameter: false,
                     synthetic: false,
@@ -189,7 +188,10 @@ fn duration_roundtrip_module() -> (FirModule, DefId) {
                 value: Some(loaded_scratch),
             }),
         }],
-        value_types: BTreeMap::from([(loaded_param, Ty::Duration), (loaded_scratch, Ty::Duration)]),
+        value_types: BTreeMap::from([
+            (loaded_param, ty.clone()),
+            (loaded_scratch, ty),
+        ]),
     };
 
     let mut module = FirModule::default();
@@ -208,13 +210,24 @@ fn compile_choose() -> MachineCode {
 
 fn compile_duration_roundtrip() -> MachineCode {
     let backend = CraneliftBackend::riscv64().expect("RV64 backend");
-    let (module, owner) = duration_roundtrip_module();
+    let (module, owner) = scalar_roundtrip_module(DefId(1), Ty::Duration);
     let prepared = backend
         .prepare_module(&module)
         .expect("verified duration FIR");
     backend
         .emit_machine_code(&prepared, owner)
         .expect("RV64 duration machine code")
+}
+
+fn compile_char_roundtrip() -> MachineCode {
+    let backend = CraneliftBackend::riscv64().expect("RV64 backend");
+    let (module, owner) = scalar_roundtrip_module(DefId(2), Ty::Char);
+    let prepared = backend
+        .prepare_module(&module)
+        .expect("verified char FIR");
+    backend
+        .emit_machine_code(&prepared, owner)
+        .expect("RV64 char machine code")
 }
 
 #[test]
@@ -259,6 +272,18 @@ fn executes_duration_argument_local_and_return_under_qemu() {
     assert_eq!(run_under_qemu(&machine, 7), 7);
     assert_eq!(run_under_qemu(&machine, 37), 37);
     assert_eq!(run_under_qemu(&machine, 229), 229);
+}
+
+#[test]
+fn executes_char_argument_local_and_return_under_qemu() {
+    if std::env::var_os("FORGE_RISCV64_EXECUTION").is_none() {
+        return;
+    }
+
+    let machine = compile_char_roundtrip();
+    assert_eq!(run_under_qemu(&machine, 65), 65);
+    assert_eq!(run_under_qemu(&machine, 122), 122);
+    assert_eq!(run_under_qemu(&machine, 195), 195);
 }
 
 fn run_under_qemu(machine: &MachineCode, argument: u16) -> i32 {
