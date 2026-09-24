@@ -140,6 +140,9 @@ available on every backend merely because the frontend accepts it.
         and the absence of undefined hosted/runtime imports.
   - [x] Repeat the contract with the representative Cosmic M27 early-kernel SIA32 image and execute it through LightingSimulation.
   - [x] Route explicitly mapped freestanding library units through Forge's semantic module linker before SIA32 raw/user-image emission, preserving visibility and dependency-cycle diagnostics.
+  - [x] Compile the checked-in M28.5 System Task source through the production
+        SIA32 user-image path, including fixed `r1` syscall exchange, traps and
+        the userspace proof-word store.
   - [ ] Extend the contract to a separate freestanding System Task/user image and kernel/user ABI crossing.
 - [ ] Keep package/module visibility and dependency ordering exercised through
       real multi-package builds.
