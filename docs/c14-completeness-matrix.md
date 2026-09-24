@@ -44,7 +44,7 @@ Legend:
 | Overflow and traps | 1 | Checked/wrapping add/sub/mul, div/rem, shifts and divide-by-zero coverage exists. Ordinary integer conversions use dedicated lossless FIR semantics; narrowing and signed-to-unsigned conversions remain rejected until a future operation defines their policy. |
 | FDN readers and metadata | 4 | Parse/preservation and duration boundary tests exist; executable behavior is provider/tool-specific. |
 | Hosted providers/build system | 4 | Build/check/run/test, entries and hosted providers exist. Full current Cosmic/CKV acceptance remains. |
-| Freestanding `:kernel`, `:std false` | 4 | AArch64 object emission exports the manifest-selected entry under its exact platform symbol and verifies ELF sections, call relocations, and no undefined hosted/runtime imports. The representative Cosmic M27 SIA32 kernel image executes through LightingSimulation; explicit semantic library mappings and the checked-in M28.5 `r1` syscall/proof source reach production SIA32 user-image emission. The separate System Task kernel/user crossing still lacks Lighting execution. |
+| Freestanding `:kernel`, `:std false` | 1 | AArch64 object emission verifies the entry, sections, relocations, and absence of hosted imports. Pinned Forge CI compiles the Cosmic M28.6 kernel, trap dispatcher and separate System Task image, then executes the real kernel/user crossing on pinned LightingSimulation with `r1` syscall exchange, `SRET`, dedicated user-stack restoration and the proof word. |
 | `select` / channels | 6 | Explicitly deferred by the C14 acceptance request. Existing frontend/FIR scaffolding is not completion. |
 | SIA machine-code backend | 6 | C15. |
 | Tail calls | 6 | Not a C14 requirement. |
@@ -67,5 +67,7 @@ Legend:
 
 ## Next acceptance slices
 
-1. Compile a separate Cosmic System Task image and prove the kernel/user crossing through LightingSimulation.
-2. Validate current Cosmic through M18 or later.
+1. Keep the pinned M28.6 Forge/Cosmic/Lighting execution gate green and update
+   dependency revisions only as an intentional acceptance checkpoint.
+2. Advance the next Cosmic vertical slice only after its Forge-local compiler
+   prerequisites have focused regressions and the ordinary gate is green.
