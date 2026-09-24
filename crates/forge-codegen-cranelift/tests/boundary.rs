@@ -134,7 +134,7 @@ fn select_remains_an_explicit_backend_boundary_on_host_targets() {
         assert_eq!(
             error,
             BackendError::UnsupportedInstruction {
-                kind: "select terminator before C14 select/channel stage",
+                kind: "select terminator",
             }
         );
     }
