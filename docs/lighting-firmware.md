@@ -5,7 +5,7 @@ This is the pre-Cosmic bring-up path for Forge on SIA32.
 The immediate goal is deliberately smaller than booting an operating system:
 
 ```text
-single-file Forge firmware
+Forge root plus explicit semantic libraries
         |
         v
 typed FIR
@@ -30,15 +30,20 @@ This lets compiler and simulator work meet continuously while SIA32 support is s
 
 ## Current scope
 
-`forge-lighting-firmware` is intentionally a bring-up tool, not the final SIA linker.
+`forge-lighting-firmware` is the current bootstrap SIA32 image producer. The
+stable Forge-to-Cosmic boundary is recorded in
+[`cosmic-compile-contract.md`](cosmic-compile-contract.md).
 
 It currently:
 
-- parses and type-checks one Forge source file;
+- parses and type-checks a root Forge source plus explicit `--library NAME=PATH`
+  semantic modules;
 - lowers it through the normal HIR -> typed HIR -> FIR pipeline;
 - selects the production `sia32-unknown-none` Cranelift backend;
-- compiles the selected entry function to SIA32 machine code;
-- requires that function to be relocation-free;
+- compiles the selected entry and reachable module functions to SIA32 machine
+  code;
+- resolves function-call relocations through the production SIAO32 linker;
+- emits headerless raw and user images at an explicit architectural address;
 - embeds the bytes behind a tiny Lighting reset-ROM assembly wrapper;
 - calls the Forge entry from reset and halts Lighting when it returns.
 
@@ -50,7 +55,10 @@ fn main() -> i32
 
 (or another zero-argument `i32` function selected with `--entry`).
 
-Calls to other Forge functions, globals/string data, libraries/imports and other features that require relocations are deliberately rejected by this first path. Those should be enabled by extending the real SIAO32/image linker rather than by adding simulator-only shortcuts.
+Function calls and explicit libraries use the real semantic module and SIAO32
+linkers. Unsupported data/global relocation forms remain target boundaries and
+must be added to that production path rather than through simulator-only
+shortcuts.
 
 ## Prerequisites
 
