@@ -31,6 +31,38 @@ fn has(output: &forge_frontend::TypeCheckOutput, code: &str) -> bool {
 }
 
 #[test]
+fn value_for_requires_a_static_iterable_and_irrefutable_binding() {
+    let scalar = check(
+        r#"
+        module test.value_for_scalar;
+        fn main() {
+            for (val value in 7u32) { value; }
+        }
+        "#,
+    );
+    assert!(
+        has(&scalar, "type/for-each-iterable"),
+        "{:?}",
+        scalar.diagnostics
+    );
+
+    let refutable = check(
+        r#"
+        module test.value_for_refutable;
+        fn main() {
+            val values: [u32?; 1] = [Some(7u32)];
+            for (val Some(value) in values) { value; }
+        }
+        "#,
+    );
+    assert!(
+        has(&refutable, "pattern/refutable-binding"),
+        "{:?}",
+        refutable.diagnostics
+    );
+}
+
+#[test]
 fn immutable_globals_reject_assignment_and_mutable_address() {
     let output = check(
         r#"
