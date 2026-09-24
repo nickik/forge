@@ -405,6 +405,14 @@ fn lower_instruction(
             }
             lower_scalar_convert(fir, *value, target, values, types, cursor)?
         }
+        FirInstructionKind::FloatConvert { value, target } => {
+            if target != result_ty {
+                return Err(shape(format!(
+                    "FIR float conversion target {target:?} does not match result type {result_ty:?}"
+                )));
+            }
+            lower_float_convert(fir, *value, target, values, types, cursor)?
+        }
         FirInstructionKind::Convert { value, target } => {
             if target != result_ty {
                 return Err(shape(format!(
@@ -1266,8 +1274,34 @@ fn lower_scalar_convert(
         (Ty::Byte, Ty::Float { .. }) => {
             let dst = types.value_type(target)?; Ok(cursor.ins().fcvt_from_uint(dst, value))
         }
-        (Ty::Float { .. }, Ty::Float { .. }) => Ok(value),
         _ => lower_integer_convert(fir, input, target, values, types, cursor),
+    }
+}
+
+fn lower_float_convert(
+    fir: &FirFunction, input: FirValueId, target: &Ty, values: &BTreeMap<FirValueId, Value>,
+    types: &TypeLowering<'_>, cursor: &mut FuncCursor<'_>,
+) -> Result<Value, BackendError> {
+    let source = fir
+        .value_types
+        .get(&input)
+        .ok_or_else(|| shape("missing float conversion input"))?;
+    let value = lookup_value(values, input)?;
+    match (source, target) {
+        (Ty::Float { bits: 32 }, Ty::Float { bits: 64 }) => {
+            Ok(cursor.ins().fpromote(types.value_type(target)?, value))
+        }
+        (Ty::Float { bits: 64 }, Ty::Float { bits: 32 }) => {
+            Ok(cursor.ins().fdemote(types.value_type(target)?, value))
+        }
+        (Ty::Float { bits: source_bits }, Ty::Float { bits: target_bits })
+            if source_bits == target_bits =>
+        {
+            Ok(value)
+        }
+        _ => Err(shape(format!(
+            "invalid float conversion from {source:?} to {target:?}"
+        ))),
     }
 }
 
@@ -1573,6 +1607,7 @@ fn instruction_kind_name(kind: &FirInstructionKind) -> &'static str {
         FirInstructionKind::Binary { .. } => "binary",
         FirInstructionKind::Convert { .. } => "convert",
         FirInstructionKind::IntegerToFloat { .. } => "integer to float",
+        FirInstructionKind::FloatConvert { .. } => "float convert",
         FirInstructionKind::SliceFromArrayRef { .. } => "slice from array reference",
         FirInstructionKind::BitStructStorage { .. } => "bitstruct storage",
         FirInstructionKind::BitStructFromStorage { .. } => "bitstruct from storage",
