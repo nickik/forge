@@ -16,9 +16,9 @@ use forge_fir::{
 };
 use forge_frontend::{
     ast::{DeclKind, SourceFile},
-    collect_type_definitions, dump_fir_module, lower_fir, lower_module, lower_resolved_bodies,
-    parse_source, type_check_module, BodyHirOutput, DefId, FirOutput, HirOutput, IntWidth, Ty,
-    TypeCheckOutput,
+    collect_type_definitions, dump_fir_module, dump_typed_hir, lower_fir, lower_module,
+    lower_resolved_bodies, parse_source, type_check_module, BodyHirOutput, DefId, FirOutput,
+    HirOutput, IntWidth, Ty, TypeCheckOutput,
 };
 use module_linker::{link_modules, ParsedLibrary};
 
@@ -103,6 +103,12 @@ struct FrontEndOutput {
     bodies: BodyHirOutput,
     typed: TypeCheckOutput,
     fir: FirOutput,
+}
+
+struct TypedFrontEndOutput {
+    hir: HirOutput,
+    bodies: BodyHirOutput,
+    typed: TypeCheckOutput,
 }
 
 impl CompiledProgram {
@@ -199,6 +205,17 @@ pub fn dump_fir_source_with_library_sources(
     let ast = link_source_with_library_sources(source, libraries)?;
     let lowered = lower_ast(&ast)?;
     Ok(dump_fir_module(&lowered.fir.module))
+}
+
+/// Lower one semantically linked compilation unit to deterministic typed-HIR
+/// JSON after all type-system and source-language decisions are resolved.
+pub fn dump_typed_hir_source_with_library_sources(
+    source: &str,
+    libraries: &[(String, String)],
+) -> Result<String, CompilerError> {
+    let ast = link_source_with_library_sources(source, libraries)?;
+    let lowered = type_check_ast(&ast)?;
+    Ok(dump_typed_hir(&lowered.typed))
 }
 
 fn parse_ast(label: &str, source: &str) -> Result<SourceFile, CompilerError> {
@@ -335,6 +352,24 @@ fn compile_ast(
 }
 
 fn lower_ast(ast: &SourceFile) -> Result<FrontEndOutput, CompilerError> {
+    let TypedFrontEndOutput { hir, bodies, typed } = type_check_ast(ast)?;
+    let fir = lower_fir(&bodies, &typed);
+    if !fir.diagnostics.is_empty() {
+        return Err(CompilerError::message(format!(
+            "FIR lowering failed: {:?}",
+            fir.diagnostics
+        )));
+    }
+
+    Ok(FrontEndOutput {
+        hir,
+        bodies,
+        typed,
+        fir,
+    })
+}
+
+fn type_check_ast(ast: &SourceFile) -> Result<TypedFrontEndOutput, CompilerError> {
     let hir = lower_module(ast);
     if !hir.diagnostics.is_empty() {
         return Err(CompilerError::message(format!(
@@ -362,19 +397,10 @@ fn lower_ast(ast: &SourceFile) -> Result<FrontEndOutput, CompilerError> {
         )));
     }
 
-    let fir = lower_fir(&bodies, &typed);
-    if !fir.diagnostics.is_empty() {
-        return Err(CompilerError::message(format!(
-            "FIR lowering failed: {:?}",
-            fir.diagnostics
-        )));
-    }
-
-    Ok(FrontEndOutput {
+    Ok(TypedFrontEndOutput {
         hir,
         bodies,
         typed,
-        fir,
     })
 }
 
@@ -718,6 +744,15 @@ pub fn dump_fir_file_with_libraries(
     dump_fir_source_with_library_sources(&source, &sources)
 }
 
+pub fn dump_typed_hir_file_with_libraries(
+    path: &Path,
+    libraries: &[LibraryInput],
+) -> Result<String, CompilerError> {
+    let source = read_source(path)?;
+    let sources = read_library_sources(libraries)?;
+    dump_typed_hir_source_with_library_sources(&source, &sources)
+}
+
 pub fn emit_object_file(path: &Path, output: &Path) -> Result<(), CompilerError> {
     emit_object_file_with_libraries(path, output, &[])
 }
@@ -950,6 +985,19 @@ fn main() -> i32 {
         assert_eq!(first, second);
         assert!(first.matches("\"return_type\"").count() >= 3);
         assert!(first.contains("\"instruction\": \"call\""));
+    }
+
+    #[test]
+    fn typed_hir_dump_links_explicit_libraries_deterministically() {
+        let libraries = [("math".to_owned(), LIBRARY.to_owned())];
+        let first = dump_typed_hir_source_with_library_sources(WITH_LIBRARY, &libraries)
+            .expect("dump linked typed HIR");
+        let second = dump_typed_hir_source_with_library_sources(WITH_LIBRARY, &libraries)
+            .expect("dump linked typed HIR again");
+
+        assert_eq!(first, second);
+        assert!(first.matches("\"return_type\"").count() >= 3);
+        assert!(first.contains("\"expr\": \"resolved_call\""));
     }
 
     #[test]
