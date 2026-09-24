@@ -321,16 +321,14 @@ fn verifier_requires_local_initialization_on_every_incoming_path() {
         .blocks
         .iter()
         .find_map(|block| {
-            block
-                .instructions
-                .iter()
-                .enumerate()
-                .find_map(|(index, instruction)| match &instruction.kind {
+            block.instructions.iter().enumerate().find_map(
+                |(index, instruction)| match &instruction.kind {
                     FirInstructionKind::Load {
                         place: FirPlace::Local { local: loaded },
                     } if *loaded == local => Some((block.id, index, instruction.span)),
                     _ => None,
-                })
+                },
+            )
         })
         .expect("merged local load");
 
@@ -340,12 +338,16 @@ fn verifier_requires_local_initialization_on_every_incoming_path() {
         .expect("definite-initialization diagnostic");
     assert_eq!(diagnostic.span, load_span);
     assert!(diagnostic.message.contains(&format!("function {owner:?}")));
-    assert!(diagnostic.message.contains(&format!("block {load_block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("block {load_block:?}")));
     assert!(diagnostic
         .message
         .contains(&format!("instruction {load_index}")));
     assert!(diagnostic.message.contains(&format!("local {local:?}")));
-    assert!(diagnostic.message.contains("every incoming control-flow path"));
+    assert!(diagnostic
+        .message
+        .contains("every incoming control-flow path"));
 }
 
 #[test]
