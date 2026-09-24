@@ -120,6 +120,86 @@ fn choose_module() -> (FirModule, DefId) {
     (module, owner)
 }
 
+fn duration_roundtrip_module() -> (FirModule, DefId) {
+    let owner = DefId(1);
+    let param = FirLocalId(0);
+    let scratch = FirLocalId(1);
+    let span = Span::new(0, 0);
+    let loaded_param = FirValueId(0);
+    let loaded_scratch = FirValueId(1);
+
+    let function = FirFunction {
+        owner,
+        params: vec![param],
+        return_type: Ty::Duration,
+        locals: BTreeMap::from([
+            (
+                param,
+                FirLocal {
+                    id: param,
+                    source: None,
+                    ty: Ty::Duration,
+                    mutable: false,
+                    parameter: true,
+                    synthetic: false,
+                },
+            ),
+            (
+                scratch,
+                FirLocal {
+                    id: scratch,
+                    source: None,
+                    ty: Ty::Duration,
+                    mutable: true,
+                    parameter: false,
+                    synthetic: false,
+                },
+            ),
+        ]),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![
+                FirInstruction {
+                    span,
+                    result: Some(loaded_param),
+                    kind: FirInstructionKind::Load {
+                        place: FirPlace::Local { local: param },
+                    },
+                },
+                FirInstruction {
+                    span,
+                    result: None,
+                    kind: FirInstructionKind::Store {
+                        place: FirPlace::Local { local: scratch },
+                        value: loaded_param,
+                    },
+                },
+                FirInstruction {
+                    span,
+                    result: Some(loaded_scratch),
+                    kind: FirInstructionKind::Load {
+                        place: FirPlace::Local { local: scratch },
+                    },
+                },
+            ],
+            terminator: Some(FirTerminator::Return {
+                value: Some(loaded_scratch),
+            }),
+        }],
+        value_types: BTreeMap::from([
+            (loaded_param, Ty::Duration),
+            (loaded_scratch, Ty::Duration),
+        ]),
+    };
+
+    let mut module = FirModule::default();
+    module.functions.insert(owner, function);
+    (module, owner)
+}
+
 fn compile_choose() -> MachineCode {
     let backend = CraneliftBackend::riscv64().expect("RV64 backend");
     let (module, owner) = choose_module();
@@ -127,6 +207,15 @@ fn compile_choose() -> MachineCode {
     backend
         .emit_machine_code(&prepared, owner)
         .expect("RV64 machine code")
+}
+
+fn compile_duration_roundtrip() -> MachineCode {
+    let backend = CraneliftBackend::riscv64().expect("RV64 backend");
+    let (module, owner) = duration_roundtrip_module();
+    let prepared = backend.prepare_module(&module).expect("verified duration FIR");
+    backend
+        .emit_machine_code(&prepared, owner)
+        .expect("RV64 duration machine code")
 }
 
 #[test]
@@ -159,6 +248,18 @@ fn executes_riscv64_machine_code_under_qemu() {
     assert_eq!(run_under_qemu(&machine, 10), 2);
     assert_eq!(run_under_qemu(&machine, 11), 1);
     assert_eq!(run_under_qemu(&machine, 20), 1);
+}
+
+#[test]
+fn executes_duration_argument_local_and_return_under_qemu() {
+    if std::env::var_os("FORGE_RISCV64_EXECUTION").is_none() {
+        return;
+    }
+
+    let machine = compile_duration_roundtrip();
+    assert_eq!(run_under_qemu(&machine, 7), 7);
+    assert_eq!(run_under_qemu(&machine, 37), 37);
+    assert_eq!(run_under_qemu(&machine, 229), 229);
 }
 
 fn run_under_qemu(machine: &MachineCode, argument: u16) -> i32 {
