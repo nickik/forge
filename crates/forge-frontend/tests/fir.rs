@@ -1244,6 +1244,39 @@ fn integer_to_float_is_a_dedicated_fir_operation() {
 }
 
 #[test]
+fn float_width_conversion_is_a_dedicated_fir_operation() {
+    let output = lower(
+        r#"
+        module test.fir_float_convert;
+        fn widen(value: f32) -> f64 { return f64(value); }
+        fn narrow(value: f64) -> f32 { return f32(value); }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::FloatConvert {
+            target: forge_frontend::Ty::Float { bits: 64 },
+            ..
+        }
+    )));
+    assert!(instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::FloatConvert {
+            target: forge_frontend::Ty::Float { bits: 32 },
+            ..
+        }
+    )));
+    assert!(!instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::Convert {
+            target: forge_frontend::Ty::Float { .. },
+            ..
+        }
+    )));
+}
+
+#[test]
 fn ordinary_reference_deref_remains_safe_fir_deref() {
     let output = lower(
         r#"

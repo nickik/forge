@@ -30,6 +30,11 @@ fn exceptional_values() -> i32 {
 
     val converted: f64 = f64(7i32);
     if (converted != 7.0f64) { return 7i32; }
+
+    val promoted: f64 = f64(1.5f32);
+    if (promoted != 1.5f64) { return 10i32; }
+    val demoted: f32 = f32(2.75f64);
+    if (demoted != 2.75f32) { return 11i32; }
     return 0i32;
 }
 
