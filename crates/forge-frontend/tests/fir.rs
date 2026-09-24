@@ -1219,6 +1219,31 @@ fn pointer_conversions_are_not_plain_fir_converts() {
 }
 
 #[test]
+fn integer_to_float_is_a_dedicated_fir_operation() {
+    let output = lower(
+        r#"
+        module test.fir_integer_to_float;
+        fn convert(value: i32) -> f64 { return f64(value); }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::IntegerToFloat {
+            target: forge_frontend::Ty::Float { bits: 64 },
+            ..
+        }
+    )));
+    assert!(!instructions(&output).any(|instruction| matches!(
+        instruction,
+        FirInstructionKind::Convert {
+            target: forge_frontend::Ty::Float { .. },
+            ..
+        }
+    )));
+}
+
+#[test]
 fn ordinary_reference_deref_remains_safe_fir_deref() {
     let output = lower(
         r#"
