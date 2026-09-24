@@ -17,4 +17,11 @@ Forge's freestanding SIA32 path reserves the following source-level operation na
 
 The authoritative binary encodings live in `sia32_privileged.rs`.  The typed operation/source-name contract lives in `sia32_privileged_source.rs`.
 
-This checkpoint intentionally freezes the Forge-owned vocabulary and its one-to-one mapping to normative SIA32-P operations before changing the language frontend.  The next checkpoint wires these names through frontend/FIR and the SIA32 backend. Non-SIA targets must reject them rather than assign host behavior.
+`sia_sswap_scratch` and `sia_sretctx` remain explicit target boundaries: their
+source and FIR operations are reserved, but the production CLIF bridge rejects
+them before generic lowering. They require a separate Cosmic vertical slice
+before Forge may claim executable support.
+
+This checkpoint intentionally freezes the Forge-owned vocabulary and its
+one-to-one mapping to normative SIA32-P operations. Non-SIA targets must reject
+them rather than assign host behavior.

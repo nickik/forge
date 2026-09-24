@@ -18,6 +18,19 @@ pub(crate) fn validate_sia32_privileged_operations(
                     kind: "SIA32 privileged operation on non-SIA32 target",
                 });
             }
+            match operation {
+                Sia32PrivilegedOperation::SwapScratch => {
+                    return Err(BackendError::UnsupportedInstruction {
+                        kind: "SIA32 scratch swap not yet represented in CLIF bridge",
+                    });
+                }
+                Sia32PrivilegedOperation::ReturnContext => {
+                    return Err(BackendError::UnsupportedInstruction {
+                        kind: "SIA32 privileged operation not yet represented in CLIF bridge",
+                    });
+                }
+                _ => {}
+            }
             let register = match operation {
                 Sia32PrivilegedOperation::ReadGpr { register }
                 | Sia32PrivilegedOperation::WriteGpr { register } => Some(*register),
@@ -64,7 +77,7 @@ pub(crate) fn validate_sia32_privileged_operations(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use forge_fir::{FirBasicBlock, FirBlockId, FirFunction, FirInstruction, Span};
+    use forge_fir::{FirBasicBlock, FirBlockId, FirFunction, FirInstruction, FirValueId, Span};
     use std::collections::BTreeMap;
 
     fn empty_function() -> FirFunction {
@@ -112,6 +125,37 @@ mod tests {
                 if message
                     == "SIA32 GPR selector r16 is outside the architectural r0..r15 range"
         ));
+    }
+
+    #[test]
+    fn rejects_privileged_operations_missing_from_the_clif_bridge() {
+        let cases = [
+            (
+                Sia32PrivilegedOperation::SwapScratch,
+                "SIA32 scratch swap not yet represented in CLIF bridge",
+            ),
+            (
+                Sia32PrivilegedOperation::ReturnContext,
+                "SIA32 privileged operation not yet represented in CLIF bridge",
+            ),
+        ];
+
+        for (operation, kind) in cases {
+            let mut function = empty_function();
+            function.blocks[0].instructions.push(FirInstruction {
+                span: Span::new(0, 1),
+                result: None,
+                kind: FirInstructionKind::Sia32Privileged {
+                    operation,
+                    args: vec![FirValueId(0)],
+                },
+            });
+
+            assert_eq!(
+                validate_sia32_privileged_operations(CraneliftTarget::Sia32, &function),
+                Err(BackendError::UnsupportedInstruction { kind })
+            );
+        }
     }
 }
 
