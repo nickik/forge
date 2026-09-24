@@ -989,14 +989,11 @@ fn required_tail_calls_remain_explicit_in_direct_and_indirect_fir() {
         "#,
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|op| matches!(
-        op,
-        FirInstructionKind::Call { tail: true, .. }
-    )));
-    assert!(instructions(&output).any(|op| matches!(
-        op,
-        FirInstructionKind::CallIndirect { tail: true, .. }
-    )));
+    assert!(
+        instructions(&output).any(|op| matches!(op, FirInstructionKind::Call { tail: true, .. }))
+    );
+    assert!(instructions(&output)
+        .any(|op| matches!(op, FirInstructionKind::CallIndirect { tail: true, .. })));
 }
 
 #[test]
