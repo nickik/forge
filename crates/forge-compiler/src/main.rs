@@ -4,16 +4,17 @@ use std::process;
 
 use forge_compiler::{
     build_executable_with_libraries, build_executable_with_libraries_and_entry,
-    check_file_with_libraries, dump_abi_file_with_libraries, dump_fir_file_with_libraries,
-    dump_typed_hir_file_with_libraries, emit_object_file_with_libraries,
-    emit_object_file_with_libraries_and_entry, run_file_with_libraries,
-    run_file_with_libraries_and_entry, LibraryInput,
+    check_file_with_libraries, dump_abi_file_with_libraries, dump_clif_file_with_libraries,
+    dump_fir_file_with_libraries, dump_typed_hir_file_with_libraries,
+    emit_object_file_with_libraries, emit_object_file_with_libraries_and_entry,
+    run_file_with_libraries, run_file_with_libraries_and_entry, LibraryInput,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
     Check,
     DumpAbi,
+    DumpClif,
     DumpFir,
     DumpTypedHir,
     EmitObject,
@@ -41,7 +42,7 @@ fn usage() -> ! {
     eprintln!(
         "usage: forgec [--target aarch64-unknown-linux-gnu] [--platform host] \
          [--library NAME=PATH]... [--entry NAME] [--program-arg ARG]... \
-         <--check|--dump-typed-hir|--dump-fir|--dump-abi|--emit-object|--build|--run> FILE [-o OUTPUT]"
+         <--check|--dump-typed-hir|--dump-fir|--dump-abi|--dump-clif|--emit-object|--build|--run> FILE [-o OUTPUT]"
     );
     process::exit(64);
 }
@@ -114,6 +115,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
             }
             "--check" => set_mode(&mut mode, Mode::Check),
             "--dump-abi" => set_mode(&mut mode, Mode::DumpAbi),
+            "--dump-clif" => set_mode(&mut mode, Mode::DumpClif),
             "--dump-fir" => set_mode(&mut mode, Mode::DumpFir),
             "--dump-typed-hir" => set_mode(&mut mode, Mode::DumpTypedHir),
             "--emit-object" => set_mode(&mut mode, Mode::EmitObject),
@@ -137,7 +139,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(
         mode,
-        Mode::Check | Mode::DumpAbi | Mode::DumpFir | Mode::DumpTypedHir
+        Mode::Check | Mode::DumpAbi | Mode::DumpClif | Mode::DumpFir | Mode::DumpTypedHir
     ) && entry.is_some()
     {
         return Err(
@@ -145,7 +147,11 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
                 .into(),
         );
     }
-    if matches!(mode, Mode::DumpAbi | Mode::DumpFir | Mode::DumpTypedHir) && output.is_some() {
+    if matches!(
+        mode,
+        Mode::DumpAbi | Mode::DumpClif | Mode::DumpFir | Mode::DumpTypedHir
+    ) && output.is_some()
+    {
         return Err(
             "-o/--output is not valid with dump modes; the dump is written to stdout".into(),
         );
@@ -165,6 +171,10 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         Mode::DumpAbi => println!(
             "{}",
             dump_abi_file_with_libraries(compile_source, &libraries)?
+        ),
+        Mode::DumpClif => println!(
+            "{}",
+            dump_clif_file_with_libraries(compile_source, &libraries)?
         ),
         Mode::DumpFir => println!(
             "{}",

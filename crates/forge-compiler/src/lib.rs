@@ -411,6 +411,30 @@ pub fn dump_abi_source_with_library_sources(
     Ok(serde_json::to_string_pretty(&dump).expect("ABI dump serialization"))
 }
 
+/// Lower every linked function through the production AArch64 backend and
+/// return deterministic textual CLIF before machine-code or object emission.
+pub fn dump_clif_source_with_library_sources(
+    source: &str,
+    libraries: &[(String, String)],
+) -> Result<String, CompilerError> {
+    let ast = link_source_with_library_sources(source, libraries)?;
+    let lowered = lower_ast(&ast)?;
+    let definitions =
+        collect_type_definitions(&ast, &lowered.hir.module, &lowered.bodies, &lowered.typed);
+    let backend = CraneliftBackend::aarch64()?;
+    let prepared = backend.prepare_module_with_types(&lowered.fir.module, &definitions)?;
+    let mut dump = String::new();
+    for (owner, function) in prepared.functions() {
+        use std::fmt::Write as _;
+        writeln!(&mut dump, "; Forge function {owner:?}").expect("write CLIF dump header");
+        write!(&mut dump, "{}", function.display()).expect("write CLIF function");
+        if !dump.ends_with('\n') {
+            dump.push('\n');
+        }
+    }
+    Ok(dump)
+}
+
 fn dump_abi_function(
     function: &FirFunction,
     decomposer: &mut AbiDecomposer<'_>,
@@ -1003,6 +1027,15 @@ pub fn dump_abi_file_with_libraries(
     let source = read_source(path)?;
     let sources = read_library_sources(libraries)?;
     dump_abi_source_with_library_sources(&source, &sources)
+}
+
+pub fn dump_clif_file_with_libraries(
+    path: &Path,
+    libraries: &[LibraryInput],
+) -> Result<String, CompilerError> {
+    let source = read_source(path)?;
+    let sources = read_library_sources(libraries)?;
+    dump_clif_source_with_library_sources(&source, &sources)
 }
 
 pub fn emit_object_file(path: &Path, output: &Path) -> Result<(), CompilerError> {
