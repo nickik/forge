@@ -1,6 +1,12 @@
+use std::collections::BTreeMap;
+
 use cranelift_codegen::isa::CallConv;
 use forge_codegen_cranelift::{BackendError, CraneliftBackend, CraneliftTarget};
-use forge_fir::{ConstValue, DefId, FirGlobal, FirModule, Ty};
+use forge_fir::{
+    ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal,
+    FirInstruction, FirInstructionKind, FirModule, FirSelectCase, FirTerminator, FirValueId,
+    RuntimeOperationId, Span, Ty,
+};
 
 #[test]
 fn aarch64_backend_initializes() {
@@ -70,4 +76,64 @@ fn backend_error_display_is_stable() {
         BackendError::UnsupportedInstruction { kind: "call" }.to_string(),
         "FIR instruction is not lowered to CLIF yet: call"
     );
+}
+
+#[test]
+fn select_remains_an_explicit_backend_boundary_on_host_targets() {
+    let owner = DefId(1);
+    let duration = FirValueId(0);
+    let mut module = FirModule::default();
+    module.functions.insert(
+        owner,
+        FirFunction {
+            owner,
+            params: Vec::new(),
+            return_type: Ty::Void,
+            locals: BTreeMap::new(),
+            closures: BTreeMap::new(),
+            entry: FirBlockId(0),
+            blocks: vec![
+                FirBasicBlock {
+                    id: FirBlockId(0),
+                    closure: None,
+                    instructions: vec![FirInstruction {
+                        span: Span::new(0, 3),
+                        result: Some(duration),
+                        kind: FirInstructionKind::Const {
+                            value: FirConst::Duration {
+                                value: "1ms".into(),
+                            },
+                        },
+                    }],
+                    terminator: Some(FirTerminator::Select {
+                        operation: RuntimeOperationId::SelectWait,
+                        cases: vec![FirSelectCase::Timeout {
+                            operation: RuntimeOperationId::SelectTimeout,
+                            duration,
+                            target: FirBlockId(1),
+                        }],
+                    }),
+                },
+                FirBasicBlock {
+                    id: FirBlockId(1),
+                    closure: None,
+                    instructions: Vec::new(),
+                    terminator: Some(FirTerminator::Return { value: None }),
+                },
+            ],
+            value_types: BTreeMap::from([(duration, Ty::Duration)]),
+        },
+    );
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        assert_eq!(
+            backend
+                .prepare_module(&module)
+                .expect_err("select/channel lowering is deferred"),
+            BackendError::UnsupportedInstruction {
+                kind: "select terminator before C14 select/channel stage",
+            }
+        );
+    }
 }
