@@ -3809,6 +3809,174 @@ fn fir_type_is_concrete(ty: &Ty) -> bool {
     }
 }
 
+fn fir_place_root_local(place: &FirPlace) -> Option<FirLocalId> {
+    match place {
+        FirPlace::Local { local } => Some(*local),
+        FirPlace::Field { base, .. } | FirPlace::Index { base, .. } => {
+            fir_place_root_local(base)
+        }
+        FirPlace::ClosureCapture { .. }
+        | FirPlace::Deref { .. }
+        | FirPlace::RawDeref { .. } => None,
+    }
+}
+
+fn fir_terminator_edges(terminator: &FirTerminator) -> Vec<(FirBlockId, Option<FirLocalId>)> {
+    match terminator {
+        FirTerminator::Goto { target } => vec![(*target, None)],
+        FirTerminator::Branch {
+            then_block,
+            else_block,
+            ..
+        } => vec![(*then_block, None), (*else_block, None)],
+        FirTerminator::Select { cases, .. } => cases
+            .iter()
+            .map(|case| match case {
+                FirSelectCase::Receive {
+                    payload, target, ..
+                } => (*target, Some(*payload)),
+                FirSelectCase::Timeout { target, .. } => (*target, None),
+            })
+            .collect(),
+        FirTerminator::Return { .. } | FirTerminator::Unreachable => Vec::new(),
+    }
+}
+
+fn verify_fir_definite_initialization(
+    function: &FirFunction,
+    entry: FirBlockId,
+    closure: Option<ExprId>,
+    parameters: &[FirLocalId],
+) -> Vec<FirDiagnostic> {
+    let Some(entry_block) = function.blocks.get(entry.0 as usize) else {
+        return Vec::new();
+    };
+    if entry_block.closure != closure {
+        return Vec::new();
+    }
+
+    let mut reachable = BTreeSet::from([entry]);
+    let mut pending = vec![entry];
+    while let Some(block_id) = pending.pop() {
+        let Some(block) = function.blocks.get(block_id.0 as usize) else {
+            continue;
+        };
+        let Some(terminator) = &block.terminator else {
+            continue;
+        };
+        for (target, _) in fir_terminator_edges(terminator) {
+            let Some(target_block) = function.blocks.get(target.0 as usize) else {
+                continue;
+            };
+            if target_block.closure == closure && reachable.insert(target) {
+                pending.push(target);
+            }
+        }
+    }
+
+    let all_locals = function.locals.keys().copied().collect::<BTreeSet<_>>();
+    let initial = parameters.iter().copied().collect::<BTreeSet<_>>();
+    let mut inputs = reachable
+        .iter()
+        .map(|block| (*block, all_locals.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let mut outputs = inputs.clone();
+    inputs.insert(entry, initial.clone());
+
+    loop {
+        let mut changed = false;
+        for block_id in &reachable {
+            let next_input = if *block_id == entry {
+                initial.clone()
+            } else {
+                let incoming = reachable.iter().filter_map(|predecessor| {
+                    let block = function.blocks.get(predecessor.0 as usize)?;
+                    let terminator = block.terminator.as_ref()?;
+                    fir_terminator_edges(terminator)
+                        .into_iter()
+                        .find(|(target, _)| target == block_id)
+                        .map(|(_, edge_local)| {
+                            let mut initialized = outputs
+                                .get(predecessor)
+                                .cloned()
+                                .unwrap_or_default();
+                            if let Some(local) = edge_local {
+                                initialized.insert(local);
+                            }
+                            initialized
+                        })
+                });
+                incoming
+                    .reduce(|left, right| left.intersection(&right).copied().collect())
+                    .unwrap_or_default()
+            };
+
+            let mut next_output = next_input.clone();
+            if let Some(block) = function.blocks.get(block_id.0 as usize) {
+                for instruction in &block.instructions {
+                    if let FirInstructionKind::Store {
+                        place: FirPlace::Local { local },
+                        ..
+                    } = &instruction.kind
+                    {
+                        next_output.insert(*local);
+                    }
+                }
+            }
+
+            if inputs.get(block_id) != Some(&next_input) {
+                inputs.insert(*block_id, next_input);
+                changed = true;
+            }
+            if outputs.get(block_id) != Some(&next_output) {
+                outputs.insert(*block_id, next_output);
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    let mut diagnostics = Vec::new();
+    for block_id in reachable {
+        let Some(block) = function.blocks.get(block_id.0 as usize) else {
+            continue;
+        };
+        let mut initialized = inputs.remove(&block_id).unwrap_or_default();
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let accessed_local = match &instruction.kind {
+                FirInstructionKind::Load { place }
+                | FirInstructionKind::AddressOf { place, .. } => fir_place_root_local(place),
+                FirInstructionKind::Store { place, .. }
+                    if !matches!(place, FirPlace::Local { .. }) =>
+                {
+                    fir_place_root_local(place)
+                }
+                _ => None,
+            };
+            if let Some(local) = accessed_local.filter(|local| !initialized.contains(local)) {
+                diagnostics.push(FirDiagnostic {
+                    span: instruction.span,
+                    code: "fir/verify-initialization".into(),
+                    message: format!(
+                        "function {:?} block {:?} instruction {instruction_index} accesses local {local:?} before it is definitely initialized on every incoming control-flow path",
+                        function.owner, block.id
+                    ),
+                });
+            }
+            if let FirInstructionKind::Store {
+                place: FirPlace::Local { local },
+                ..
+            } = &instruction.kind
+            {
+                initialized.insert(*local);
+            }
+        }
+    }
+    diagnostics
+}
+
 pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
     let block_count = function.blocks.len() as u32;
@@ -4035,6 +4203,20 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                 }
             }
         }
+    }
+    diagnostics.extend(verify_fir_definite_initialization(
+        function,
+        function.entry,
+        None,
+        &function.params,
+    ));
+    for closure in function.closures.values() {
+        diagnostics.extend(verify_fir_definite_initialization(
+            function,
+            closure.entry,
+            Some(closure.id),
+            &closure.params,
+        ));
     }
     diagnostics
 }
