@@ -86,8 +86,9 @@ available on every backend merely because the frontend accepts it.
       execution matrices.
   - [x] AArch64 hosted execution covers unordered `NaN` comparisons, signed
         zero through division, and integer-to-`f64` conversion.
-  - [ ] Complete aggregate argument/return ABI and the remaining conversion
-        matrix.
+  - [x] AArch64 mixed-`f32`/`f64` aggregate arguments and returns execute
+        through the production ABI.
+  - [ ] Complete the remaining float conversion matrix.
 - [x] Keep hosted executable fixtures as the acceptance proof, not object
       emission alone.
 
