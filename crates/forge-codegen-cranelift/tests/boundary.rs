@@ -3,9 +3,9 @@ use std::collections::BTreeMap;
 use cranelift_codegen::isa::CallConv;
 use forge_codegen_cranelift::{BackendError, CraneliftBackend, CraneliftTarget};
 use forge_fir::{
-    ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal,
-    FirInstruction, FirInstructionKind, FirModule, FirSelectCase, FirTerminator, FirValueId,
-    RuntimeOperationId, Span, Ty,
+    ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal, FirInstruction,
+    FirInstructionKind, FirModule, FirSelectCase, FirTerminator, FirValueId, RuntimeOperationId,
+    Span, Ty,
 };
 
 #[test]
