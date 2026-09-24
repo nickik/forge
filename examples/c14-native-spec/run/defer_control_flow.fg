@@ -30,6 +30,25 @@ fn loop_exits(value: &mut i32) {
     }
 }
 
+fn nested_loop_exits(value: &mut i32) {
+    var outer: i32 = 0i32;
+    while (outer < 3i32) {
+        defer { *value = (*value * 10i32) + 9i32; }
+        outer = outer + 1i32;
+
+        var inner: i32 = 0i32;
+        while (inner < 3i32) {
+            defer { *value = (*value * 10i32) + inner; }
+            inner = inner + 1i32;
+            if (inner == 1i32) { continue; }
+            if (inner == 2i32) { break; }
+        }
+
+        if (outer == 1i32) { continue; }
+        if (outer == 2i32) { break; }
+    }
+}
+
 fn propagate(value: &mut i32) -> Result[void, void] {
     defer { *value = (*value * 10i32) + 1i32; }
     {
@@ -52,8 +71,12 @@ fn main() -> i32 {
     loop_exits(&mut loop);
     if (loop != 12i32) { return 4i32; }
 
+    var nested: i32 = 0i32;
+    nested_loop_exits(&mut nested);
+    if (nested != 129129i32) { return 5i32; }
+
     var propagated: i32 = 0i32;
     val result = propagate(&mut propagated);
-    if (propagated != 21i32) { return 5i32; }
-    return match (result) { Ok(_) => 6i32, Err(_) => 0i32, };
+    if (propagated != 21i32) { return 6i32; }
+    return match (result) { Ok(_) => 7i32, Err(_) => 0i32, };
 }
