@@ -130,6 +130,8 @@ available on every backend merely because the frontend accepts it.
         and expose the invalid entry/type facts.
 - [ ] Keep lowering phases one-way: parser/HIR/typechecking decisions must be
       represented in FIR rather than reconstructed in codegen.
+  - [x] Represent ordinary integer conversions as explicitly lossless FIR;
+        target-aware narrowing and signedness loss stay rejected.
 - [ ] Add compiler debug dumps for typed HIR, FIR, ABI decomposition, CLIF and
       object plans behind stable, testable flags.
 
