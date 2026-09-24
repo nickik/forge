@@ -135,7 +135,9 @@ struct AbiParameterDump {
 #[serde(tag = "passing", rename_all = "snake_case")]
 enum AbiValueDump {
     Void,
-    Scalar { ty: Ty },
+    Scalar {
+        ty: Ty,
+    },
     Direct {
         ty: Ty,
         decomposition: AbiDecomposition,
@@ -262,12 +264,8 @@ pub fn dump_abi_source_with_library_sources(
 ) -> Result<String, CompilerError> {
     let ast = link_source_with_library_sources(source, libraries)?;
     let lowered = lower_ast(&ast)?;
-    let definitions = collect_type_definitions(
-        &ast,
-        &lowered.hir.module,
-        &lowered.bodies,
-        &lowered.typed,
-    );
+    let definitions =
+        collect_type_definitions(&ast, &lowered.hir.module, &lowered.bodies, &lowered.typed);
     let mut decomposer = AbiDecomposer::new(AbiTarget::aarch64(), &definitions)
         .map_err(|error| CompilerError::message(format!("ABI setup failed: {error}")))?;
     let mut functions = BTreeMap::new();
