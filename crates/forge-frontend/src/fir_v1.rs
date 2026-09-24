@@ -3833,7 +3833,10 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
             diagnostics.push(FirDiagnostic {
                 span: Span::new(0, 0),
                 code: "fir/verify-terminator".into(),
-                message: format!("block {:?} has no terminator", block.id),
+                message: format!(
+                    "function {:?} block {:?} has no terminator",
+                    function.owner, block.id
+                ),
             });
         }
         for (instruction_index, instruction) in block.instructions.iter().enumerate() {
@@ -3882,7 +3885,10 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                     diagnostics.push(FirDiagnostic {
                         span: Span::new(0, 0),
                         code: "fir/verify-target".into(),
-                        message: format!("block {:?} targets missing block {target:?}", block.id),
+                        message: format!(
+                            "function {:?} block {:?} terminator targets missing block {target:?}; valid block indexes are 0..{block_count}",
+                            function.owner, block.id
+                        ),
                     });
                 }
             }
@@ -3891,7 +3897,12 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                     diagnostics.push(FirDiagnostic {
                         span: Span::new(0, 0),
                         code: "fir/verify-branch".into(),
-                        message: format!("branch condition {condition:?} is not bool"),
+                        message: format!(
+                            "function {:?} block {:?} branch condition {condition:?} has type {:?}; expected Bool",
+                            function.owner,
+                            block.id,
+                            function.value_types.get(condition)
+                        ),
                     });
                 }
             }
@@ -3900,10 +3911,16 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                     diagnostics.push(FirDiagnostic {
                         span: Span::new(0, 0),
                         code: "fir/verify-select".into(),
-                        message: "select terminator has invalid wait operation or no cases".into(),
+                        message: format!(
+                            "function {:?} block {:?} select terminator has operation {:?} and {} cases; expected SelectWait and at least one case",
+                            function.owner,
+                            block.id,
+                            operation,
+                            cases.len()
+                        ),
                     });
                 }
-                for case in cases {
+                for (case_index, case) in cases.iter().enumerate() {
                     if let FirSelectCase::Receive {
                         operation,
                         payload,
@@ -3918,7 +3935,15 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                             diagnostics.push(FirDiagnostic {
                                 span: Span::new(0, 0),
                                 code: "fir/verify-select".into(),
-                                message: "receive select case has invalid runtime operation or payload local".into(),
+                                message: format!(
+                                    "function {:?} block {:?} select case {case_index} has operation {:?} and payload local {:?} type {:?}; expected ChannelReceive and {:?}",
+                                    function.owner,
+                                    block.id,
+                                    operation,
+                                    payload,
+                                    function.locals.get(payload).map(|local| &local.ty),
+                                    payload_type
+                                ),
                             });
                         }
                     } else if let FirSelectCase::Timeout { operation, .. } = case {
@@ -3926,7 +3951,10 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                             diagnostics.push(FirDiagnostic {
                                 span: Span::new(0, 0),
                                 code: "fir/verify-select".into(),
-                                message: "timeout select case has invalid runtime operation".into(),
+                                message: format!(
+                                    "function {:?} block {:?} select case {case_index} has timeout operation {:?}; expected SelectTimeout",
+                                    function.owner, block.id, operation
+                                ),
                             });
                         }
                     }
@@ -3938,6 +3966,9 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                     .and_then(|id| function.closures.get(&id))
                     .map(|closure| &closure.return_type)
                     .unwrap_or(&function.return_type);
+                let actual = value
+                    .as_ref()
+                    .and_then(|value| function.value_types.get(value));
                 match (value, expected) {
                     (None, Ty::Void) => {}
                     (Some(value), expected)
@@ -3945,7 +3976,10 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                     _ => diagnostics.push(FirDiagnostic {
                         span: Span::new(0, 0),
                         code: "fir/verify-return".into(),
-                        message: format!("return value {:?} does not match {:?}", value, expected),
+                        message: format!(
+                            "function {:?} block {:?} return value {value:?} has type {actual:?}; expected {expected:?}",
+                            function.owner, block.id
+                        ),
                     }),
                 }
             }
