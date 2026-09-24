@@ -33,7 +33,7 @@ Legend:
 | Distinct types and aliases | 1 | Nominal non-mixing diagnostics, explicit conversion, transparent aliases, and value argument/return ABI execute natively. |
 | Bitstructs | 1 | Native storage projection/rebuild, checked writes, explicit field extract/extend, narrow numeric and boolean fields, and `u8`/`u16`/`u32`/`u64` value ABI execute. |
 | `if`, `while`, C-style `for` | 1 | Typed CFG/FIR and executable corpus. |
-| value `for` iteration | 5 | Parsed and represented; protocol/static/native completion remains to be proven. |
+| value `for` iteration | 1 | Arrays and slices type-check through an explicit built-in iteration contract, lower to `Len`/`IndexUnchecked` CFG, and execute natively with `break`/`continue`; non-iterables and refutable bindings are rejected. General user-defined iterator protocols remain future work and are not claimed here. |
 | `break`, `continue` | 1 | Single and nested-loop transfers execute with scope-correct deferred cleanup on continue and break paths. |
 | `match` | 1 | Bool, scalar, enum, tagged, Option, Result, nested projections, guards, OR/as, ranges, sequence-rest, and resolved map-protocol required/optional bindings execute natively. |
 | Functions and calls | 1 | Direct/indirect, named/default, method calls, scalar/aggregate ABI and non-main entry covered. |

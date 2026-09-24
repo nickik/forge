@@ -59,6 +59,8 @@ available on every backend merely because the frontend accepts it.
 - [x] `match`: mixed fieldless, narrow-scalar and multi-field tagged payloads
       execute across argument and return ABI boundaries.
 - [x] distinct types and aliases: explicit conversion and value ABI execution.
+- [x] value `for`: array/slice iteration, explicit FIR control flow,
+      non-iterable/refutable-binding diagnostics and native break/continue execution.
 
 ## 3. Harden ABI and object correctness
 

@@ -1,0 +1,29 @@
+module examples.c14.value_for;
+
+type Values = u32[];
+
+fn sum_until(values: Values) -> u32 {
+    var total: u32 = 0u32;
+    for (val value in values) {
+        if (value == 0u32) { continue; }
+        total = total + value;
+        if (total > 10u32) { break; }
+    }
+    return total;
+}
+
+fn main() -> i32 {
+    val values: [u32; 5] = [1u32, 0u32, 4u32, 8u32, 99u32];
+
+    var array_total: u32 = 0u32;
+    for (val value in values) {
+        if (value == 0u32) { continue; }
+        array_total = array_total + value;
+        if (array_total > 10u32) { break; }
+    }
+    if (array_total != 13u32) { return 1i32; }
+
+    val slice: Values = Values(&values);
+    if (sum_until(slice) != 13u32) { return 2i32; }
+    return 0i32;
+}

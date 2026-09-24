@@ -39,6 +39,49 @@ fn instructions(output: &forge_frontend::FirOutput) -> impl Iterator<Item = &Fir
 }
 
 #[test]
+fn value_for_array_and_slice_lower_to_explicit_iteration_cfg() {
+    let output = lower(
+        r#"
+        module test.fir_value_for;
+        type Values = u32[];
+        fn sum(values: Values) -> u32 {
+            var total: u32 = 0u32;
+            for (val value in values) {
+                if (value == 0u32) { continue; }
+                total = total + value;
+                if (total > 10u32) { break; }
+            }
+            return total;
+        }
+        fn main() -> i32 {
+            val values: [u32; 4] = [1u32, 0u32, 4u32, 8u32];
+            for (val value in values) {
+                if (value == 8u32) { break; }
+            }
+            return i32(sum(Values(&values)));
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert_eq!(
+        instructions(&output)
+            .filter(|op| matches!(op, FirInstructionKind::Len { .. }))
+            .count(),
+        1
+    );
+    assert_eq!(
+        instructions(&output)
+            .filter(|op| matches!(op, FirInstructionKind::IndexUnchecked { .. }))
+            .count(),
+        2
+    );
+    assert!(output.module.functions.values().all(|function| function
+        .blocks
+        .iter()
+        .all(|block| block.terminator.is_some())));
+}
+
+#[test]
 fn mutable_global_assignment_and_address_lower_to_explicit_fir_operations() {
     let output = lower(
         r#"
