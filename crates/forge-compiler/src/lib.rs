@@ -397,11 +397,7 @@ fn type_check_ast(ast: &SourceFile) -> Result<TypedFrontEndOutput, CompilerError
         )));
     }
 
-    Ok(TypedFrontEndOutput {
-        hir,
-        bodies,
-        typed,
-    })
+    Ok(TypedFrontEndOutput { hir, bodies, typed })
 }
 
 fn provider_intrinsic_name(symbol: &str) -> Option<&str> {

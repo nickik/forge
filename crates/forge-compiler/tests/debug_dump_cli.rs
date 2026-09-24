@@ -77,10 +77,8 @@ fn dump_fir_rejects_output_paths() {
 
 #[test]
 fn dump_typed_hir_is_deterministic_resolved_json_on_stdout() {
-    let source = std::env::temp_dir().join(format!(
-        "forgec-dump-typed-hir-{}.fg",
-        std::process::id()
-    ));
+    let source =
+        std::env::temp_dir().join(format!("forgec-dump-typed-hir-{}.fg", std::process::id()));
     std::fs::write(
         &source,
         r#"
