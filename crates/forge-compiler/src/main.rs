@@ -6,9 +6,9 @@ use forge_compiler::{
     build_executable_with_libraries, build_executable_with_libraries_and_entry,
     check_file_with_libraries, dump_abi_file_with_libraries, dump_clif_file_with_libraries,
     dump_fir_file_with_libraries, dump_object_plan_file_with_libraries,
-    dump_typed_hir_file_with_libraries,
-    emit_object_file_with_libraries, emit_object_file_with_libraries_and_entry,
-    run_file_with_libraries, run_file_with_libraries_and_entry, LibraryInput,
+    dump_typed_hir_file_with_libraries, emit_object_file_with_libraries,
+    emit_object_file_with_libraries_and_entry, run_file_with_libraries,
+    run_file_with_libraries_and_entry, LibraryInput,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -157,11 +157,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(
         mode,
-        Mode::DumpAbi
-            | Mode::DumpClif
-            | Mode::DumpFir
-            | Mode::DumpObjectPlan
-            | Mode::DumpTypedHir
+        Mode::DumpAbi | Mode::DumpClif | Mode::DumpFir | Mode::DumpObjectPlan | Mode::DumpTypedHir
     ) && output.is_some()
     {
         return Err(
