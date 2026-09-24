@@ -188,10 +188,7 @@ fn scalar_roundtrip_module(owner: DefId, ty: Ty) -> (FirModule, DefId) {
                 value: Some(loaded_scratch),
             }),
         }],
-        value_types: BTreeMap::from([
-            (loaded_param, ty.clone()),
-            (loaded_scratch, ty),
-        ]),
+        value_types: BTreeMap::from([(loaded_param, ty.clone()), (loaded_scratch, ty)]),
     };
 
     let mut module = FirModule::default();
@@ -222,9 +219,7 @@ fn compile_duration_roundtrip() -> MachineCode {
 fn compile_char_roundtrip() -> MachineCode {
     let backend = CraneliftBackend::riscv64().expect("RV64 backend");
     let (module, owner) = scalar_roundtrip_module(DefId(2), Ty::Char);
-    let prepared = backend
-        .prepare_module(&module)
-        .expect("verified char FIR");
+    let prepared = backend.prepare_module(&module).expect("verified char FIR");
     backend
         .emit_machine_code(&prepared, owner)
         .expect("RV64 char machine code")
