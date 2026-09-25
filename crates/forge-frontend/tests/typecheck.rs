@@ -205,6 +205,31 @@ fn rejects_floating_point_remainder() {
 }
 
 #[test]
+fn rejects_logical_not_on_non_bool_before_fir_lowering() {
+    let output = check(
+        r#"
+        module test.logical_not_integer;
+        fn main() -> i32 {
+            val bad = !1u32;
+            return 0;
+        }
+    "#,
+    );
+    let diagnostic = output
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "type/mismatch")
+        .expect("logical-not operand diagnostic");
+    assert!(
+        diagnostic
+            .message
+            .contains("invalid unary operand Int { signed: false, width: W32 }"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
 fn rejects_wrong_return_type() {
     let output = check(
         r#"

@@ -991,9 +991,9 @@ fn lower_boolean_not(
         .get(&input)
         .ok_or_else(|| shape(format!("missing type for logical-not operand {input:?}")))?;
     if *ty != Ty::Bool {
-        return Err(BackendError::UnsupportedInstruction {
-            kind: "logical not on non-boolean FIR value",
-        });
+        return Err(shape(format!(
+            "logical-not operand {input:?} has non-bool FIR type {ty:?}"
+        )));
     }
     Ok(cursor
         .ins()
