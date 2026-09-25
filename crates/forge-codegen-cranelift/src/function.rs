@@ -1430,9 +1430,12 @@ fn lower_const(
                 ))),
             }
         }
-        FirConst::Duration { value } if *ty == Ty::Duration => {
-            Ok(cursor.ins().iconst(clif_ty, duration_immediate(value)?))
-        }
+        FirConst::Duration { value } => match ty {
+            Ty::Duration => Ok(cursor.ins().iconst(clif_ty, duration_immediate(value)?)),
+            _ => Err(shape(format!(
+                "duration constant {value:?} has non-duration FIR result type {ty:?}"
+            ))),
+        },
         _ => Err(BackendError::UnsupportedInstruction {
             kind: "non-integer scalar constant",
         }),
