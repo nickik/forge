@@ -77,6 +77,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Reject duration reader forms in integer contexts during typechecking
         and treat handwritten duration constants with integer FIR result types
         as invalid producer contracts on AArch64 and RISC-V.
+  - [x] Reject integer literals in boolean contexts during typechecking and
+        treat handwritten integer constants with non-integer FIR result types
+        as invalid producer contracts on AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.

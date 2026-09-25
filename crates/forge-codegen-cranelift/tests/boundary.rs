@@ -761,6 +761,55 @@ fn duration_constant_with_integer_result_type_is_an_invalid_producer_contract() 
 }
 
 #[test]
+fn integer_constant_with_boolean_result_type_is_an_invalid_producer_contract() {
+    let owner = DefId(13);
+    let result = FirValueId(0);
+    let mut module = FirModule::default();
+    module.functions.insert(
+        owner,
+        FirFunction {
+            owner,
+            params: Vec::new(),
+            return_type: Ty::Bool,
+            locals: BTreeMap::new(),
+            closures: BTreeMap::new(),
+            entry: FirBlockId(0),
+            blocks: vec![FirBasicBlock {
+                id: FirBlockId(0),
+                closure: None,
+                instructions: vec![FirInstruction {
+                    span: Span::new(0, 4),
+                    result: Some(result),
+                    kind: FirInstructionKind::Const {
+                        value: FirConst::Integer {
+                            text: "1u32".into(),
+                        },
+                    },
+                }],
+                terminator: Some(FirTerminator::Return {
+                    value: Some(result),
+                }),
+            }],
+            value_types: BTreeMap::from([(result, Ty::Bool)]),
+        },
+    );
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("integer constant with boolean FIR type unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: "integer constant has non-integer FIR type Bool".into(),
+            }
+        );
+    }
+}
+
+#[test]
 fn lossless_integer_conversion_with_boolean_source_is_an_invalid_producer_contract() {
     let owner = DefId(12);
     let input = FirValueId(0);

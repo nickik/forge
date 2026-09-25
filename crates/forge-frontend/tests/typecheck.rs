@@ -320,6 +320,20 @@ fn rejects_duration_reader_with_integer_declared_type() {
 }
 
 #[test]
+fn rejects_integer_literal_with_boolean_declared_type() {
+    let output = check(
+        r#"
+        module test.integer_literal_boolean_type;
+        fn main() -> i32 {
+            val bad: bool = 1u32;
+            return 0;
+        }
+    "#,
+    );
+    assert!(has(&output, "type/mismatch"), "{:?}", output.diagnostics);
+}
+
+#[test]
 fn rejects_wrong_return_type() {
     let output = check(
         r#"
