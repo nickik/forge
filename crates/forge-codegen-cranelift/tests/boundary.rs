@@ -473,3 +473,62 @@ fn logical_not_on_non_bool_fir_is_an_invalid_producer_contract() {
         );
     }
 }
+
+#[test]
+fn bitwise_not_on_non_integer_fir_is_an_invalid_producer_contract() {
+    let owner = DefId(7);
+    let input = FirValueId(0);
+    let result = FirValueId(1);
+    let mut module = FirModule::default();
+    module.functions.insert(
+        owner,
+        FirFunction {
+            owner,
+            params: Vec::new(),
+            return_type: Ty::Bool,
+            locals: BTreeMap::new(),
+            closures: BTreeMap::new(),
+            entry: FirBlockId(0),
+            blocks: vec![FirBasicBlock {
+                id: FirBlockId(0),
+                closure: None,
+                instructions: vec![
+                    FirInstruction {
+                        span: Span::new(0, 4),
+                        result: Some(input),
+                        kind: FirInstructionKind::Const {
+                            value: FirConst::Bool { value: true },
+                        },
+                    },
+                    FirInstruction {
+                        span: Span::new(5, 6),
+                        result: Some(result),
+                        kind: FirInstructionKind::Unary {
+                            op: FirUnaryOp::BitNot,
+                            value: input,
+                        },
+                    },
+                ],
+                terminator: Some(FirTerminator::Return {
+                    value: Some(result),
+                }),
+            }],
+            value_types: BTreeMap::from([(input, Ty::Bool), (result, Ty::Bool)]),
+        },
+    );
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("non-integer bitwise-not FIR unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: "integer unary operand FirValueId(0) has non-integer FIR type Bool"
+                    .into(),
+            }
+        );
+    }
+}
