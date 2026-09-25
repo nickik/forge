@@ -5,7 +5,8 @@ use forge_codegen_cranelift::{BackendError, CraneliftBackend, CraneliftTarget};
 use forge_fir::{
     BinaryOp, ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal,
     FirInstruction, FirInstructionKind, FirLocal, FirLocalId, FirModule, FirSelectCase,
-    FirTerminator, FirValueId, OverflowMode, RuntimeOperationId, Sia32PrivilegedOperation, Span, Ty,
+    FirTerminator, FirValueId, OverflowMode, RuntimeOperationId, Sia32PrivilegedOperation, Span,
+    Ty,
 };
 
 #[test]
