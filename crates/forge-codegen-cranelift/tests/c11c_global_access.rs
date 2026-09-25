@@ -220,10 +220,7 @@ fn emit(target: CraneliftTarget) -> Vec<u8> {
         .prepare_module_with_static_initializers(&module, &definitions, &static_initializers)
         .expect("C11c module should prepare");
     let object = backend
-        .emit_object_with_exports(
-            &prepared,
-            [SCALAR_READER, AGGREGATE_READER, MUTABLE_WRITER],
-        )
+        .emit_object_with_exports(&prepared, [SCALAR_READER, AGGREGATE_READER, MUTABLE_WRITER])
         .expect("C11c object should emit");
     object.into_bytes()
 }
