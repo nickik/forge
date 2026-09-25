@@ -15,6 +15,8 @@ const SCALAR_GLOBAL: DefId = DefId(30);
 const SCALAR_READER: DefId = DefId(31);
 const AGGREGATE_GLOBAL: DefId = DefId(32);
 const AGGREGATE_READER: DefId = DefId(33);
+const MUTABLE_GLOBAL: DefId = DefId(34);
+const MUTABLE_WRITER: DefId = DefId(35);
 
 fn u64_ty() -> Ty {
     Ty::Int {
@@ -110,11 +112,57 @@ fn aggregate_reader() -> FirFunction {
     }
 }
 
+fn mutable_writer() -> FirFunction {
+    let stored = FirValueId(0);
+    let loaded = FirValueId(1);
+    FirFunction {
+        owner: MUTABLE_WRITER,
+        params: Vec::new(),
+        return_type: u64_ty(),
+        locals: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![
+                FirInstruction {
+                    span: Span::new(0, 0),
+                    result: Some(stored),
+                    kind: FirInstructionKind::Const {
+                        value: FirConst::Integer { text: "77".into() },
+                    },
+                },
+                FirInstruction {
+                    span: Span::new(0, 0),
+                    result: None,
+                    kind: FirInstructionKind::StoreGlobal {
+                        global: MUTABLE_GLOBAL,
+                        value: stored,
+                    },
+                },
+                FirInstruction {
+                    span: Span::new(0, 0),
+                    result: Some(loaded),
+                    kind: FirInstructionKind::LoadGlobal {
+                        global: MUTABLE_GLOBAL,
+                    },
+                },
+            ],
+            terminator: Some(FirTerminator::Return {
+                value: Some(loaded),
+            }),
+        }],
+        value_types: BTreeMap::from([(stored, u64_ty()), (loaded, u64_ty())]),
+    }
+}
+
 fn fixture() -> (FirModule, TypeDefinitionTable, StaticGlobalInitializerTable) {
     let module = FirModule {
         functions: BTreeMap::from([
             (SCALAR_READER, scalar_reader()),
             (AGGREGATE_READER, aggregate_reader()),
+            (MUTABLE_WRITER, mutable_writer()),
         ]),
         globals: BTreeMap::from([
             (
@@ -133,6 +181,15 @@ fn fixture() -> (FirModule, TypeDefinitionTable, StaticGlobalInitializerTable) {
                     ty: aggregate_ty(),
                     mutable: false,
                     constant: None,
+                },
+            ),
+            (
+                MUTABLE_GLOBAL,
+                FirGlobal {
+                    owner: MUTABLE_GLOBAL,
+                    ty: u64_ty(),
+                    mutable: true,
+                    constant: Some(ConstValue::Integer { value: 5 }),
                 },
             ),
         ]),
@@ -163,7 +220,10 @@ fn emit(target: CraneliftTarget) -> Vec<u8> {
         .prepare_module_with_static_initializers(&module, &definitions, &static_initializers)
         .expect("C11c module should prepare");
     let object = backend
-        .emit_object_with_exports(&prepared, [SCALAR_READER, AGGREGATE_READER])
+        .emit_object_with_exports(
+            &prepared,
+            [SCALAR_READER, AGGREGATE_READER, MUTABLE_WRITER],
+        )
         .expect("C11c object should emit");
     object.into_bytes()
 }
@@ -198,13 +258,17 @@ fn c11c_load_global_emits_real_text_relocations_on_both_targets() {
             report.contains("__forge_global_00000020"),
             "aggregate global relocation missing:\n{report}"
         );
+        assert!(
+            report.contains("__forge_global_00000022"),
+            "mutable global relocation missing:\n{report}"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 }
 
 #[test]
 #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
-fn c11c_links_and_executes_aarch64_global_reads() {
+fn c11c_links_and_executes_aarch64_global_reads_and_writes() {
     let dir = temporary_directory("aarch64-run");
     let object = dir.join("forge.o");
     let harness = dir.join("harness.c");
@@ -215,9 +279,11 @@ fn c11c_links_and_executes_aarch64_global_reads() {
         r#"#include <stdint.h>
 extern uint64_t __forge_fn_0000001f(void);
 extern uint64_t __forge_fn_00000021(void);
+extern uint64_t __forge_fn_00000023(void);
 int main(void) {
     if (__forge_fn_0000001f() != 42) return 1;
     if (__forge_fn_00000021() != 50) return 2;
+    if (__forge_fn_00000023() != 77) return 3;
     return 0;
 }
 "#,
@@ -240,7 +306,7 @@ int main(void) {
 }
 
 #[test]
-fn c11c_links_and_executes_riscv64_global_reads_under_qemu() {
+fn c11c_links_and_executes_riscv64_global_reads_and_writes_under_qemu() {
     if std::env::var_os("FORGE_RISCV64_EXECUTION").is_none() {
         return;
     }
@@ -268,6 +334,9 @@ _start:
     bne a0, t0, fail
     call __forge_fn_00000021
     li t0, 50
+    bne a0, t0, fail
+    call __forge_fn_00000023
+    li t0, 77
     bne a0, t0, fail
     li a0, 0
     li a7, 93
