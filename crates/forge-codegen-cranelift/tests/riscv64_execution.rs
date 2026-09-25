@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use forge_codegen_cranelift::{CraneliftBackend, CraneliftTarget, MachineCode};
 use forge_fir::{
@@ -453,5 +454,11 @@ fn run_tool<const N: usize>(program: &str, args: [&str; N]) {
 }
 
 fn temporary_directory(argument: i64) -> PathBuf {
-    std::env::temp_dir().join(format!("forge-rv64-{}-{argument}", std::process::id()))
+    static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+    let sequence = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "forge-rv64-{}-{sequence}-{argument}",
+        std::process::id()
+    ))
 }
