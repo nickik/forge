@@ -65,6 +65,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Restrict bitwise-not to integers during typechecking and treat
         handwritten non-integer bitwise-not FIR as an invalid producer contract
         on AArch64 and RISC-V.
+  - [x] Diagnose handwritten floating-point bitwise-not FIR as an invalid
+        producer contract on AArch64 while preserving supported float negation
+        and the existing RISC-V/SIA32 float boundaries.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.

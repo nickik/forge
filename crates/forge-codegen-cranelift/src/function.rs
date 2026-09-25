@@ -1034,7 +1034,9 @@ fn lower_scalar_unary(
 ) -> Result<Value, BackendError> {
     let ty = fir.value_types.get(&input).ok_or_else(|| shape("missing unary operand"))?;
     if let Ty::Float { .. } = ty {
-        if op != FirUnaryOp::Neg { return Err(BackendError::UnsupportedInstruction { kind: "non-negating float unary operation" }); }
+        if op != FirUnaryOp::Neg {
+            return Err(shape(format!("invalid float unary FIR operation {op:?}")));
+        }
         return Ok(cursor.ins().fneg(lookup_value(values, input)?));
     }
     lower_integer_unary(fir, op, input, values, cursor)

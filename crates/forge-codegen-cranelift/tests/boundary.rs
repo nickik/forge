@@ -531,3 +531,62 @@ fn bitwise_not_on_non_integer_fir_is_an_invalid_producer_contract() {
         );
     }
 }
+
+#[test]
+fn bitwise_not_on_float_fir_is_an_invalid_producer_contract() {
+    let owner = DefId(8);
+    let input = FirValueId(0);
+    let result = FirValueId(1);
+    let float = Ty::Float { bits: 32 };
+    let mut module = FirModule::default();
+    module.functions.insert(
+        owner,
+        FirFunction {
+            owner,
+            params: Vec::new(),
+            return_type: float.clone(),
+            locals: BTreeMap::new(),
+            closures: BTreeMap::new(),
+            entry: FirBlockId(0),
+            blocks: vec![FirBasicBlock {
+                id: FirBlockId(0),
+                closure: None,
+                instructions: vec![
+                    FirInstruction {
+                        span: Span::new(0, 6),
+                        result: Some(input),
+                        kind: FirInstructionKind::Const {
+                            value: FirConst::Float {
+                                text: "1.0f32".into(),
+                            },
+                        },
+                    },
+                    FirInstruction {
+                        span: Span::new(7, 8),
+                        result: Some(result),
+                        kind: FirInstructionKind::Unary {
+                            op: FirUnaryOp::BitNot,
+                            value: input,
+                        },
+                    },
+                ],
+                terminator: Some(FirTerminator::Return {
+                    value: Some(result),
+                }),
+            }],
+            value_types: BTreeMap::from([(input, float.clone()), (result, float)]),
+        },
+    );
+
+    let backend = CraneliftBackend::aarch64().expect("AArch64 backend");
+    let error = match backend.prepare_module(&module) {
+        Ok(_) => panic!("floating-point bitwise-not FIR unexpectedly lowered"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error,
+        BackendError::InvalidFirShape {
+            message: "invalid float unary FIR operation BitNot".into(),
+        }
+    );
+}

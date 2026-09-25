@@ -253,6 +253,31 @@ fn rejects_bitwise_not_on_non_integer_before_fir_lowering() {
 }
 
 #[test]
+fn rejects_bitwise_not_on_float_before_fir_lowering() {
+    let output = check(
+        r#"
+        module test.bitwise_not_float;
+        fn main() -> i32 {
+            val bad = ~1.0f32;
+            return 0;
+        }
+    "#,
+    );
+    let diagnostic = output
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "type/mismatch")
+        .expect("floating-point bitwise-not operand diagnostic");
+    assert!(
+        diagnostic
+            .message
+            .contains("invalid unary operand Float { bits: 32 }"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
 fn rejects_wrong_return_type() {
     let output = check(
         r#"
