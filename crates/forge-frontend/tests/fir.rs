@@ -609,9 +609,7 @@ fn optional_match_extracts_payload_before_guard_and_body() {
         .blocks
         .iter()
         .flat_map(|block| &block.instructions)
-        .find(|instruction| {
-            matches!(&instruction.kind, FirInstructionKind::OptionUnwrap { .. })
-        })
+        .find(|instruction| matches!(&instruction.kind, FirInstructionKind::OptionUnwrap { .. }))
         .unwrap();
     assert_eq!(
         function.value_types.get(&unwrap.result.unwrap()),
