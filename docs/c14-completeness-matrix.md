@@ -75,6 +75,8 @@ Legend:
   invalid producer contract rather than deferred AArch64/RISC-V support.
 - AArch64 float negation remains supported, while handwritten float bitwise-not FIR is diagnosed
   as an invalid producer contract; RISC-V/SIA32 float boundaries are unchanged.
+- Float literals in integer contexts are rejected during typechecking; handwritten float constants
+  with integer FIR result types are invalid producer contracts on AArch64/RISC-V.
 - Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not
   prove instruction lowering or ABI execution.
 - `LoadGlobal` has real object/relocation coverage; comments describing it as future work must be
