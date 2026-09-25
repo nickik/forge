@@ -155,6 +155,31 @@ fn rejects_bool_integer_arithmetic() {
 }
 
 #[test]
+fn rejects_character_arithmetic_before_fir_lowering() {
+    let output = check(
+        r#"
+        module test.character_arithmetic;
+        fn main() -> i32 {
+            val bad = 'a' + 'b';
+            return 0;
+        }
+    "#,
+    );
+    let diagnostic = output
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "type/mismatch")
+        .expect("character arithmetic diagnostic");
+    assert!(
+        diagnostic
+            .message
+            .contains("arithmetic operands must have one numeric type: Char, Char"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
 fn rejects_wrong_return_type() {
     let output = check(
         r#"
