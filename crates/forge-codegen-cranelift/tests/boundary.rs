@@ -526,8 +526,7 @@ fn bitwise_not_on_non_integer_fir_is_an_invalid_producer_contract() {
         assert_eq!(
             error,
             BackendError::InvalidFirShape {
-                message: "integer unary operand FirValueId(0) has non-integer FIR type Bool"
-                    .into(),
+                message: "integer unary operand FirValueId(0) has non-integer FIR type Bool".into(),
             }
         );
     }
