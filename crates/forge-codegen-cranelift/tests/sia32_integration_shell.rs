@@ -151,6 +151,60 @@ fn sia32_rejects_float_fir_before_isa_lowering() {
 }
 
 #[test]
+fn sia32_rejects_malformed_privileged_operand_arity_before_clif_lowering() {
+    let owner = DefId(76);
+    let value = FirValueId(0);
+    let u32_ty = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let function = FirFunction {
+        owner,
+        params: vec![],
+        return_type: Ty::Void,
+        locals: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![
+                FirInstruction {
+                    span: Span::new(0, 0),
+                    result: Some(value),
+                    kind: FirInstructionKind::Const {
+                        value: FirConst::Integer {
+                            text: "0u32".into(),
+                        },
+                    },
+                },
+                FirInstruction {
+                    span: Span::new(0, 0),
+                    result: None,
+                    kind: FirInstructionKind::Sia32Privileged {
+                        operation: Sia32PrivilegedOperation::Trap { imm8: 0x40 },
+                        args: vec![value],
+                    },
+                },
+            ],
+            terminator: Some(FirTerminator::Return { value: None }),
+        }],
+        value_types: BTreeMap::from([(value, u32_ty)]),
+    };
+    let mut module = FirModule::default();
+    module.functions.insert(owner, function);
+
+    match CraneliftBackend::sia32().unwrap().prepare_module(&module) {
+        Err(BackendError::InvalidFirShape { message }) => assert_eq!(
+            message,
+            "SIA32 privileged operation Trap { imm8: 64 } has 1 operands, expected 0"
+        ),
+        Err(error) => panic!("wrong malformed privileged FIR rejection: {error}"),
+        Ok(_) => panic!("SIA32 unexpectedly accepted malformed privileged FIR"),
+    }
+}
+
+#[test]
 fn sia32_swrite_vmctx_emits_value_register_and_selector_five() {
     let backend = CraneliftBackend::sia32().unwrap();
     let owner = DefId(77);
