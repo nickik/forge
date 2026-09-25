@@ -5,7 +5,7 @@ use forge_codegen_cranelift::{BackendError, CraneliftBackend, CraneliftTarget};
 use forge_fir::{
     ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal, FirInstruction,
     FirInstructionKind, FirModule, FirSelectCase, FirTerminator, FirValueId, RuntimeOperationId,
-    Span, Ty,
+    Sia32PrivilegedOperation, Span, Ty,
 };
 
 #[test]
@@ -135,6 +135,51 @@ fn select_remains_an_explicit_backend_boundary_on_host_targets() {
             error,
             BackendError::UnsupportedInstruction {
                 kind: "select terminator",
+            }
+        );
+    }
+}
+
+#[test]
+fn sia32_privileged_fir_remains_an_explicit_host_target_boundary() {
+    let owner = DefId(2);
+    let mut module = FirModule::default();
+    module.functions.insert(
+        owner,
+        FirFunction {
+            owner,
+            params: Vec::new(),
+            return_type: Ty::Void,
+            locals: BTreeMap::new(),
+            closures: BTreeMap::new(),
+            entry: FirBlockId(0),
+            blocks: vec![FirBasicBlock {
+                id: FirBlockId(0),
+                closure: None,
+                instructions: vec![FirInstruction {
+                    span: Span::new(0, 3),
+                    result: None,
+                    kind: FirInstructionKind::Sia32Privileged {
+                        operation: Sia32PrivilegedOperation::Trap { imm8: 0x40 },
+                        args: Vec::new(),
+                    },
+                }],
+                terminator: Some(FirTerminator::Return { value: None }),
+            }],
+            value_types: BTreeMap::new(),
+        },
+    );
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("SIA32 privileged FIR has no hosted-target semantics"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::UnsupportedInstruction {
+                kind: "SIA32 privileged operation on non-SIA32 target",
             }
         );
     }
