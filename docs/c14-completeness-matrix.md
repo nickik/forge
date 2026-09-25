@@ -79,6 +79,8 @@ Legend:
   with integer FIR result types are invalid producer contracts on AArch64/RISC-V.
 - Boolean literals in integer contexts are rejected during typechecking; handwritten boolean
   constants with integer FIR result types are invalid producer contracts on AArch64/RISC-V.
+- Duration reader forms in integer contexts are rejected during typechecking; handwritten duration
+  constants with integer FIR result types are invalid producer contracts on AArch64/RISC-V.
 - Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not
   prove instruction lowering or ABI execution.
 - `LoadGlobal` has real object/relocation coverage; comments describing it as future work must be
