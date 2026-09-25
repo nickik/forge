@@ -1033,10 +1033,7 @@ fn option_is_some_requires_an_optional_input_and_boolean_result() {
                         value: Some(result),
                     }),
                 }],
-                value_types: BTreeMap::from([
-                    (input, optional.clone()),
-                    (result, integer.clone()),
-                ]),
+                value_types: BTreeMap::from([(input, optional.clone()), (result, integer.clone())]),
             },
         );
 
