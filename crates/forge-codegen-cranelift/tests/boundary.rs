@@ -991,6 +991,129 @@ fn make_none_with_integer_result_type_is_an_invalid_producer_contract() {
 }
 
 #[test]
+fn option_is_some_requires_an_optional_input_and_boolean_result() {
+    let integer = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let optional = Ty::Optional {
+        inner: Box::new(integer.clone()),
+    };
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let owner = DefId(17);
+        let input = FirValueId(0);
+        let result = FirValueId(1);
+        let mut module = FirModule::default();
+        module.functions.insert(
+            owner,
+            FirFunction {
+                owner,
+                params: Vec::new(),
+                return_type: integer.clone(),
+                locals: BTreeMap::new(),
+                closures: BTreeMap::new(),
+                entry: FirBlockId(0),
+                blocks: vec![FirBasicBlock {
+                    id: FirBlockId(0),
+                    closure: None,
+                    instructions: vec![
+                        FirInstruction {
+                            span: Span::new(0, 4),
+                            result: Some(input),
+                            kind: FirInstructionKind::MakeNone,
+                        },
+                        FirInstruction {
+                            span: Span::new(5, 9),
+                            result: Some(result),
+                            kind: FirInstructionKind::OptionIsSome { value: input },
+                        },
+                    ],
+                    terminator: Some(FirTerminator::Return {
+                        value: Some(result),
+                    }),
+                }],
+                value_types: BTreeMap::from([
+                    (input, optional.clone()),
+                    (result, integer.clone()),
+                ]),
+            },
+        );
+
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("option test with integer FIR result unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: concat!(
+                    "option-is-some instruction has non-bool FIR result type ",
+                    "Int { signed: false, width: W32 }"
+                )
+                .into(),
+            }
+        );
+
+        let owner = DefId(18);
+        let input = FirValueId(0);
+        let result = FirValueId(1);
+        let mut module = FirModule::default();
+        module.functions.insert(
+            owner,
+            FirFunction {
+                owner,
+                params: Vec::new(),
+                return_type: Ty::Bool,
+                locals: BTreeMap::new(),
+                closures: BTreeMap::new(),
+                entry: FirBlockId(0),
+                blocks: vec![FirBasicBlock {
+                    id: FirBlockId(0),
+                    closure: None,
+                    instructions: vec![
+                        FirInstruction {
+                            span: Span::new(0, 4),
+                            result: Some(input),
+                            kind: FirInstructionKind::Const {
+                                value: FirConst::Integer {
+                                    text: "0u32".into(),
+                                },
+                            },
+                        },
+                        FirInstruction {
+                            span: Span::new(5, 9),
+                            result: Some(result),
+                            kind: FirInstructionKind::OptionIsSome { value: input },
+                        },
+                    ],
+                    terminator: Some(FirTerminator::Return {
+                        value: Some(result),
+                    }),
+                }],
+                value_types: BTreeMap::from([(input, integer.clone()), (result, Ty::Bool)]),
+            },
+        );
+
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("option test with integer FIR input unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: concat!(
+                    "option-is-some instruction has non-optional FIR input type ",
+                    "Int { signed: false, width: W32 }"
+                )
+                .into(),
+            }
+        );
+    }
+}
+
+#[test]
 fn lossless_integer_conversion_with_boolean_source_is_an_invalid_producer_contract() {
     let owner = DefId(12);
     let input = FirValueId(0);
