@@ -119,6 +119,8 @@ available on every backend merely because the frontend accepts it.
         production RISC-V machine code under QEMU.
   - [x] Execute `bool` plus signed/unsigned `8`/`16`/`32`-bit arguments,
         local load/store and return values through RISC-V machine code under QEMU.
+  - [x] Execute signed `64`-bit arguments, local load/store, return values and
+        signed comparison through RISC-V machine code under QEMU.
 - [ ] Add float only when the RISC-V ISA/ABI configuration and execution
       contract are intentionally selected and tested.
 

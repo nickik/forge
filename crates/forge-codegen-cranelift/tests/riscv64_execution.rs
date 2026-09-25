@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use forge_codegen_cranelift::{CraneliftBackend, CraneliftTarget, MachineCode};
 use forge_fir::{
@@ -17,10 +18,16 @@ fn u64_ty() -> Ty {
     }
 }
 
-fn choose_module() -> (FirModule, DefId) {
+fn i64_ty() -> Ty {
+    Ty::Int {
+        signed: true,
+        width: IntWidth::W64,
+    }
+}
+
+fn choose_module(ty: Ty) -> (FirModule, DefId) {
     let owner = DefId(0);
     let param = FirLocalId(0);
-    let ty = u64_ty();
     let span = Span::new(0, 0);
     let v0 = FirValueId(0);
     let v1 = FirValueId(1);
@@ -197,8 +204,16 @@ fn scalar_roundtrip_module(owner: DefId, ty: Ty) -> (FirModule, DefId) {
 }
 
 fn compile_choose() -> MachineCode {
+    compile_choose_with_type(u64_ty())
+}
+
+fn compile_signed_choose() -> MachineCode {
+    compile_choose_with_type(i64_ty())
+}
+
+fn compile_choose_with_type(ty: Ty) -> MachineCode {
     let backend = CraneliftBackend::riscv64().expect("RV64 backend");
-    let (module, owner) = choose_module();
+    let (module, owner) = choose_module(ty);
     let prepared = backend.prepare_module(&module).expect("verified RV64 CLIF");
     backend
         .emit_machine_code(&prepared, owner)
@@ -278,6 +293,24 @@ fn executes_char_argument_local_and_return_under_qemu() {
     assert_eq!(run_under_qemu(&machine, 65), 65);
     assert_eq!(run_under_qemu(&machine, 122), 122);
     assert_eq!(run_under_qemu(&machine, 195), 195);
+}
+
+#[test]
+fn executes_signed_i64_roundtrip_and_comparison_under_qemu() {
+    if std::env::var_os("FORGE_RISCV64_EXECUTION").is_none() {
+        return;
+    }
+
+    let roundtrip = compile_scalar_roundtrip(DefId(5), i64_ty());
+    assert_eq!(run_under_qemu(&roundtrip, -7), 249);
+    assert_eq!(run_under_qemu(&roundtrip, -91), 165);
+    assert_eq!(run_under_qemu(&roundtrip, 123), 123);
+
+    let comparison = compile_signed_choose();
+    assert_eq!(run_under_qemu(&comparison, -20), 2);
+    assert_eq!(run_under_qemu(&comparison, -1), 2);
+    assert_eq!(run_under_qemu(&comparison, 11), 1);
+    assert_eq!(run_under_qemu(&comparison, 20), 1);
 }
 
 #[test]
@@ -421,5 +454,11 @@ fn run_tool<const N: usize>(program: &str, args: [&str; N]) {
 }
 
 fn temporary_directory(argument: i64) -> PathBuf {
-    std::env::temp_dir().join(format!("forge-rv64-{}-{argument}", std::process::id()))
+    static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+    let sequence = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "forge-rv64-{}-{sequence}-{argument}",
+        std::process::id()
+    ))
 }
