@@ -647,3 +647,58 @@ fn float_constant_with_integer_result_type_is_an_invalid_producer_contract() {
         );
     }
 }
+
+#[test]
+fn boolean_constant_with_integer_result_type_is_an_invalid_producer_contract() {
+    let owner = DefId(10);
+    let result = FirValueId(0);
+    let integer = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let mut module = FirModule::default();
+    module.functions.insert(
+        owner,
+        FirFunction {
+            owner,
+            params: Vec::new(),
+            return_type: integer.clone(),
+            locals: BTreeMap::new(),
+            closures: BTreeMap::new(),
+            entry: FirBlockId(0),
+            blocks: vec![FirBasicBlock {
+                id: FirBlockId(0),
+                closure: None,
+                instructions: vec![FirInstruction {
+                    span: Span::new(0, 4),
+                    result: Some(result),
+                    kind: FirInstructionKind::Const {
+                        value: FirConst::Bool { value: true },
+                    },
+                }],
+                terminator: Some(FirTerminator::Return {
+                    value: Some(result),
+                }),
+            }],
+            value_types: BTreeMap::from([(result, integer)]),
+        },
+    );
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("boolean constant with integer FIR type unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: concat!(
+                    "boolean constant true has non-bool FIR result type ",
+                    "Int { signed: false, width: W32 }"
+                )
+                .into(),
+            }
+        );
+    }
+}
