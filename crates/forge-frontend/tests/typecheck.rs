@@ -334,6 +334,20 @@ fn rejects_integer_literal_with_boolean_declared_type() {
 }
 
 #[test]
+fn rejects_character_literal_with_integer_declared_type() {
+    let output = check(
+        r#"
+        module test.character_literal_integer_type;
+        fn main() -> i32 {
+            val bad: u32 = 'a';
+            return 0;
+        }
+    "#,
+    );
+    assert!(has(&output, "type/mismatch"), "{:?}", output.diagnostics);
+}
+
+#[test]
 fn rejects_wrong_return_type() {
     let output = check(
         r#"

@@ -83,6 +83,8 @@ Legend:
   constants with integer FIR result types are invalid producer contracts on AArch64/RISC-V.
 - Integer literals in boolean contexts are rejected during typechecking; handwritten integer
   constants with non-integer FIR result types are invalid producer contracts on AArch64/RISC-V.
+- Character literals in integer contexts are rejected during typechecking; handwritten character
+  constants with non-character FIR result types are invalid producer contracts on AArch64/RISC-V.
 - `LosslessIntegerConvert` accepts only integer endpoints; malformed non-integer FIR endpoints are
   producer errors, while narrowing and signedness-loss conversions remain explicitly unsupported.
 - Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not
