@@ -65,6 +65,8 @@ Legend:
   production backend boundaries before CLIF lowering.
 - Non-comparison `char` operations are rejected during typechecking; handwritten arithmetic
   `char` FIR is diagnosed as an invalid producer contract rather than deferred backend support.
+- Sequence patterns are restricted to arrays and slices during typechecking; incompatible
+  `Subsequence` source/result FIR is an invalid producer contract, not deferred lowering.
 - Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not
   prove instruction lowering or ABI execution.
 - `LoadGlobal` has real object/relocation coverage; comments describing it as future work must be
