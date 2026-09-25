@@ -230,3 +230,29 @@ fn fixed_gpr_builtins_reject_registers_outside_r0_through_r15() {
         .iter()
         .any(|diagnostic| diagnostic.message.contains("got r255")));
 }
+
+#[test]
+fn privileged_builtins_reject_wrong_source_arity() {
+    let source = r#"
+        module test.sia_bad_arity;
+        fn main() -> i32 {
+            sia_trap();
+            sia_tlbfence(0u32);
+            return 0;
+        }
+    "#;
+    let parsed = parse_source(source);
+    assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+    let ast = parsed.ast.unwrap();
+    let hir = lower_module(&ast);
+    assert!(hir.diagnostics.is_empty(), "{:?}", hir.diagnostics);
+    let bodies = lower_resolved_bodies(&ast, &hir.module);
+    assert!(bodies.diagnostics.is_empty(), "{:?}", bodies.diagnostics);
+    let typed = type_check_module(&ast, &hir.module, &bodies);
+
+    assert_eq!(typed.diagnostics.len(), 2, "{:?}", typed.diagnostics);
+    assert!(typed
+        .diagnostics
+        .iter()
+        .all(|diagnostic| diagnostic.code == "sia32/arity"));
+}
