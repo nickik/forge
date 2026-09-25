@@ -142,6 +142,8 @@ available on every backend merely because the frontend accepts it.
 - [x] Complete the integer/privileged production lowering required by the merged Cosmic M27 native boot path.
 - [x] Keep fixed-GPR syscall selectors within the architectural `r0..r15`
       register file at both source-to-FIR and backend FIR validation boundaries.
+- [x] Reject malformed SIA32 privileged-operation arity at both the source
+      builtin and production backend FIR boundaries before CLIF lowering.
 - [ ] Expand SIA32 support only when demanded by the next Cosmic vertical slice; the immediate requirement is a freestanding System Task/user image and syscall ABI, not floating point.
 - [ ] Retain explicit rejection for `f32`/`f64` until the C15 prerequisites in
       `C15_TODO.md` are complete.
