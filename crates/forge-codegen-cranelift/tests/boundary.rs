@@ -861,6 +861,71 @@ fn character_constant_with_integer_result_type_is_an_invalid_producer_contract()
 }
 
 #[test]
+fn unit_instruction_with_integer_result_type_is_an_invalid_producer_contract() {
+    let owner = DefId(15);
+    let unit = FirValueId(0);
+    let result = FirValueId(1);
+    let integer = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let mut module = FirModule::default();
+    module.functions.insert(
+        owner,
+        FirFunction {
+            owner,
+            params: Vec::new(),
+            return_type: integer.clone(),
+            locals: BTreeMap::new(),
+            closures: BTreeMap::new(),
+            entry: FirBlockId(0),
+            blocks: vec![FirBasicBlock {
+                id: FirBlockId(0),
+                closure: None,
+                instructions: vec![
+                    FirInstruction {
+                        span: Span::new(0, 2),
+                        result: Some(unit),
+                        kind: FirInstructionKind::Unit,
+                    },
+                    FirInstruction {
+                        span: Span::new(3, 7),
+                        result: Some(result),
+                        kind: FirInstructionKind::Const {
+                            value: FirConst::Integer {
+                                text: "0u32".into(),
+                            },
+                        },
+                    },
+                ],
+                terminator: Some(FirTerminator::Return {
+                    value: Some(result),
+                }),
+            }],
+            value_types: BTreeMap::from([(unit, integer.clone()), (result, integer)]),
+        },
+    );
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("unit instruction with integer FIR type unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: concat!(
+                    "unit instruction has non-void FIR result type ",
+                    "Int { signed: false, width: W32 }"
+                )
+                .into(),
+            }
+        );
+    }
+}
+
+#[test]
 fn lossless_integer_conversion_with_boolean_source_is_an_invalid_producer_contract() {
     let owner = DefId(12);
     let input = FirValueId(0);

@@ -147,6 +147,13 @@ fn validate_c4_scalar_contract(
                 .ok_or_else(|| shape(format!("missing type for FIR value {result:?}")))?;
 
             match &instruction.kind {
+                FirInstructionKind::Unit => {
+                    if result_ty != &Ty::Void {
+                        return Err(shape(format!(
+                            "unit instruction has non-void FIR result type {result_ty:?}"
+                        )));
+                    }
+                }
                 FirInstructionKind::Load {
                     place: FirPlace::Local { local },
                 } => {

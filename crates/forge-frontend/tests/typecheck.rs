@@ -348,6 +348,21 @@ fn rejects_character_literal_with_integer_declared_type() {
 }
 
 #[test]
+fn rejects_void_expression_with_integer_declared_type() {
+    let output = check(
+        r#"
+        module test.void_expression_integer_type;
+        fn noop() -> void {}
+        fn main() -> i32 {
+            val bad: u32 = noop();
+            return 0;
+        }
+    "#,
+    );
+    assert!(has(&output, "type/mismatch"), "{:?}", output.diagnostics);
+}
+
+#[test]
 fn rejects_wrong_return_type() {
     let output = check(
         r#"
