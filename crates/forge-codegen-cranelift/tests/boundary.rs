@@ -4,8 +4,9 @@ use cranelift_codegen::isa::CallConv;
 use forge_codegen_cranelift::{BackendError, CraneliftBackend, CraneliftTarget};
 use forge_fir::{
     BinaryOp, ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal,
-    FirInstruction, FirInstructionKind, FirModule, FirSelectCase, FirTerminator, FirValueId,
-    OverflowMode, RuntimeOperationId, Sia32PrivilegedOperation, Span, Ty,
+    FirInstruction, FirInstructionKind, FirLocal, FirLocalId, FirModule, FirSelectCase,
+    FirTerminator, FirValueId, OverflowMode, RuntimeOperationId, Sia32PrivilegedOperation, Span,
+    Ty,
 };
 
 #[test]
@@ -249,6 +250,82 @@ fn non_comparison_char_fir_is_an_invalid_producer_contract() {
             error,
             BackendError::InvalidFirShape {
                 message: "char FIR permits comparison operations only; got Add".into(),
+            }
+        );
+    }
+}
+
+#[test]
+fn invalid_subsequence_types_are_a_producer_contract_error() {
+    let owner = DefId(4);
+    let local = FirLocalId(0);
+    let base = FirValueId(0);
+    let result = FirValueId(1);
+    let source_ty = Ty::Slice {
+        mutable: false,
+        element: Box::new(Ty::Byte),
+    };
+    let result_ty = Ty::Slice {
+        mutable: false,
+        element: Box::new(Ty::Bool),
+    };
+    let expected = concat!(
+        "invalid subsequence from Slice { mutable: false, element: Byte } ",
+        "to Slice { mutable: false, element: Bool } at start 1"
+    );
+    let mut module = FirModule::default();
+    module.functions.insert(
+        owner,
+        FirFunction {
+            owner,
+            params: vec![local],
+            return_type: Ty::Void,
+            locals: BTreeMap::from([(
+                local,
+                FirLocal {
+                    id: local,
+                    source: None,
+                    ty: source_ty.clone(),
+                    mutable: false,
+                    parameter: true,
+                    synthetic: false,
+                },
+            )]),
+            closures: BTreeMap::new(),
+            entry: FirBlockId(0),
+            blocks: vec![FirBasicBlock {
+                id: FirBlockId(0),
+                closure: None,
+                instructions: vec![
+                    FirInstruction {
+                        span: Span::new(0, 3),
+                        result: Some(base),
+                        kind: FirInstructionKind::Load {
+                            place: forge_fir::FirPlace::Local { local },
+                        },
+                    },
+                    FirInstruction {
+                        span: Span::new(4, 7),
+                        result: Some(result),
+                        kind: FirInstructionKind::Subsequence { base, start: 1 },
+                    },
+                ],
+                terminator: Some(FirTerminator::Return { value: None }),
+            }],
+            value_types: BTreeMap::from([(base, source_ty), (result, result_ty)]),
+        },
+    );
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("invalid subsequence FIR unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: expected.into(),
             }
         );
     }

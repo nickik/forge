@@ -800,6 +800,33 @@ fn optional_and_sequence_match_bindings_get_element_types() {
 }
 
 #[test]
+fn rejects_sequence_patterns_on_non_sequences() {
+    let output = check(
+        r#"
+        module test.sequence_pattern_scalar;
+        fn read(value: u32) -> i32 {
+            return match (value) {
+                [first, ..rest] => 1,
+                _ => 0,
+            };
+        }
+    "#,
+    );
+    let diagnostic = output
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "pattern/type")
+        .expect("sequence pattern type diagnostic");
+    assert!(
+        diagnostic
+            .message
+            .contains("sequence pattern requires an array or slice"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
 fn destructuring_declarations_reject_refutable_patterns() {
     let optional = check(
         r#"
