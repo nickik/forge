@@ -25,6 +25,13 @@ fn i64_ty() -> Ty {
     }
 }
 
+fn pointer_int_ty(signed: bool) -> Ty {
+    Ty::Int {
+        signed,
+        width: IntWidth::Pointer,
+    }
+}
+
 fn choose_module(ty: Ty) -> (FirModule, DefId) {
     let owner = DefId(0);
     let param = FirLocalId(0);
@@ -311,6 +318,30 @@ fn executes_signed_i64_roundtrip_and_comparison_under_qemu() {
     assert_eq!(run_under_qemu(&comparison, -1), 2);
     assert_eq!(run_under_qemu(&comparison, 11), 1);
     assert_eq!(run_under_qemu(&comparison, 20), 1);
+}
+
+#[test]
+fn executes_pointer_width_integer_roundtrips_and_comparisons_under_qemu() {
+    if std::env::var_os("FORGE_RISCV64_EXECUTION").is_none() {
+        return;
+    }
+
+    let unsigned = pointer_int_ty(false);
+    let signed = pointer_int_ty(true);
+
+    let unsigned_roundtrip = compile_scalar_roundtrip(DefId(6), unsigned.clone());
+    assert_eq!(run_under_qemu(&unsigned_roundtrip, 214), 214);
+
+    let signed_roundtrip = compile_scalar_roundtrip(DefId(7), signed.clone());
+    assert_eq!(run_under_qemu(&signed_roundtrip, -19), 237);
+
+    let unsigned_comparison = compile_choose_with_type(unsigned);
+    assert_eq!(run_under_qemu(&unsigned_comparison, i64::MIN), 1);
+    assert_eq!(run_under_qemu(&unsigned_comparison, 10), 2);
+
+    let signed_comparison = compile_choose_with_type(signed);
+    assert_eq!(run_under_qemu(&signed_comparison, i64::MIN), 2);
+    assert_eq!(run_under_qemu(&signed_comparison, 11), 1);
 }
 
 #[test]
