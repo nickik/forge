@@ -59,6 +59,8 @@ Legend:
   each must be matched against the table before removal.
 - Cyclic or merge value dependencies that require CLIF block arguments remain an explicit C14
   backend boundary, pinned by an AArch64/RISC-V scheduler regression; Forge FIR has no phi form.
+- SIA32 privileged FIR has no AArch64/RISC-V meaning and is rejected before generic CLIF lowering;
+  a focused hosted-target regression pins this target boundary.
 - Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not
   prove instruction lowering or ABI execution.
 - `LoadGlobal` has real object/relocation coverage; comments describing it as future work must be

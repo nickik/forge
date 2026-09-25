@@ -80,6 +80,7 @@ impl CraneliftBackend {
         for (owner, fir) in &all_functions {
             validate_c4_scalar_contract(fir, &self.layout, definitions)?;
             validate_c9_memory_places(fir)?;
+            validate_sia32_privileged_operations(self.target, fir)?;
             let scheduled = schedule_value_blocks(fir)?;
             let function = crate::function::lower_function_with_globals(
                 &scheduled,
