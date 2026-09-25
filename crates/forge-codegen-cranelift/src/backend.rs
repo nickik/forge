@@ -161,6 +161,19 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
+                FirInstructionKind::OptionIsSome { value } => {
+                    let source = value_type(fir, *value, "option test input")?;
+                    if !matches!(source, Ty::Optional { .. }) {
+                        return Err(shape(format!(
+                            "option-is-some instruction has non-optional FIR input type {source:?}"
+                        )));
+                    }
+                    if result_ty != &Ty::Bool {
+                        return Err(shape(format!(
+                            "option-is-some instruction has non-bool FIR result type {result_ty:?}"
+                        )));
+                    }
+                }
                 FirInstructionKind::Load {
                     place: FirPlace::Local { local },
                 } => {
