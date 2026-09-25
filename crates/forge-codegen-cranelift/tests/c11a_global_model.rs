@@ -137,6 +137,29 @@ fn c11a_prepares_c9_layout_and_initialization_policy_on_both_targets() {
 }
 
 #[test]
+fn c11a_mutable_constant_global_uses_writable_storage_on_both_targets() {
+    let owner = DefId(14);
+    let (_, mut global) = global(owner.0, u64_ty(), Some(ConstValue::Integer { value: 42 }));
+    global.mutable = true;
+    let module = FirModule {
+        functions: BTreeMap::new(),
+        globals: BTreeMap::from([(owner, global)]),
+        global_initializers: BTreeMap::new(),
+        global_init_order: Vec::new(),
+    };
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let prepared = CraneliftBackend::new(target)
+            .expect("backend")
+            .prepare_globals(&module, &TypeDefinitionTable::new())
+            .expect("mutable global preparation");
+        let global = prepared.global(owner).expect("mutable global");
+        assert_eq!(global.storage(), GlobalStorageClass::WritableData);
+        assert_eq!(global.static_data().expect("static data").bytes().len(), 8);
+    }
+}
+
+#[test]
 fn c11a_global_symbols_are_deterministic_and_explicitly_exported() {
     let backend = CraneliftBackend::aarch64().expect("backend");
     let prepared = backend
