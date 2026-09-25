@@ -1,6 +1,6 @@
 use forge_frontend::{
     lower_fir, lower_module, lower_resolved_bodies, parse_source, type_check_module, FirConst,
-    FirInstructionKind, FirTerminator, OverflowMode, Ty, TypedExprKind,
+    FirInstructionKind, FirTerminator, IntWidth, OverflowMode, Ty, TypedExprKind,
 };
 
 fn lower(source: &str) -> forge_frontend::FirOutput {
