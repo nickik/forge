@@ -1012,9 +1012,9 @@ fn lower_integer_unary(
         .get(&input)
         .ok_or_else(|| shape(format!("missing type for unary operand {input:?}")))?;
     if !is_integer_type(ty) {
-        return Err(BackendError::UnsupportedInstruction {
-            kind: "integer unary operation on non-integer FIR value",
-        });
+        return Err(shape(format!(
+            "integer unary operand {input:?} has non-integer FIR type {ty:?}"
+        )));
     }
     let value = lookup_value(values, input)?;
     Ok(match op {

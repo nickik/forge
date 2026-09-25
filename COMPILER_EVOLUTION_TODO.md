@@ -62,6 +62,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Restrict logical-not to booleans during typechecking and treat
         handwritten non-boolean logical-not FIR as an invalid producer contract
         on AArch64 and RISC-V.
+  - [x] Restrict bitwise-not to integers during typechecking and treat
+        handwritten non-integer bitwise-not FIR as an invalid producer contract
+        on AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.

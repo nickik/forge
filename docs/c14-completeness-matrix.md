@@ -71,6 +71,8 @@ Legend:
   producer contract rather than an unimplemented AArch64 operation.
 - Logical-not is boolean-only during typechecking; handwritten non-boolean logical-not FIR is an
   invalid producer contract rather than deferred AArch64/RISC-V support.
+- Bitwise-not is integer-only during typechecking; handwritten non-integer bitwise-not FIR is an
+  invalid producer contract rather than deferred AArch64/RISC-V support.
 - Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not
   prove instruction lowering or ABI execution.
 - `LoadGlobal` has real object/relocation coverage; comments describing it as future work must be
