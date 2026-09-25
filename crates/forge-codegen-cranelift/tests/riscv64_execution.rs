@@ -345,6 +345,23 @@ fn executes_pointer_width_integer_roundtrips_and_comparisons_under_qemu() {
 }
 
 #[test]
+fn executes_byte_roundtrip_and_unsigned_comparison_under_qemu() {
+    if std::env::var_os("FORGE_RISCV64_EXECUTION").is_none() {
+        return;
+    }
+
+    let roundtrip = compile_scalar_roundtrip(DefId(8), Ty::Byte);
+    assert_eq!(run_under_qemu(&roundtrip, 0), 0);
+    assert_eq!(run_under_qemu(&roundtrip, 127), 127);
+    assert_eq!(run_under_qemu(&roundtrip, 255), 255);
+
+    let comparison = compile_choose_with_type(Ty::Byte);
+    assert_eq!(run_under_qemu(&comparison, 10), 2);
+    assert_eq!(run_under_qemu(&comparison, 11), 1);
+    assert_eq!(run_under_qemu(&comparison, 255), 1);
+}
+
+#[test]
 fn executes_bool_and_narrow_integer_roundtrips_under_qemu() {
     if std::env::var_os("FORGE_RISCV64_EXECUTION").is_none() {
         return;
