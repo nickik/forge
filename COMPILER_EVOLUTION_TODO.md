@@ -45,6 +45,8 @@ available on every backend merely because the frontend accepts it.
         hosted backend boundaries; they must not silently become ordinary calls.
   - [x] Pin SIA32 scratch swap and context return as explicit CLIF-bridge
         boundaries until a Cosmic vertical slice requires their implementation.
+  - [x] Reject SIA32 privileged FIR on AArch64 and RISC-V before generic CLIF
+        lowering; target-specific operations have no hosted semantics.
   - [x] Pin cyclic or merge value dependencies that require CLIF block
         arguments as an explicit hosted-backend boundary; Forge FIR has no
         block-argument/phi operation in C14.
