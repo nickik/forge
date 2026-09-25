@@ -71,6 +71,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Reject float literals in integer contexts during typechecking and treat
         handwritten float constants with integer FIR result types as invalid
         producer contracts on AArch64 and RISC-V.
+  - [x] Reject boolean literals in integer contexts during typechecking and
+        treat handwritten boolean constants with integer FIR result types as
+        invalid producer contracts on AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
