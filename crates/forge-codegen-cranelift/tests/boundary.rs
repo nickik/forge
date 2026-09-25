@@ -5,8 +5,8 @@ use forge_codegen_cranelift::{BackendError, CraneliftBackend, CraneliftTarget};
 use forge_fir::{
     BinaryOp, ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal,
     FirInstruction, FirInstructionKind, FirLocal, FirLocalId, FirModule, FirSelectCase,
-    FirTerminator, FirValueId, OverflowMode, RuntimeOperationId, Sia32PrivilegedOperation, Span,
-    Ty,
+    FirTerminator, FirUnaryOp, FirValueId, IntWidth, OverflowMode, RuntimeOperationId,
+    Sia32PrivilegedOperation, Span, Ty,
 };
 
 #[test]
@@ -404,4 +404,72 @@ fn floating_point_remainder_fir_is_an_invalid_producer_contract() {
             message: "invalid float binary FIR operation Rem".into(),
         }
     );
+}
+
+#[test]
+fn logical_not_on_non_bool_fir_is_an_invalid_producer_contract() {
+    let owner = DefId(6);
+    let input = FirValueId(0);
+    let result = FirValueId(1);
+    let integer = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let mut module = FirModule::default();
+    module.functions.insert(
+        owner,
+        FirFunction {
+            owner,
+            params: Vec::new(),
+            return_type: Ty::Bool,
+            locals: BTreeMap::new(),
+            closures: BTreeMap::new(),
+            entry: FirBlockId(0),
+            blocks: vec![FirBasicBlock {
+                id: FirBlockId(0),
+                closure: None,
+                instructions: vec![
+                    FirInstruction {
+                        span: Span::new(0, 4),
+                        result: Some(input),
+                        kind: FirInstructionKind::Const {
+                            value: FirConst::Integer {
+                                text: "1u32".into(),
+                            },
+                        },
+                    },
+                    FirInstruction {
+                        span: Span::new(5, 6),
+                        result: Some(result),
+                        kind: FirInstructionKind::Unary {
+                            op: FirUnaryOp::Not,
+                            value: input,
+                        },
+                    },
+                ],
+                terminator: Some(FirTerminator::Return {
+                    value: Some(result),
+                }),
+            }],
+            value_types: BTreeMap::from([(input, integer), (result, Ty::Bool)]),
+        },
+    );
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("non-boolean logical-not FIR unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: concat!(
+                    "logical-not operand FirValueId(0) has non-bool FIR type ",
+                    "Int { signed: false, width: W32 }"
+                )
+                .into(),
+            }
+        );
+    }
 }
