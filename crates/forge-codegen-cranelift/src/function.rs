@@ -1410,9 +1410,12 @@ fn lower_const(
             let immediate = integer_immediate(text, ty, types)?;
             Ok(cursor.ins().iconst(clif_ty, immediate))
         }
-        FirConst::Bool { value } if *ty == Ty::Bool => {
-            Ok(cursor.ins().iconst(clif_ty, i64::from(*value)))
-        }
+        FirConst::Bool { value } => match ty {
+            Ty::Bool => Ok(cursor.ins().iconst(clif_ty, i64::from(*value))),
+            _ => Err(shape(format!(
+                "boolean constant {value} has non-bool FIR result type {ty:?}"
+            ))),
+        },
         FirConst::Float { text } => {
             let value = text
                 .trim_end_matches("f32")
