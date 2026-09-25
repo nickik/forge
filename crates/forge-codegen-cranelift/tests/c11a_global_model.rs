@@ -139,11 +139,7 @@ fn c11a_prepares_c9_layout_and_initialization_policy_on_both_targets() {
 #[test]
 fn c11a_mutable_constant_global_uses_writable_storage_on_both_targets() {
     let owner = DefId(14);
-    let (_, mut global) = global(
-        owner.0,
-        u64_ty(),
-        Some(ConstValue::Integer { value: 42 }),
-    );
+    let (_, mut global) = global(owner.0, u64_ty(), Some(ConstValue::Integer { value: 42 }));
     global.mutable = true;
     let module = FirModule {
         functions: BTreeMap::new(),
