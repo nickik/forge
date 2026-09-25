@@ -154,6 +154,13 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
+                FirInstructionKind::MakeNone => {
+                    if !matches!(result_ty, Ty::Optional { .. }) {
+                        return Err(shape(format!(
+                            "make-none instruction has non-optional FIR result type {result_ty:?}"
+                        )));
+                    }
+                }
                 FirInstructionKind::Load {
                     place: FirPlace::Local { local },
                 } => {

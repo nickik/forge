@@ -363,6 +363,20 @@ fn rejects_void_expression_with_integer_declared_type() {
 }
 
 #[test]
+fn rejects_none_with_integer_declared_type() {
+    let output = check(
+        r#"
+        module test.none_integer_type;
+        fn main() -> i32 {
+            val bad: u32 = None;
+            return 0;
+        }
+    "#,
+    );
+    assert!(has(&output, "type/mismatch"), "{:?}", output.diagnostics);
+}
+
+#[test]
 fn rejects_wrong_return_type() {
     let output = check(
         r#"
