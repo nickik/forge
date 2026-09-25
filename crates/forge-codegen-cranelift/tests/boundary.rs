@@ -235,11 +235,7 @@ fn non_comparison_char_fir_is_an_invalid_producer_contract() {
                     value: Some(result),
                 }),
             }],
-            value_types: BTreeMap::from([
-                (left, Ty::Char),
-                (right, Ty::Char),
-                (result, Ty::Char),
-            ]),
+            value_types: BTreeMap::from([(left, Ty::Char), (right, Ty::Char), (result, Ty::Char)]),
         },
     );
 
