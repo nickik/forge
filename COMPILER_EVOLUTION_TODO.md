@@ -45,6 +45,9 @@ available on every backend merely because the frontend accepts it.
         hosted backend boundaries; they must not silently become ordinary calls.
   - [x] Pin SIA32 scratch swap and context return as explicit CLIF-bridge
         boundaries until a Cosmic vertical slice requires their implementation.
+  - [x] Pin cyclic or merge value dependencies that require CLIF block
+        arguments as an explicit hosted-backend boundary; Forge FIR has no
+        block-argument/phi operation in C14.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
