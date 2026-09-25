@@ -1422,9 +1422,9 @@ fn lower_const(
             match ty {
                 Ty::Float { bits: 32 } => Ok(cursor.ins().f32const(value as f32)),
                 Ty::Float { bits: 64 } => Ok(cursor.ins().f64const(value)),
-                _ => Err(BackendError::UnsupportedInstruction {
-                    kind: "float constant with non-float type",
-                }),
+                _ => Err(shape(format!(
+                    "float constant {text:?} has non-float FIR result type {ty:?}"
+                ))),
             }
         }
         FirConst::Duration { value } if *ty == Ty::Duration => {
