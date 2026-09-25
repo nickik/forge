@@ -3,9 +3,9 @@ use std::collections::BTreeMap;
 use cranelift_codegen::isa::CallConv;
 use forge_codegen_cranelift::{BackendError, CraneliftBackend, CraneliftTarget};
 use forge_fir::{
-    ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal, FirInstruction,
-    FirInstructionKind, FirModule, FirSelectCase, FirTerminator, FirValueId, RuntimeOperationId,
-    Sia32PrivilegedOperation, Span, Ty,
+    BinaryOp, ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal,
+    FirInstruction, FirInstructionKind, FirModule, FirSelectCase, FirTerminator, FirValueId,
+    OverflowMode, RuntimeOperationId, Sia32PrivilegedOperation, Span, Ty,
 };
 
 #[test]
@@ -180,6 +180,79 @@ fn sia32_privileged_fir_remains_an_explicit_host_target_boundary() {
             error,
             BackendError::UnsupportedInstruction {
                 kind: "SIA32 privileged operation on non-SIA32 target",
+            }
+        );
+    }
+}
+
+#[test]
+fn non_comparison_char_fir_is_an_invalid_producer_contract() {
+    let owner = DefId(3);
+    let left = FirValueId(0);
+    let right = FirValueId(1);
+    let result = FirValueId(2);
+    let span = Span::new(0, 3);
+    let mut module = FirModule::default();
+    module.functions.insert(
+        owner,
+        FirFunction {
+            owner,
+            params: Vec::new(),
+            return_type: Ty::Char,
+            locals: BTreeMap::new(),
+            closures: BTreeMap::new(),
+            entry: FirBlockId(0),
+            blocks: vec![FirBasicBlock {
+                id: FirBlockId(0),
+                closure: None,
+                instructions: vec![
+                    FirInstruction {
+                        span,
+                        result: Some(left),
+                        kind: FirInstructionKind::Const {
+                            value: FirConst::Char { value: 'a' },
+                        },
+                    },
+                    FirInstruction {
+                        span,
+                        result: Some(right),
+                        kind: FirInstructionKind::Const {
+                            value: FirConst::Char { value: 'b' },
+                        },
+                    },
+                    FirInstruction {
+                        span,
+                        result: Some(result),
+                        kind: FirInstructionKind::Binary {
+                            op: BinaryOp::Add,
+                            overflow: Some(OverflowMode::Checked),
+                            left,
+                            right,
+                        },
+                    },
+                ],
+                terminator: Some(FirTerminator::Return {
+                    value: Some(result),
+                }),
+            }],
+            value_types: BTreeMap::from([
+                (left, Ty::Char),
+                (right, Ty::Char),
+                (result, Ty::Char),
+            ]),
+        },
+    );
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("non-comparison char FIR unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: "char FIR permits comparison operations only; got Add".into(),
             }
         );
     }
