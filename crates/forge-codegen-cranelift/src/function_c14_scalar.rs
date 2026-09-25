@@ -453,9 +453,9 @@ fn lower_c14_scalar_instruction(
                 forge_fir::BinaryOp::Greater => IntCC::UnsignedGreaterThan,
                 forge_fir::BinaryOp::GreaterEq => IntCC::UnsignedGreaterThanOrEqual,
                 _ => {
-                    return Err(BackendError::UnsupportedInstruction {
-                        kind: "non-comparison char operation",
-                    })
+                    return Err(shape(format!(
+                        "char FIR permits comparison operations only; got {op:?}"
+                    )))
                 }
             };
             let result = instruction
