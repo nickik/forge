@@ -316,7 +316,11 @@ impl CraneliftBackend {
                         )?;
                         (
                             GlobalInitialization::Constant(constant.clone()),
-                            GlobalStorageClass::ReadOnlyData,
+                            if global.mutable {
+                                GlobalStorageClass::WritableData
+                            } else {
+                                GlobalStorageClass::ReadOnlyData
+                            },
                             Some(data),
                         )
                     }
