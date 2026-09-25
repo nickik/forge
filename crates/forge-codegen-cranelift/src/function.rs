@@ -1169,7 +1169,7 @@ fn lower_scalar_binary(
             BinaryOp::Add => Ok(cursor.ins().fadd(l, r)), BinaryOp::Sub => Ok(cursor.ins().fsub(l, r)),
             BinaryOp::Mul => Ok(cursor.ins().fmul(l, r)), BinaryOp::Div => Ok(cursor.ins().fdiv(l, r)),
             _ if is_comparison(op) => Ok(cursor.ins().fcmp(float_comparison_condition(op)?, l, r)),
-            _ => Err(BackendError::UnsupportedInstruction { kind: "unsupported float binary operation" }),
+            _ => Err(shape(format!("invalid float binary FIR operation {op:?}"))),
         };
     }
     lower_integer_binary(fir, op, left, right, overflow, values, cursor)
