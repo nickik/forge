@@ -278,6 +278,20 @@ fn rejects_bitwise_not_on_float_before_fir_lowering() {
 }
 
 #[test]
+fn rejects_float_literal_with_integer_declared_type() {
+    let output = check(
+        r#"
+        module test.float_literal_integer_type;
+        fn main() -> i32 {
+            val bad: u32 = 1.0f32;
+            return 0;
+        }
+    "#,
+    );
+    assert!(has(&output, "type/mismatch"), "{:?}", output.diagnostics);
+}
+
+#[test]
 fn rejects_wrong_return_type() {
     let output = check(
         r#"
