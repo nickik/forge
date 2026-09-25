@@ -56,6 +56,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Reject sequence patterns on non-sequences during typechecking and treat
         incompatible `Subsequence` source/result FIR as an invalid producer
         contract on AArch64 and RISC-V.
+  - [x] Keep `%` integer-only during typechecking and treat handwritten
+        floating-point `Rem` FIR as an invalid producer contract, without
+        weakening AArch64 float support or SIA32 float rejection.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
