@@ -360,6 +360,31 @@ fn explicit_numeric_conversion_is_valid() {
 }
 
 #[test]
+fn rejects_boolean_to_integer_explicit_conversion() {
+    let output = check(
+        r#"
+        module test.boolean_integer_conversion;
+        fn main() -> i32 {
+            val bad = u32(true);
+            return 0;
+        }
+    "#,
+    );
+    let diagnostic = output
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "type/mismatch")
+        .expect("boolean-to-integer conversion diagnostic");
+    assert!(
+        diagnostic
+            .message
+            .contains("invalid explicit conversion from Bool to Int"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
 fn explicit_array_reference_slice_views_preserve_mutability() {
     let output = check(
         r#"
