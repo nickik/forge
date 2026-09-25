@@ -84,15 +84,17 @@ available on every backend merely because the frontend accepts it.
         names/bindings, explicit imports/exports/locals and text/data
         relocations; SIAO32 separately pins its sections, symbols and `ABS32`
         relocation contract.
-- [ ] Add malformed-object, unresolved-symbol and relocation-overflow negative
+- [x] Add malformed-object, unresolved-symbol and relocation-overflow negative
       tests at each object/image boundary.
   - [x] SIAO32 parsing/linking pins exact diagnostics for malformed objects,
-        unresolved symbols and overflowing `ABS32` relocations.
+        unresolved symbols and overflowing `ABS32` relocations in
+        `sia32_m8_relocations`.
   - [x] Static function/global pointer relocations reject missing targets before
-        object emission on AArch64 and RISC-V.
+        object emission on AArch64 and RISC-V in `c11b_static_data`.
   - [x] Native ELF emission pins unresolved function/global/internal-label
         diagnostics and rejects text/static-data relocation ranges that escape
-        their owning section before writing an object.
+        their owning section before writing an object in the object-emitter
+        unit regressions.
 
 ## 4. Target capability roadmap
 
