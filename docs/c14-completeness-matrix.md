@@ -21,7 +21,7 @@ Legend:
 | Integer, bool, byte scalars | 1 | Checked/wrapping arithmetic, comparisons, shifts, conversions and ABI tests. |
 | `char` | 1 | Native constants, locals, comparison, argument and return fixture. Arithmetic is rejected during typechecking; handwritten arithmetic `char` FIR is an invalid producer contract on AArch64/RISC-V. |
 | `duration` | 1 | Source builtin and reader form lower as signed nanoseconds; native argument, return, local, field load and field store execution is covered. |
-| `f32`, `f64` | 4 | Native AArch64 scalar constants, arithmetic, negation, comparisons, integer-to-float conversion, `f32`/`f64` argument-return calls, aggregate field storage, and executable fixtures are implemented. Unordered `NaN` comparisons, signed zero through division, integer-to-`f64` conversion, and explicit `f32`↔`f64` promotion/demotion execute in the hosted acceptance lane. Mixed-`f32`/`f64` aggregate arguments and returns execute through the production ABI. The AArch64 native matrix is complete; SIA32 deliberately rejects float FIR until C15, and RISC-V float support remains unclaimed. |
+| `f32`, `f64` | 4 | Native AArch64 scalar constants, `+`/`-`/`*`/`/`, negation, comparisons, integer-to-float conversion, `f32`/`f64` argument-return calls, aggregate field storage, and executable fixtures are implemented. `%` is integer-only and floating-point `Rem` FIR is invalid. Unordered `NaN` comparisons, signed zero through division, integer-to-`f64` conversion, and explicit `f32`↔`f64` promotion/demotion execute in the hosted acceptance lane. Mixed-`f32`/`f64` aggregate arguments and returns execute through the production ABI. The AArch64 native matrix is complete; SIA32 deliberately rejects float FIR until C15, and RISC-V float support remains unclaimed. |
 | Structs and enums | 1 | Construction, projection, layout, ABI and matching tests. |
 | Tagged unions | 1 | Construction, payload extraction, nested match, and mixed fieldless/narrow-scalar/multi-field payload argument-return ABI execute. |
 | `Option[T]` | 1 | `None`, explicit `Some(value)`, implicit promotion, patterns and native layout/lowering. |
@@ -67,6 +67,8 @@ Legend:
   `char` FIR is diagnosed as an invalid producer contract rather than deferred backend support.
 - Sequence patterns are restricted to arrays and slices during typechecking; incompatible
   `Subsequence` source/result FIR is an invalid producer contract, not deferred lowering.
+- `%` is integer-only during typechecking; handwritten floating-point `Rem` FIR is an invalid
+  producer contract rather than an unimplemented AArch64 operation.
 - Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not
   prove instruction lowering or ABI execution.
 - `LoadGlobal` has real object/relocation coverage; comments describing it as future work must be
