@@ -1249,9 +1249,9 @@ fn lower_integer_convert(
         .get(&input)
         .ok_or_else(|| shape(format!("missing type for conversion input {input:?}")))?;
     if !is_integer_type(source) || !is_integer_type(target) {
-        return Err(BackendError::UnsupportedInstruction {
-            kind: "non-integer scalar conversion",
-        });
+        return Err(shape(format!(
+            "lossless integer conversion has non-integer FIR endpoint: {source:?} to {target:?}"
+        )));
     }
 
     normalize_integer_to_type(

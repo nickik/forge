@@ -239,6 +239,13 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                     let source = value_type(fir, *value, "conversion input")?;
+                    if !matches!(source, Ty::Int { .. } | Ty::Byte)
+                        || !matches!(target, Ty::Int { .. } | Ty::Byte)
+                    {
+                        return Err(shape(format!(
+                            "lossless integer conversion has non-integer FIR endpoint: {source:?} to {target:?}"
+                        )));
+                    }
                     if !lossless_integer_conversion(source, target, layout)? {
                         return Err(BackendError::UnsupportedInstruction {
                             kind: "lossy integer conversion requires explicit FIR conversion semantics",
