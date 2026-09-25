@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 51208)
+Total output lines: 5355
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
@@ -2652,129 +2655,7 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                     }
                 } else if let Some(ty) = self.env.globals.get(&id) {
                     ty.clone()
-                } else if let Some(value) = self.env.constants.get(&id) {
-                    const_value_ty(value)
-                } else {
-                    Ty::Unknown
-                }
-            }
-            ResolvedName::Error => Ty::Error,
-            ResolvedName::Import(_) | ResolvedName::BuiltinType | ResolvedName::BuiltinValue(_) => {
-                Ty::Unknown
-            }
-        }
-    }
-
-    fn check_call(
-        &mut self,
-        span: Span,
-        callee: &HirExpr,
-        args: &[HirCallArg],
-    ) -> (Ty, Option<ResolvedCallInfo>) {
-        if let HirExprKind::Member { base, name } = &callee.kind {
-            let receiver_ty = self.check_expr(base, None);
-            if let Some((method_id, sig)) = self.env.lookup_method(&receiver_ty, name) {
-                let sig = sig.clone();
-                self.check_method_receiver(base, &receiver_ty, &sig);
-                let receiver = match sig.params.first().map(|param| &param.ty) {
-                    Some(Ty::Reference { mutable: true, .. }) => {
-                        Some(ResolvedReceiver::MutableReference)
-                    }
-                    Some(Ty::Reference { mutable: false, .. }) => {
-                        Some(ResolvedReceiver::SharedReference)
-                    }
-                    Some(_) => Some(ResolvedReceiver::Value),
-                    None => None,
-                };
-                let reduced = FunctionSig {
-                    params: sig.params.iter().skip(1).cloned().collect(),
-                    result: sig.result.clone(),
-                    named_arguments: sig.named_arguments,
-                };
-                let arguments = self.check_function_args(span, &reduced, args);
-                return (
-                    sig.result,
-                    Some(ResolvedCallInfo {
-                        target: method_id,
-                        method: true,
-                        receiver,
-                        arguments,
-                    }),
-                );
-            }
-        }
-        if let HirExprKind::Name { reference } = &callee.kind {
-            if let ResolvedName::Def(id) = reference.root {
-                if let Some(sig) = self.env.functions.get(&id).cloned() {
-                    let arguments = self.check_function_args(span, &sig, args);
-                    return (
-                        sig.result,
-                        Some(ResolvedCallInfo {
-                            target: id,
-                            method: false,
-                            receiver: None,
-                            arguments,
-                        }),
-                    );
-                }
-            }
-        }
-        let callee_ty = self.check_expr(callee, None);
-        match callee_ty {
-            Ty::Function { params, result, .. } => {
-                for (arg, param) in args.iter().zip(params.iter()) {
-                    let value = arg_value(arg);
-                    self.check_call_argument(value, param);
-                }
-                if args.len() != params.len() {
-                    self.diagnostic(
-                        span,
-                        "call/arity",
-                        "function pointer call has wrong argument count",
-                    );
-                }
-                (*result, None)
-            }
-            Ty::Closure { params, result } => {
-                if args
-                    .iter()
-                    .any(|arg| matches!(arg, HirCallArg::Named { .. }))
-                {
-                    self.diagnostic(
-                        span,
-                        "call/closure-named",
-                        "closure calls are positional in Forge v1",
-                    );
-                }
-                for (arg, param) in args.iter().zip(params.iter()) {
-                    let value = arg_value(arg);
-                    self.check_call_argument(value, param);
-                }
-                if args.len() != params.len() {
-                    self.diagnostic(span, "call/arity", "closure call has wrong argument count");
-                }
-                (*result, None)
-            }
-            Ty::Error => (Ty::Error, None),
-            _ => (Ty::Unknown, None),
-        }
-    }
-
-    fn check_call_argument(&mut self, value: &HirExpr, parameter: &Ty) {
-        let actual = self.check_expr(value, Some(parameter));
-        if matches!(actual, Ty::Closure { .. }) {
-            self.diagnostic(
-                value.span,
-                "closure/escape",
-                format!(
-                    "Forge v1 closure value {actual:?} cannot cross a call boundary; call it locally or pass a capture-free function pointer"
-                ),
-            );
-        }
-        self.require_assignable(value.span, parameter, &actual, "type/mismatch");
-    }
-
-    fn check_method_receiver(&mut self, receiver: &HirExpr, actual: &Ty, sig: &FunctionSig) {
+                } else if let Some(value) = self.env.constants.get(&id)…1208 tokens truncated…nctionSig) {
         let Some(self_param) = sig.params.first() else {
             self.diagnostic(
                 receiver.span,
@@ -3071,7 +2952,17 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 }
                 self.common_numeric(l, r, expected)
             }
-            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem => {
+            BinaryOp::Rem => {
+                if !is_integer_like(&l) || !is_integer_like(&r) || !self.compatible_binary(&l, &r) {
+                    self.diagnostic(
+                        span,
+                        "type/mismatch",
+                        format!("remainder operands must have one integer type: {l:?}, {r:?}"),
+                    );
+                }
+                self.common_numeric(l, r, expected)
+            }
+            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div => {
                 if !is_numeric_like(&l) || !is_numeric_like(&r) || !self.compatible_binary(&l, &r) {
                     self.diagnostic(
                         span,
