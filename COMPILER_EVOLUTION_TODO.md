@@ -89,6 +89,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Reject `None` in integer contexts during typechecking and treat
         handwritten `MakeNone` instructions with non-optional FIR result types
         as invalid producer contracts on AArch64 and RISC-V.
+  - [x] Keep Option patterns restricted to optional scrutinees and require
+        handwritten `OptionIsSome` instructions to consume optional values and
+        produce booleans on AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
