@@ -3071,7 +3071,17 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                 }
                 self.common_numeric(l, r, expected)
             }
-            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem => {
+            BinaryOp::Rem => {
+                if !is_integer_like(&l) || !is_integer_like(&r) || !self.compatible_binary(&l, &r) {
+                    self.diagnostic(
+                        span,
+                        "type/mismatch",
+                        format!("remainder operands must have one integer type: {l:?}, {r:?}"),
+                    );
+                }
+                self.common_numeric(l, r, expected)
+            }
+            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div => {
                 if !is_numeric_like(&l) || !is_numeric_like(&r) || !self.compatible_binary(&l, &r) {
                     self.diagnostic(
                         span,

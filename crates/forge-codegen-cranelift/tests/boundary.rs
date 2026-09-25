@@ -330,3 +330,78 @@ fn invalid_subsequence_types_are_a_producer_contract_error() {
         );
     }
 }
+
+#[test]
+fn floating_point_remainder_fir_is_an_invalid_producer_contract() {
+    let owner = DefId(5);
+    let left = FirValueId(0);
+    let right = FirValueId(1);
+    let result = FirValueId(2);
+    let float = Ty::Float { bits: 32 };
+    let mut module = FirModule::default();
+    module.functions.insert(
+        owner,
+        FirFunction {
+            owner,
+            params: Vec::new(),
+            return_type: float.clone(),
+            locals: BTreeMap::new(),
+            closures: BTreeMap::new(),
+            entry: FirBlockId(0),
+            blocks: vec![FirBasicBlock {
+                id: FirBlockId(0),
+                closure: None,
+                instructions: vec![
+                    FirInstruction {
+                        span: Span::new(0, 3),
+                        result: Some(left),
+                        kind: FirInstructionKind::Const {
+                            value: FirConst::Float {
+                                text: "5.5f32".into(),
+                            },
+                        },
+                    },
+                    FirInstruction {
+                        span: Span::new(4, 7),
+                        result: Some(right),
+                        kind: FirInstructionKind::Const {
+                            value: FirConst::Float {
+                                text: "2.0f32".into(),
+                            },
+                        },
+                    },
+                    FirInstruction {
+                        span: Span::new(8, 9),
+                        result: Some(result),
+                        kind: FirInstructionKind::Binary {
+                            op: BinaryOp::Rem,
+                            overflow: Some(OverflowMode::Checked),
+                            left,
+                            right,
+                        },
+                    },
+                ],
+                terminator: Some(FirTerminator::Return {
+                    value: Some(result),
+                }),
+            }],
+            value_types: BTreeMap::from([
+                (left, float.clone()),
+                (right, float.clone()),
+                (result, float),
+            ]),
+        },
+    );
+
+    let backend = CraneliftBackend::aarch64().expect("AArch64 backend");
+    let error = match backend.prepare_module(&module) {
+        Ok(_) => panic!("floating-point remainder FIR unexpectedly lowered"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error,
+        BackendError::InvalidFirShape {
+            message: "invalid float binary FIR operation Rem".into(),
+        }
+    );
+}

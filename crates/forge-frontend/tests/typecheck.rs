@@ -180,6 +180,31 @@ fn rejects_character_arithmetic_before_fir_lowering() {
 }
 
 #[test]
+fn rejects_floating_point_remainder() {
+    let output = check(
+        r#"
+        module test.float_remainder;
+        fn main() -> i32 {
+            val bad = 5.5f32 % 2.0f32;
+            return 0;
+        }
+    "#,
+    );
+    let diagnostic = output
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "type/mismatch")
+        .expect("floating-point remainder diagnostic");
+    assert!(
+        diagnostic
+            .message
+            .contains("remainder operands must have one integer type"),
+        "{:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
 fn rejects_wrong_return_type() {
     let output = check(
         r#"
