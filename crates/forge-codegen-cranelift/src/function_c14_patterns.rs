@@ -503,8 +503,8 @@ fn lower_c14_subsequence(
             aggregates.insert(result_id, result);
             Ok(())
         }
-        _ => Err(BackendError::UnsupportedInstruction {
-            kind: "subsequence source/result type combination",
-        }),
+        _ => Err(shape(format!(
+            "invalid subsequence from {base_ty:?} to {result_ty:?} at start {start}"
+        ))),
     }
 }
