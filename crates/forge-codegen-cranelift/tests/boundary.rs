@@ -759,3 +759,69 @@ fn duration_constant_with_integer_result_type_is_an_invalid_producer_contract() 
         );
     }
 }
+
+#[test]
+fn lossless_integer_conversion_with_boolean_source_is_an_invalid_producer_contract() {
+    let owner = DefId(12);
+    let input = FirValueId(0);
+    let result = FirValueId(1);
+    let integer = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let mut module = FirModule::default();
+    module.functions.insert(
+        owner,
+        FirFunction {
+            owner,
+            params: Vec::new(),
+            return_type: integer.clone(),
+            locals: BTreeMap::new(),
+            closures: BTreeMap::new(),
+            entry: FirBlockId(0),
+            blocks: vec![FirBasicBlock {
+                id: FirBlockId(0),
+                closure: None,
+                instructions: vec![
+                    FirInstruction {
+                        span: Span::new(0, 4),
+                        result: Some(input),
+                        kind: FirInstructionKind::Const {
+                            value: FirConst::Bool { value: true },
+                        },
+                    },
+                    FirInstruction {
+                        span: Span::new(5, 14),
+                        result: Some(result),
+                        kind: FirInstructionKind::LosslessIntegerConvert {
+                            value: input,
+                            target: integer.clone(),
+                        },
+                    },
+                ],
+                terminator: Some(FirTerminator::Return {
+                    value: Some(result),
+                }),
+            }],
+            value_types: BTreeMap::from([(input, Ty::Bool), (result, integer)]),
+        },
+    );
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("lossless integer conversion from bool unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: concat!(
+                    "lossless integer conversion has non-integer FIR endpoint: ",
+                    "Bool to Int { signed: false, width: W32 }"
+                )
+                .into(),
+            }
+        );
+    }
+}
