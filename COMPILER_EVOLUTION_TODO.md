@@ -198,6 +198,9 @@ available on every backend merely because the frontend accepts it.
       represented in FIR rather than reconstructed in codegen.
   - [x] Represent ordinary integer conversions as explicitly lossless FIR;
         target-aware narrowing and signedness loss stay rejected.
+  - [x] Reject non-integer endpoints before lowering handwritten
+        `LosslessIntegerConvert` FIR, without weakening the explicit lossy
+        integer-conversion boundary.
 - [x] Add compiler debug dumps for typed HIR, FIR, ABI decomposition, CLIF and
       object plans behind stable, testable flags.
   - [x] `forgec --dump-fir` emits deterministic verified FIR JSON for the
