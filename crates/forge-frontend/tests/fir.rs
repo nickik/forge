@@ -1642,23 +1642,52 @@ fn pointer_conversions_are_not_plain_fir_converts() {
         type BytePtr = *byte;
         fn address(p: *u32) -> usize { unsafe { return usize(p); } }
         fn cast(p: *u32) -> BytePtr { unsafe { return BytePtr(p); } }
+        fn from_address(address: usize) -> BytePtr { unsafe { return BytePtr(address); } }
         "#,
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|instruction| matches!(
-        instruction,
-        FirInstructionKind::PointerConvert {
-            operation: forge_frontend::UnsafeOperationKind::PointerToInteger,
-            ..
+    let mut operations = Vec::new();
+    for function in output.module.functions.values() {
+        for instruction in function
+            .blocks
+            .iter()
+            .flat_map(|block| &block.instructions)
+        {
+            let FirInstructionKind::PointerConvert {
+                value,
+                target,
+                operation,
+                ..
+            } = &instruction.kind
+            else {
+                continue;
+            };
+            let result = instruction.result.expect("pointer-convert result");
+            assert_eq!(&function.value_types[&result], target);
+            let source = &function.value_types[value];
+            match operation {
+                forge_frontend::UnsafeOperationKind::PointerToInteger => {
+                    assert!(matches!(source, Ty::Pointer { .. }));
+                    assert!(matches!(target, Ty::Int { .. } | Ty::Byte));
+                }
+                forge_frontend::UnsafeOperationKind::IntegerToPointer => {
+                    assert!(matches!(source, Ty::Int { .. } | Ty::Byte));
+                    assert!(matches!(target, Ty::Pointer { .. }));
+                }
+                forge_frontend::UnsafeOperationKind::PointerReinterpret => {
+                    assert!(matches!(source, Ty::Pointer { .. }));
+                    assert!(matches!(target, Ty::Pointer { .. }));
+                    assert_ne!(source, target);
+                }
+                operation => panic!("unexpected pointer conversion operation {operation:?}"),
+            }
+            operations.push(*operation);
         }
-    )));
-    assert!(instructions(&output).any(|instruction| matches!(
-        instruction,
-        FirInstructionKind::PointerConvert {
-            operation: forge_frontend::UnsafeOperationKind::PointerReinterpret,
-            ..
-        }
-    )));
+    }
+    assert_eq!(operations.len(), 3);
+    assert!(operations.contains(&forge_frontend::UnsafeOperationKind::PointerToInteger));
+    assert!(operations.contains(&forge_frontend::UnsafeOperationKind::IntegerToPointer));
+    assert!(operations.contains(&forge_frontend::UnsafeOperationKind::PointerReinterpret));
 }
 
 #[test]
