@@ -118,6 +118,64 @@ fn tagged_def() -> (DefId, TypeDefinition) {
     )
 }
 
+fn aggregate_constructor(fields: Vec<(String, FirValueId)>, payload_ty: Ty) -> FirFunction {
+    let span = Span::new(0, 0);
+    let payload = FirValueId(0);
+    let aggregate = FirValueId(1);
+    let record_ty = Ty::Nominal(DefId(100));
+    FirFunction {
+        owner: DefId(5),
+        params: Vec::new(),
+        return_type: record_ty.clone(),
+        locals: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![
+                scalar_const(span, payload, "1"),
+                FirInstruction {
+                    span,
+                    result: Some(aggregate),
+                    kind: FirInstructionKind::MakeAggregate {
+                        ty: record_ty.clone(),
+                        variant: None,
+                        fields,
+                    },
+                },
+            ],
+            terminator: Some(FirTerminator::Return {
+                value: Some(aggregate),
+            }),
+        }],
+        value_types: BTreeMap::from([(payload, payload_ty), (aggregate, record_ty)]),
+    }
+}
+
+#[test]
+fn aggregate_constructor_rejects_duplicate_supplied_fields() {
+    let value = FirValueId(0);
+    let function = aggregate_constructor(
+        vec![("a".into(), value), ("a".into(), value)],
+        u(IntWidth::W8),
+    );
+    let defs = BTreeMap::from([record_def()]);
+    assert_invalid_on_host_targets(function, &defs, "duplicate aggregate field `a`");
+}
+
+#[test]
+fn aggregate_constructor_requires_exact_supplied_field_types() {
+    let value = FirValueId(0);
+    let function = aggregate_constructor(vec![("a".into(), value)], u(IntWidth::W32));
+    let defs = BTreeMap::from([record_def()]);
+    assert_invalid_on_host_targets(
+        function,
+        &defs,
+        "make-aggregate field `a` has FIR payload type Int { signed: false, width: W32 }, declared field type is Int { signed: false, width: W8 }",
+    );
+}
+
 #[test]
 fn variant_cannot_construct_a_payload_bearing_tagged_variant() {
     let span = Span::new(0, 0);

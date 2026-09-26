@@ -814,6 +814,50 @@ fn fieldless_and_payload_variants_use_distinct_fir_constructors() {
 }
 
 #[test]
+fn aggregate_constructor_fir_preserves_checked_field_payload_types() {
+    let output = lower(
+        r#"
+        module test.fir_aggregate_field_types;
+        struct Packet { kind: u8; count: u32; }
+        fn packet() -> Packet { return Packet{kind: 7u8, count: 9u32}; }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let function = output.module.functions.values().next().expect("function");
+    let fields = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find_map(|instruction| match &instruction.kind {
+            FirInstructionKind::MakeAggregate { fields, .. } => Some(fields),
+            _ => None,
+        })
+        .expect("aggregate constructor");
+    assert_eq!(
+        fields
+            .iter()
+            .map(|(name, value)| (name.as_str(), function.value_types.get(value)))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "kind",
+                Some(&Ty::Int {
+                    signed: false,
+                    width: IntWidth::W8,
+                }),
+            ),
+            (
+                "count",
+                Some(&Ty::Int {
+                    signed: false,
+                    width: IntWidth::W32,
+                }),
+            ),
+        ]
+    );
+}
+
+#[test]
 fn tagged_match_extracts_typed_payload_bindings() {
     let output = lower(
         r#"
