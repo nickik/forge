@@ -1648,11 +1648,7 @@ fn pointer_conversions_are_not_plain_fir_converts() {
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
     let mut operations = Vec::new();
     for function in output.module.functions.values() {
-        for instruction in function
-            .blocks
-            .iter()
-            .flat_map(|block| &block.instructions)
-        {
+        for instruction in function.blocks.iter().flat_map(|block| &block.instructions) {
             let FirInstructionKind::PointerConvert {
                 value,
                 target,
