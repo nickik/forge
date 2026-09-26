@@ -1512,6 +1512,50 @@ fn capture_free_closure_function_pointer_has_no_environment() {
 }
 
 #[test]
+fn named_function_reference_preserves_the_target_signature() {
+    let output = lower(
+        r#"
+        module test.fir_named_fn_ptr;
+        fn add_one(value: u32) -> u32 { return value + 1u32; }
+        fn main() -> u32 {
+            val op: fn(u32) -> u32 = add_one;
+            return op(8u32);
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let mut saw_reference = false;
+    for function in output.module.functions.values() {
+        for instruction in function.blocks.iter().flat_map(|block| &block.instructions) {
+            let FirInstructionKind::FunctionRef { target } = &instruction.kind else {
+                continue;
+            };
+            let result = instruction.result.expect("function-reference result");
+            let callee = &output.module.functions[target];
+            let Ty::Function {
+                params,
+                result: return_type,
+                ..
+            } = &function.value_types[&result]
+            else {
+                panic!("function reference is not function typed");
+            };
+            assert_eq!(
+                params,
+                &callee
+                    .params
+                    .iter()
+                    .map(|parameter| callee.locals[parameter].ty.clone())
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(return_type.as_ref(), &callee.return_type);
+            saw_reference = true;
+        }
+    }
+    assert!(saw_reference);
+}
+
+#[test]
 fn required_tail_calls_remain_explicit_in_direct_and_indirect_fir() {
     let output = lower(
         r#"

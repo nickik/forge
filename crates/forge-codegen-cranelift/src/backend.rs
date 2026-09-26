@@ -10,6 +10,7 @@ use forge_fir::{
 };
 use target_lexicon::Triple;
 
+use crate::abi::fir_parameter_types;
 use crate::c9_memory_checks::validate_c9_memory_places;
 use crate::function::lower_function;
 use crate::sia32_privileged_lowering::validate_sia32_privileged_operations;
@@ -108,6 +109,7 @@ impl CraneliftBackend {
         for (owner, fir) in &module.functions {
             // Preserve all scalar semantic barriers established before C9.
             validate_c4_scalar_contract(fir, &self.layout, definitions)?;
+            validate_function_ref_contracts(fir, &module.functions)?;
             validate_c9_memory_places(fir)?;
             validate_sia32_privileged_operations(self.target, fir)?;
 
@@ -130,6 +132,43 @@ impl CraneliftBackend {
             functions,
         })
     }
+}
+
+fn validate_function_ref_contracts(
+    fir: &FirFunction,
+    all_functions: &BTreeMap<DefId, FirFunction>,
+) -> Result<(), BackendError> {
+    for block in &fir.blocks {
+        for instruction in &block.instructions {
+            let FirInstructionKind::FunctionRef { target } = &instruction.kind else {
+                continue;
+            };
+            let result = instruction
+                .result
+                .ok_or_else(|| shape("function-ref has no result"))?;
+            let result_ty = value_type(fir, result, "function-ref result")?;
+            let Ty::Function {
+                params,
+                result,
+                named_arguments: _,
+            } = result_ty
+            else {
+                return Err(shape(format!(
+                    "function-ref has non-function result type {result_ty:?}"
+                )));
+            };
+            let callee = all_functions.get(target).ok_or_else(|| {
+                shape(format!("function-ref target {target:?} is not in module"))
+            })?;
+            let expected_params = fir_parameter_types(callee)?;
+            if params != &expected_params || result.as_ref() != &callee.return_type {
+                return Err(shape(format!(
+                    "function-ref type {result_ty:?} does not match target {target:?} signature"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_c4_scalar_contract(
