@@ -174,6 +174,27 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
+                FirInstructionKind::Variant { ty, name } => {
+                    if ty != result_ty {
+                        return Err(shape(format!(
+                            "variant instruction declares type {ty:?}, result is {result_ty:?}"
+                        )));
+                    }
+                    if !named_variant_is_fieldless(definitions, ty, name)? {
+                        return Err(shape(format!(
+                            "variant instruction cannot construct payload-bearing variant `{name}`"
+                        )));
+                    }
+                }
+                FirInstructionKind::VariantIs { value, name } => {
+                    let source = value_type(fir, *value, "variant test input")?;
+                    named_variant_is_fieldless(definitions, source, name)?;
+                    if result_ty != &Ty::Bool {
+                        return Err(shape(format!(
+                            "variant-is instruction has non-bool FIR result type {result_ty:?}"
+                        )));
+                    }
+                }
                 FirInstructionKind::OptionIsSome { value } => {
                     let source = value_type(fir, *value, "option test input")?;
                     if !matches!(source, Ty::Optional { .. }) {
@@ -461,6 +482,34 @@ fn validate_c4_scalar_contract(
         }
     }
     Ok(())
+}
+
+fn named_variant_is_fieldless(
+    definitions: &TypeDefinitionTable,
+    ty: &Ty,
+    name: &str,
+) -> Result<bool, BackendError> {
+    let Ty::Nominal(owner) = ty else {
+        return Err(shape(format!(
+            "named variant instruction has non-nominal FIR type {ty:?}"
+        )));
+    };
+    let definition = definitions
+        .get(owner)
+        .ok_or_else(|| shape(format!("named variant instruction has unknown type {owner:?}")))?;
+    let variants = match &definition.kind {
+        TypeDefinitionKind::Enum { variants } | TypeDefinitionKind::Tagged { variants } => variants,
+        _ => {
+            return Err(shape(format!(
+                "named variant instruction has non-sum FIR type {ty:?}"
+            )))
+        }
+    };
+    let variant = variants
+        .iter()
+        .find(|variant| variant.name == name)
+        .ok_or_else(|| shape(format!("unknown variant `{name}` for FIR type {ty:?}")))?;
+    Ok(variant.fields.is_empty())
 }
 
 fn lossless_integer_conversion(
