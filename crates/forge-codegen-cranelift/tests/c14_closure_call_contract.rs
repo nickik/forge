@@ -130,11 +130,7 @@ fn closure_call_requires_a_closure_typed_callee() {
 #[test]
 fn closure_call_arity_must_match_the_parameter_list() {
     assert_invalid(
-        caller(
-            closure_ty(vec![u32_ty(), u32_ty()]),
-            u32_ty(),
-            u32_ty(),
-        ),
+        caller(closure_ty(vec![u32_ty(), u32_ty()]), u32_ty(), u32_ty()),
         "closure call has 1 argument(s), expected 2",
     );
 }
