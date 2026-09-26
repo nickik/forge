@@ -1579,15 +1579,44 @@ fn raw_pointer_dereference_lowers_with_unsafe_provenance() {
         "#,
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|instruction| matches!(
-        instruction,
-        FirInstructionKind::Load {
-            place: forge_frontend::FirPlace::RawDeref {
-                volatile: false,
-                ..
-            }
+    let function = output.module.functions.values().next().expect("function");
+    let instruction = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find(|instruction| {
+            matches!(
+                &instruction.kind,
+                FirInstructionKind::Load {
+                    place: forge_frontend::FirPlace::RawDeref { .. }
+                }
+            )
+        })
+        .expect("raw load");
+    let FirInstructionKind::Load {
+        place: forge_frontend::FirPlace::RawDeref {
+            address, volatile, ..
+        },
+    } = &instruction.kind
+    else {
+        unreachable!();
+    };
+    let pointee = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    assert!(!volatile);
+    assert_eq!(
+        function.value_types[address],
+        Ty::Pointer {
+            volatile: false,
+            inner: Box::new(pointee.clone()),
         }
-    )));
+    );
+    assert_eq!(
+        function.value_types[&instruction.result.expect("raw load result")],
+        pointee
+    );
 }
 
 #[test]
@@ -1601,13 +1630,43 @@ fn raw_pointer_store_uses_provenanced_raw_place() {
         "#,
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|instruction| matches!(
-        instruction,
-        FirInstructionKind::Store {
-            place: forge_frontend::FirPlace::RawDeref { .. },
-            ..
+    let function = output.module.functions.values().next().expect("function");
+    let instruction = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find(|instruction| {
+            matches!(
+                &instruction.kind,
+                FirInstructionKind::Store {
+                    place: forge_frontend::FirPlace::RawDeref { .. },
+                    ..
+                }
+            )
+        })
+        .expect("raw store");
+    let FirInstructionKind::Store {
+        place: forge_frontend::FirPlace::RawDeref {
+            address, volatile, ..
+        },
+        value,
+    } = &instruction.kind
+    else {
+        unreachable!();
+    };
+    let pointee = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    assert!(!volatile);
+    assert_eq!(
+        function.value_types[address],
+        Ty::Pointer {
+            volatile: false,
+            inner: Box::new(pointee.clone()),
         }
-    )));
+    );
+    assert_eq!(function.value_types[value], pointee);
 }
 
 #[test]
