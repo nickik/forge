@@ -107,6 +107,10 @@ available on every backend merely because the frontend accepts it.
   - [x] Keep fieldless enum/tagged construction distinct from payload-bearing
         tagged construction and require `VariantIs` to produce booleans on
         AArch64 and RISC-V.
+  - [x] Require handwritten `MakeAggregate` instructions to declare the result
+        type once, name each supplied field once, and supply its exact declared
+        payload type on AArch64 and RISC-V; defaulted-field materialization
+        remains a separate frontend normalization concern.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.

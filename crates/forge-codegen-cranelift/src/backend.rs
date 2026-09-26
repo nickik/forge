@@ -6,6 +6,7 @@ use cranelift_codegen::Context;
 use forge_fir::{
     verify_fir_module, BinaryOp, DefId, FirBasicBlock, FirFunction, FirInstructionKind, FirModule,
     FirPlace, FirTerminator, FirValueId, IntWidth, Ty, TypeDefinitionKind, TypeDefinitionTable,
+    TypeFieldDefinition,
 };
 use target_lexicon::Triple;
 
@@ -174,6 +175,18 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
+                FirInstructionKind::MakeAggregate {
+                    ty,
+                    variant,
+                    fields,
+                } => validate_make_aggregate_contract(
+                    fir,
+                    definitions,
+                    ty,
+                    result_ty,
+                    variant.as_deref(),
+                    fields,
+                )?,
                 FirInstructionKind::Variant { ty, name } => {
                     if ty != result_ty {
                         return Err(shape(format!(
@@ -479,6 +492,80 @@ fn validate_c4_scalar_contract(
                 }
                 _ => {}
             }
+        }
+    }
+    Ok(())
+}
+
+fn validate_make_aggregate_contract(
+    fir: &FirFunction,
+    definitions: &TypeDefinitionTable,
+    declared_ty: &Ty,
+    result_ty: &Ty,
+    variant_name: Option<&str>,
+    fields: &[(String, FirValueId)],
+) -> Result<(), BackendError> {
+    if declared_ty != result_ty {
+        return Err(shape(format!(
+            "make-aggregate instruction declares type {declared_ty:?}, result is {result_ty:?}"
+        )));
+    }
+    let Ty::Nominal(owner) = declared_ty else {
+        return Err(shape(format!(
+            "make-aggregate instruction has non-nominal FIR type {declared_ty:?}"
+        )));
+    };
+    let definition = definitions.get(owner).ok_or_else(|| {
+        shape(format!(
+            "make-aggregate instruction has unknown type {owner:?}"
+        ))
+    })?;
+    let declared_fields: &[TypeFieldDefinition] = match &definition.kind {
+        TypeDefinitionKind::Struct {
+            fields: declared_fields,
+        } => {
+            if let Some(name) = variant_name {
+                return Err(shape(format!(
+                    "struct aggregate instruction unexpectedly names variant `{name}`"
+                )));
+            }
+            declared_fields
+        }
+        TypeDefinitionKind::Tagged { variants } => {
+            let name = variant_name
+                .ok_or_else(|| shape("tagged aggregate instruction is missing its variant"))?;
+            &variants
+                .iter()
+                .find(|variant| variant.name == name)
+                .ok_or_else(|| {
+                    shape(format!(
+                        "unknown aggregate variant `{name}` for FIR type {declared_ty:?}"
+                    ))
+                })?
+                .fields
+        }
+        _ => {
+            return Err(shape(format!(
+                "make-aggregate instruction has non-aggregate FIR type {declared_ty:?}"
+            )))
+        }
+    };
+
+    let mut seen = BTreeSet::new();
+    for (name, value) in fields {
+        if !seen.insert(name.as_str()) {
+            return Err(shape(format!("duplicate aggregate field `{name}`")));
+        }
+        let declared = declared_fields
+            .iter()
+            .find(|field| field.name == *name)
+            .ok_or_else(|| shape(format!("unknown aggregate field `{name}`")))?;
+        let payload = value_type(fir, *value, "aggregate field payload")?;
+        if payload != &declared.ty {
+            return Err(shape(format!(
+                "make-aggregate field `{name}` has FIR payload type {payload:?}, declared field type is {:?}",
+                declared.ty
+            )));
         }
     }
     Ok(())
