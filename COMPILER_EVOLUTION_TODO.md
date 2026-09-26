@@ -104,6 +104,9 @@ available on every backend merely because the frontend accepts it.
         and RISC-V.
   - [x] Require handwritten `MakeSome` instructions to produce optional values
         from their exact payload type on AArch64 and RISC-V.
+  - [x] Keep fieldless enum/tagged construction distinct from payload-bearing
+        tagged construction and require `VariantIs` to produce booleans on
+        AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.

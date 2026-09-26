@@ -768,6 +768,49 @@ fn enum_match_uses_resolved_variant_tests() {
         .filter(|op| matches!(op, FirInstructionKind::VariantIs { .. }))
         .count();
     assert_eq!(tests, 3);
+    let function = output.module.functions.values().next().unwrap();
+    for instruction in function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .filter(|instruction| matches!(&instruction.kind, FirInstructionKind::VariantIs { .. }))
+    {
+        assert_eq!(
+            function.value_types.get(&instruction.result.unwrap()),
+            Some(&Ty::Bool)
+        );
+    }
+}
+
+#[test]
+fn fieldless_and_payload_variants_use_distinct_fir_constructors() {
+    let output = lower(
+        r#"
+        module test.fir_variant_constructors;
+        tagged Token {
+            Number { value: u32; },
+            Empty,
+        }
+        fn empty() -> Token { return Token::Empty; }
+        fn number() -> Token { return Token::Number{value: 7u32}; }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Variant { name, .. } if name == "Empty"
+    )));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::MakeAggregate {
+            variant: Some(name),
+            ..
+        } if name == "Number"
+    )));
+    assert!(!instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Variant { name, .. } if name == "Number"
+    )));
 }
 
 #[test]

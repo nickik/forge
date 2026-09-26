@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 
-use forge_codegen_cranelift::CraneliftBackend;
+use forge_codegen_cranelift::{BackendError, CraneliftBackend, CraneliftTarget};
 use forge_fir::{
     DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction, FirInstructionKind,
     FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator, FirValueId, IntWidth, Span, Ty,
     TypeDefinition, TypeDefinitionKind, TypeDefinitionTable, TypeFieldDefinition,
+    TypeVariantDefinition,
 };
 
 fn u(width: IntWidth) -> Ty {
@@ -70,6 +71,134 @@ fn assert_prepares(module: &FirModule, defs: &TypeDefinitionTable) {
         let clif = function.display().to_string();
         assert!(clif.contains("ss0") || clif.contains("stack"), "{clif}");
     }
+}
+
+fn assert_invalid_on_host_targets(
+    function: FirFunction,
+    defs: &TypeDefinitionTable,
+    message: &str,
+) {
+    let module = module_with(function);
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module_with_types(&module, defs) {
+            Ok(_) => panic!("malformed variant FIR unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: message.into(),
+            }
+        );
+    }
+}
+
+fn tagged_def() -> (DefId, TypeDefinition) {
+    let owner = DefId(101);
+    (
+        owner,
+        TypeDefinition {
+            owner,
+            kind: TypeDefinitionKind::Tagged {
+                variants: vec![
+                    TypeVariantDefinition {
+                        name: "Number".into(),
+                        declaration_index: 0,
+                        fields: vec![field("value", 0, u(IntWidth::W32))],
+                    },
+                    TypeVariantDefinition {
+                        name: "Empty".into(),
+                        declaration_index: 1,
+                        fields: Vec::new(),
+                    },
+                ],
+            },
+        },
+    )
+}
+
+#[test]
+fn variant_cannot_construct_a_payload_bearing_tagged_variant() {
+    let span = Span::new(0, 0);
+    let tagged_ty = Ty::Nominal(DefId(101));
+    let value = FirValueId(0);
+    let function = FirFunction {
+        owner: DefId(3),
+        params: Vec::new(),
+        return_type: tagged_ty.clone(),
+        locals: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![FirInstruction {
+                span,
+                result: Some(value),
+                kind: FirInstructionKind::Variant {
+                    ty: tagged_ty.clone(),
+                    name: "Number".into(),
+                },
+            }],
+            terminator: Some(FirTerminator::Return { value: Some(value) }),
+        }],
+        value_types: BTreeMap::from([(value, tagged_ty)]),
+    };
+    let defs = BTreeMap::from([tagged_def()]);
+    assert_invalid_on_host_targets(
+        function,
+        &defs,
+        "variant instruction cannot construct payload-bearing variant `Number`",
+    );
+}
+
+#[test]
+fn variant_test_requires_a_boolean_result() {
+    let span = Span::new(0, 0);
+    let tagged_ty = Ty::Nominal(DefId(101));
+    let value = FirValueId(0);
+    let result = FirValueId(1);
+    let function = FirFunction {
+        owner: DefId(4),
+        params: Vec::new(),
+        return_type: u(IntWidth::W32),
+        locals: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![
+                FirInstruction {
+                    span,
+                    result: Some(value),
+                    kind: FirInstructionKind::Variant {
+                        ty: tagged_ty.clone(),
+                        name: "Empty".into(),
+                    },
+                },
+                FirInstruction {
+                    span,
+                    result: Some(result),
+                    kind: FirInstructionKind::VariantIs {
+                        value,
+                        name: "Empty".into(),
+                    },
+                },
+            ],
+            terminator: Some(FirTerminator::Return {
+                value: Some(result),
+            }),
+        }],
+        value_types: BTreeMap::from([(value, tagged_ty), (result, u(IntWidth::W32))]),
+    };
+    let defs = BTreeMap::from([tagged_def()]);
+    assert_invalid_on_host_targets(
+        function,
+        &defs,
+        "variant-is instruction has non-bool FIR result type Int { signed: false, width: W32 }",
+    );
 }
 
 #[test]
