@@ -839,8 +839,20 @@ fn aggregate_constructor_fir_preserves_checked_field_payload_types() {
             .map(|(name, value)| (name.as_str(), function.value_types.get(value)))
             .collect::<Vec<_>>(),
         vec![
-            ("kind", Some(&Ty::Int { signed: false, width: IntWidth::W8 })),
-            ("count", Some(&Ty::Int { signed: false, width: IntWidth::W32 })),
+            (
+                "kind",
+                Some(&Ty::Int {
+                    signed: false,
+                    width: IntWidth::W8,
+                }),
+            ),
+            (
+                "count",
+                Some(&Ty::Int {
+                    signed: false,
+                    width: IntWidth::W32,
+                }),
+            ),
         ]
     );
 }
