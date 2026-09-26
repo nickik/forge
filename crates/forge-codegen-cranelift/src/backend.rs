@@ -210,6 +210,31 @@ fn validate_c4_scalar_contract(
                     variant.as_deref(),
                     fields,
                 )?,
+                FirInstructionKind::MakeArray { items } => {
+                    let Ty::Array {
+                        element,
+                        length: Some(length),
+                    } = result_ty
+                    else {
+                        return Err(shape(format!(
+                            "make-array instruction has non-fixed-array FIR result type {result_ty:?}"
+                        )));
+                    };
+                    if *length != items.len() as u64 {
+                        return Err(shape(format!(
+                            "make-array instruction declares length {length}, but has {} item(s)",
+                            items.len()
+                        )));
+                    }
+                    for item in items {
+                        let item_ty = value_type(fir, *item, "array item")?;
+                        if item_ty != element.as_ref() {
+                            return Err(shape(format!(
+                                "make-array item has FIR type {item_ty:?}, array element type is {element:?}"
+                            )));
+                        }
+                    }
+                }
                 FirInstructionKind::Variant { ty, name } => {
                     if ty != result_ty {
                         return Err(shape(format!(

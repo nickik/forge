@@ -116,6 +116,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Validate dedicated bitstruct storage/rebuild/check/extract/extend FIR
         contracts before AArch64/RISC-V lowering, including direction-sensitive
         narrowing and extension, without relaxing generic integer conversion.
+  - [x] Require handwritten `MakeArray` instructions to produce fixed arrays
+        whose declared length and exact element type match their items on
+        AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
