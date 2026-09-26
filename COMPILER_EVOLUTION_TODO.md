@@ -96,6 +96,9 @@ available on every backend merely because the frontend accepts it.
         values and produce their exact payload type on AArch64 and RISC-V.
   - [x] Require handwritten `ResultIsOk` instructions to consume result values
         and produce booleans on AArch64 and RISC-V.
+  - [x] Require handwritten `ResultUnwrapOk` and `ResultUnwrapErr` instructions
+        to consume result values and produce their exact variant payload types
+        on AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.

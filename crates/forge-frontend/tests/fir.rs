@@ -281,10 +281,10 @@ fn result_patterns_lower_discriminant_tests_and_both_payload_projections() {
     let output = lower(
         r#"
         module test.fir_result_match;
-        fn inspect(value: Result[u8, u8]) -> u8 {
+        fn inspect(value: Result[u32, u8]) -> u32 {
             return match (value) {
                 Ok(payload) => payload,
-                Err(error) => error,
+                Err(error) => u32(error),
             };
         }
         "#,
@@ -307,9 +307,36 @@ fn result_patterns_lower_discriminant_tests_and_both_payload_projections() {
         function.value_types.get(&test.result.unwrap()),
         Some(&Ty::Bool)
     );
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::ResultUnwrapOk { .. })));
-    assert!(
-        instructions(&output).any(|op| matches!(op, FirInstructionKind::ResultUnwrapErr { .. }))
+    let unwrap_ok = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find(|instruction| matches!(&instruction.kind, FirInstructionKind::ResultUnwrapOk { .. }))
+        .unwrap();
+    assert_eq!(
+        function.value_types.get(&unwrap_ok.result.unwrap()),
+        Some(&Ty::Int {
+            signed: false,
+            width: IntWidth::W32,
+        })
+    );
+    let unwrap_err = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find(|instruction| {
+            matches!(
+                &instruction.kind,
+                FirInstructionKind::ResultUnwrapErr { .. }
+            )
+        })
+        .unwrap();
+    assert_eq!(
+        function.value_types.get(&unwrap_err.result.unwrap()),
+        Some(&Ty::Int {
+            signed: false,
+            width: IntWidth::W8,
+        })
     );
 }
 

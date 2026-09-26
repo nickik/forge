@@ -95,6 +95,8 @@ Legend:
   type on AArch64/RISC-V.
 - Handwritten `ResultIsOk` instructions require result inputs and boolean results on
   AArch64/RISC-V.
+- Handwritten `ResultUnwrapOk` and `ResultUnwrapErr` instructions require result inputs and their
+  exact variant payload result types on AArch64/RISC-V.
 - `LosslessIntegerConvert` accepts only integer endpoints; malformed non-integer FIR endpoints are
   producer errors, while narrowing and signedness-loss conversions remain explicitly unsupported.
 - Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not
