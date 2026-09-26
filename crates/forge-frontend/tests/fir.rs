@@ -327,7 +327,9 @@ fn explicit_option_and_result_constructors_reach_fir() {
         unreachable!();
     };
     assert_eq!(
-        err_function.value_types.get(&err_instruction.result.unwrap()),
+        err_function
+            .value_types
+            .get(&err_instruction.result.unwrap()),
         Some(&result_type)
     );
     assert_eq!(err_function.value_types.get(err_payload), Some(&byte));
