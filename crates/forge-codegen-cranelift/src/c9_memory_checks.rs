@@ -79,6 +79,32 @@ pub(crate) fn validate_c9_memory_places(fir: &FirFunction) -> Result<(), Backend
                             Access::Read
                         },
                     )?;
+                    if let FirPlace::Local { local } = place {
+                        let local_data = fir
+                            .locals
+                            .get(local)
+                            .ok_or_else(|| invalid(format!("missing FIR local {local:?}")))?;
+                        if *mutable && !local_data.mutable {
+                            return Err(invalid(format!(
+                                "mutable address requested for immutable FIR local {local:?}"
+                            )));
+                        }
+                        let result = instruction
+                            .result
+                            .ok_or_else(|| invalid("address-of FIR instruction has no result"))?;
+                        let result_ty = fir.value_types.get(&result).ok_or_else(|| {
+                            invalid(format!("missing type for address-of result {result:?}"))
+                        })?;
+                        let expected = Ty::Reference {
+                            mutable: *mutable,
+                            inner: Box::new(local_data.ty.clone()),
+                        };
+                        if result_ty != &expected {
+                            return Err(invalid(format!(
+                                "address-of result type {result_ty:?} does not match expected reference type {expected:?}"
+                            )));
+                        }
+                    }
                 }
                 _ => {}
             }
