@@ -177,6 +177,18 @@ fn aggregate_constructor_requires_exact_supplied_field_types() {
 }
 
 #[test]
+fn aggregate_constructor_requires_every_declared_field() {
+    let value = FirValueId(0);
+    let function = aggregate_constructor(vec![("a".into(), value)], u(IntWidth::W8));
+    let defs = BTreeMap::from([record_def()]);
+    assert_invalid_on_host_targets(
+        function,
+        &defs,
+        "make-aggregate instruction is missing declared field `b`",
+    );
+}
+
+#[test]
 fn variant_cannot_construct_a_payload_bearing_tagged_variant() {
     let span = Span::new(0, 0);
     let tagged_ty = Ty::Nominal(DefId(101));

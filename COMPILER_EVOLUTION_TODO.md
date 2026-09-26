@@ -109,8 +109,10 @@ available on every backend merely because the frontend accepts it.
         AArch64 and RISC-V.
   - [x] Require handwritten `MakeAggregate` instructions to declare the result
         type once, name each supplied field once, and supply its exact declared
-        payload type on AArch64 and RISC-V; defaulted-field materialization
-        remains a separate frontend normalization concern.
+        payload type on AArch64 and RISC-V.
+  - [x] Materialize omitted struct/tagged field defaults in body HIR before
+        typechecking and FIR, then require every declared `MakeAggregate` field;
+        struct and tagged defaults execute in the hosted native specification.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.

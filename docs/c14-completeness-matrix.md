@@ -104,8 +104,9 @@ Legend:
 - Fieldless enum/tagged variants use `Variant`; payload-bearing tagged variants require
   `MakeAggregate`, and `VariantIs` produces booleans on AArch64/RISC-V.
 - Handwritten `MakeAggregate` instructions require matching declared/result types, unique supplied
-  fields, and exact supplied payload types on AArch64/RISC-V; omitted defaulted fields remain a
-  separate frontend normalization concern.
+  fields, complete declared field sets, and exact supplied payload types on AArch64/RISC-V.
+- Omitted struct and tagged field defaults are materialized in body HIR before typechecking/FIR and
+  execute through the hosted native specification.
 - `LosslessIntegerConvert` accepts only integer endpoints; malformed non-integer FIR endpoints are
   producer errors, while narrowing and signedness-loss conversions remain explicitly unsupported.
 - Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not

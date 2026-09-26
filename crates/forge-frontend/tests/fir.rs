@@ -858,6 +858,53 @@ fn aggregate_constructor_fir_preserves_checked_field_payload_types() {
 }
 
 #[test]
+fn aggregate_constructor_materializes_defaulted_fields_before_fir() {
+    let output = lower(
+        r#"
+        module test.fir_aggregate_defaults;
+        struct Packet { kind: u8; count: u32 = 9u32; }
+        tagged Message { Pair { left: u16; right: u16 = 7u16; }, }
+        fn packet() -> Packet { return Packet{kind: 3u8}; }
+        fn message() -> Message { return Message::Pair{left: 5u16}; }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let constructors = output
+        .module
+        .functions
+        .values()
+        .flat_map(|function| {
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| &block.instructions)
+                .filter_map(|instruction| match &instruction.kind {
+                    FirInstructionKind::MakeAggregate {
+                        variant, fields, ..
+                    } => Some((variant.as_deref(), fields)),
+                    _ => None,
+                })
+        })
+        .collect::<Vec<_>>();
+    assert!(constructors.iter().any(|(variant, fields)| {
+        variant.is_none()
+            && fields
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>()
+                == vec!["kind", "count"]
+    }));
+    assert!(constructors.iter().any(|(variant, fields)| {
+        *variant == Some("Pair")
+            && fields
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>()
+                == vec!["left", "right"]
+    }));
+}
+
+#[test]
 fn tagged_match_extracts_typed_payload_bindings() {
     let output = lower(
         r#"
