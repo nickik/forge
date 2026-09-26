@@ -17,11 +17,34 @@ pub(crate) fn validate_c9_memory_places(fir: &FirFunction) -> Result<(), Backend
     for block in &fir.blocks {
         for instruction in &block.instructions {
             match &instruction.kind {
-                FirInstructionKind::Store { place, .. } => {
+                FirInstructionKind::Store { place, value } => {
                     validate_place(fir, place, Access::Write)?;
+                    if let Some(pointee) = raw_pointee_type(fir, place)? {
+                        let value_ty = fir.value_types.get(value).ok_or_else(|| {
+                            invalid(format!("missing type for raw store value {value:?}"))
+                        })?;
+                        if value_ty != pointee {
+                            return Err(invalid(format!(
+                                "raw FIR store value type {value_ty:?} differs from pointee type {pointee:?}"
+                            )));
+                        }
+                    }
                 }
                 FirInstructionKind::Load { place } => {
                     validate_place(fir, place, Access::Read)?;
+                    if let Some(pointee) = raw_pointee_type(fir, place)? {
+                        let result = instruction
+                            .result
+                            .ok_or_else(|| invalid("raw FIR load has no result"))?;
+                        let result_ty = fir.value_types.get(&result).ok_or_else(|| {
+                            invalid(format!("missing type for raw load result {result:?}"))
+                        })?;
+                        if result_ty != pointee {
+                            return Err(invalid(format!(
+                                "raw FIR load result type {result_ty:?} differs from pointee type {pointee:?}"
+                            )));
+                        }
+                    }
                 }
                 FirInstructionKind::AddressOf { place, mutable } => {
                     validate_place(
@@ -65,21 +88,54 @@ fn validate_place(fir: &FirFunction, place: &FirPlace, access: Access) -> Result
                 ))),
             }
         }
-        FirPlace::RawDeref { address, .. } => {
-            let ty = fir.value_types.get(address).ok_or_else(|| {
-                invalid(format!(
-                    "missing type for raw dereference address {address:?}"
-                ))
-            })?;
-            if matches!(ty, Ty::Pointer { .. }) {
-                Ok(())
-            } else {
-                Err(invalid(format!(
-                    "raw FIR dereference address has non-pointer type {ty:?}"
-                )))
-            }
+        FirPlace::RawDeref {
+            address, volatile, ..
+        } => {
+            raw_deref_pointee_type(fir, *address, *volatile)?;
+            Ok(())
         }
         FirPlace::ClosureCapture { .. } => Ok(()),
+    }
+}
+
+fn raw_pointee_type<'a>(
+    fir: &'a FirFunction,
+    place: &FirPlace,
+) -> Result<Option<&'a Ty>, BackendError> {
+    let FirPlace::RawDeref {
+        address, volatile, ..
+    } = place
+    else {
+        return Ok(None);
+    };
+    raw_deref_pointee_type(fir, *address, *volatile).map(Some)
+}
+
+fn raw_deref_pointee_type(
+    fir: &FirFunction,
+    address: forge_fir::FirValueId,
+    volatile: bool,
+) -> Result<&Ty, BackendError> {
+    let ty = fir.value_types.get(&address).ok_or_else(|| {
+        invalid(format!(
+            "missing type for raw dereference address {address:?}"
+        ))
+    })?;
+    match ty {
+        Ty::Pointer {
+            volatile: pointer_volatile,
+            inner,
+        } => {
+            if *pointer_volatile != volatile {
+                return Err(invalid(format!(
+                    "raw FIR dereference volatility {volatile} differs from pointer volatility {pointer_volatile}"
+                )));
+            }
+            Ok(inner)
+        }
+        _ => Err(invalid(format!(
+            "raw FIR dereference address has non-pointer type {ty:?}"
+        ))),
     }
 }
 
