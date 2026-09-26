@@ -136,15 +136,12 @@ fn mutable_global_assignment_and_address_lower_to_explicit_fir_operations() {
     let mut saw_store = false;
     let mut saw_address = false;
     for (instruction, function) in output.module.functions.values().flat_map(|function| {
-        function
-            .blocks
-            .iter()
-            .flat_map(move |block| {
-                block
-                    .instructions
-                    .iter()
-                    .map(move |instruction| (instruction, function))
-            })
+        function.blocks.iter().flat_map(move |block| {
+            block
+                .instructions
+                .iter()
+                .map(move |instruction| (instruction, function))
+        })
     }) {
         match &instruction.kind {
             FirInstructionKind::LoadGlobal { global: owner } if *owner == counter => {
