@@ -80,6 +80,7 @@ impl CraneliftBackend {
         for (owner, fir) in &all_functions {
             validate_c4_scalar_contract(fir, &self.layout, definitions)?;
             validate_c9_memory_places(fir)?;
+            validate_global_access_contracts(fir, &module.globals)?;
             validate_sia32_privileged_operations(self.target, fir)?;
             let scheduled = schedule_value_blocks(fir)?;
             let function = crate::function::lower_function_with_globals(
@@ -116,6 +117,80 @@ impl CraneliftBackend {
             module_initializer_owner,
         })
     }
+}
+
+fn validate_global_access_contracts(
+    fir: &FirFunction,
+    globals: &BTreeMap<DefId, forge_fir::FirGlobal>,
+) -> Result<(), BackendError> {
+    for block in &fir.blocks {
+        for instruction in &block.instructions {
+            match &instruction.kind {
+                FirInstructionKind::LoadGlobal { global } => {
+                    let result = instruction
+                        .result
+                        .ok_or_else(|| shape("global load has no result"))?;
+                    let declared = globals.get(global).ok_or_else(|| {
+                        shape(format!("global load refers to missing global {global:?}"))
+                    })?;
+                    let result_ty = value_type(fir, result, "global load result")?;
+                    if result_ty != &declared.ty {
+                        return Err(shape(format!(
+                            "global load result type {result_ty:?} differs from global type {:?}",
+                            declared.ty
+                        )));
+                    }
+                }
+                FirInstructionKind::StoreGlobal { global, value } => {
+                    if instruction.result.is_some() {
+                        return Err(shape("global store unexpectedly has a result"));
+                    }
+                    let declared = globals.get(global).ok_or_else(|| {
+                        shape(format!("global store refers to missing global {global:?}"))
+                    })?;
+                    if !declared.mutable {
+                        return Err(shape(format!(
+                            "global store targets immutable global {global:?}"
+                        )));
+                    }
+                    let value_ty = value_type(fir, *value, "global store value")?;
+                    if value_ty != &declared.ty {
+                        return Err(shape(format!(
+                            "global store value type {value_ty:?} differs from global type {:?}",
+                            declared.ty
+                        )));
+                    }
+                }
+                FirInstructionKind::AddressOfGlobal { global, mutable } => {
+                    let result = instruction
+                        .result
+                        .ok_or_else(|| shape("global address-of has no result"))?;
+                    let declared = globals.get(global).ok_or_else(|| {
+                        shape(format!(
+                            "global address-of refers to missing global {global:?}"
+                        ))
+                    })?;
+                    if *mutable && !declared.mutable {
+                        return Err(shape(format!(
+                            "mutable global address targets immutable global {global:?}"
+                        )));
+                    }
+                    let expected = Ty::Reference {
+                        mutable: *mutable,
+                        inner: Box::new(declared.ty.clone()),
+                    };
+                    let result_ty = value_type(fir, result, "global address-of result")?;
+                    if result_ty != &expected {
+                        return Err(shape(format!(
+                            "global address-of result type {result_ty:?} does not match expected reference type {expected:?}"
+                        )));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(())
 }
 
 fn reject_sia32_floats(fir: &FirFunction) -> Result<(), BackendError> {

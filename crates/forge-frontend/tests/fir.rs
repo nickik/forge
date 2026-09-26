@@ -130,18 +130,55 @@ fn mutable_global_assignment_and_address_lower_to_explicit_fir_operations() {
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
     let counter = *output.module.globals.keys().next().expect("global");
-    assert!(output.module.globals[&counter].mutable);
-    assert!(instructions(&output).any(|op| matches!(
-        op,
-        FirInstructionKind::StoreGlobal { global, .. } if *global == counter
-    )));
-    assert!(instructions(&output).any(|op| matches!(
-        op,
-        FirInstructionKind::AddressOfGlobal {
-            global,
-            mutable: true,
-        } if *global == counter
-    )));
+    let global = &output.module.globals[&counter];
+    assert!(global.mutable);
+    let mut saw_load = false;
+    let mut saw_store = false;
+    let mut saw_address = false;
+    for (instruction, function) in output.module.functions.values().flat_map(|function| {
+        function
+            .blocks
+            .iter()
+            .flat_map(move |block| {
+                block
+                    .instructions
+                    .iter()
+                    .map(move |instruction| (instruction, function))
+            })
+    }) {
+        match &instruction.kind {
+            FirInstructionKind::LoadGlobal { global: owner } if *owner == counter => {
+                let result = instruction.result.expect("global load result");
+                assert_eq!(function.value_types[&result], global.ty);
+                saw_load = true;
+            }
+            FirInstructionKind::StoreGlobal {
+                global: owner,
+                value,
+            } if *owner == counter => {
+                assert!(instruction.result.is_none());
+                assert_eq!(function.value_types[value], global.ty);
+                saw_store = true;
+            }
+            FirInstructionKind::AddressOfGlobal {
+                global: owner,
+                mutable,
+            } if *owner == counter => {
+                let result = instruction.result.expect("global address result");
+                assert_eq!(
+                    function.value_types[&result],
+                    Ty::Reference {
+                        mutable: *mutable,
+                        inner: Box::new(global.ty.clone()),
+                    }
+                );
+                assert!(*mutable);
+                saw_address = true;
+            }
+            _ => {}
+        }
+    }
+    assert!(saw_load && saw_store && saw_address);
 }
 
 #[test]

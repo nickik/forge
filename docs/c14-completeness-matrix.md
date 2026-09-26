@@ -112,6 +112,8 @@ Legend:
   remains lossless-only.
 - Direct safe/raw dereference `AddressOf` FIR preserves requested mutability and exact pointee
   result types before AArch64/RISC-V lowering.
+- Global load/store/address FIR preserves the declared global type, storage mutability and
+  requested reference mutability before AArch64/RISC-V lowering.
 - `LosslessIntegerConvert` accepts only integer endpoints; malformed non-integer FIR endpoints are
   producer errors, while narrowing and signedness-loss conversions remain explicitly unsupported.
 - Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not
