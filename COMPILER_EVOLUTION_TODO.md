@@ -153,6 +153,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Require handwritten direct calls to resolve to module functions and
         preserve exact argument and result signatures before native lowering
         on AArch64 and RISC-V.
+  - [x] Require handwritten indirect calls to use function-typed callees and
+        preserve exact argument and result signatures before native lowering
+        on AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.

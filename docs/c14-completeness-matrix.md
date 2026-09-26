@@ -36,7 +36,7 @@ Legend:
 | value `for` iteration | 1 | Arrays and slices type-check through an explicit built-in iteration contract, lower to `Len`/`IndexUnchecked` CFG, and execute natively with `break`/`continue`; non-iterables and refutable bindings are rejected. General user-defined iterator protocols remain future work and are not claimed here. |
 | `break`, `continue` | 1 | Single and nested-loop transfers execute with scope-correct deferred cleanup on continue and break paths. |
 | `match` | 1 | Bool, scalar, enum, tagged, Option, Result, nested projections, guards, OR/as, ranges, sequence-rest, and resolved map-protocol required/optional bindings execute natively. |
-| Functions and calls | 1 | Direct/indirect, named/default, method calls, scalar/aggregate ABI and non-main entry covered. |
+| Functions and calls | 1 | Direct/indirect, named/default, method calls, scalar/aggregate ABI and non-main entry covered. Named references plus direct and indirect calls validate exact FIR signatures before native lowering. |
 | Function pointers | 1 | Named functions cross call boundaries; anonymous closure coercion is rejected. |
 | Local captured closures | 1 | Explicit capture lists and local calls execute. Return and call-argument escape are rejected with stable diagnostics; a cross-function closure ABI is intentionally not part of C14. |
 | `defer` | 1 | Normal/direct return and `?` cleanup, break/continue exits, nested LIFO ordering, and cleanup-body control-flow rejection are covered. |

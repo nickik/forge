@@ -1591,6 +1591,39 @@ fn direct_call_preserves_the_target_signature() {
 }
 
 #[test]
+fn indirect_call_preserves_the_function_value_signature() {
+    let output = lower(
+        r#"
+        module test.fir_indirect_call;
+        fn apply(op: fn(u32) -> u32, value: u32) -> u32 { return op(value); }
+        fn add_one(value: u32) -> u32 { return value + 1u32; }
+        fn main() -> u32 { return apply(add_one, 8u32); }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let mut saw_call = false;
+    for function in output.module.functions.values() {
+        for instruction in function.blocks.iter().flat_map(|block| &block.instructions) {
+            let FirInstructionKind::CallIndirect { callee, args, .. } = &instruction.kind else {
+                continue;
+            };
+            let Ty::Function { params, result, .. } = &function.value_types[callee] else {
+                panic!("indirect call target is not function typed");
+            };
+            let actual = args
+                .iter()
+                .map(|argument| function.value_types[argument].clone())
+                .collect::<Vec<_>>();
+            assert_eq!(&actual, params);
+            let call_result = instruction.result.expect("indirect-call result");
+            assert_eq!(&function.value_types[&call_result], result.as_ref());
+            saw_call = true;
+        }
+    }
+    assert!(saw_call);
+}
+
+#[test]
 fn required_tail_calls_remain_explicit_in_direct_and_indirect_fir() {
     let output = lower(
         r#"

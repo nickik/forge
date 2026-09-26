@@ -111,6 +111,7 @@ impl CraneliftBackend {
             validate_c4_scalar_contract(fir, &self.layout, definitions)?;
             validate_function_ref_contracts(fir, &module.functions)?;
             validate_direct_call_contracts(fir, &module.functions)?;
+            validate_indirect_call_contracts(fir)?;
             validate_c9_memory_places(fir)?;
             validate_sia32_privileged_operations(self.target, fir)?;
 
@@ -212,6 +213,58 @@ fn validate_direct_call_contracts(
                 }
                 None if callee.return_type != Ty::Void => {
                     return Err(shape("non-void direct call has no result"));
+                }
+                None => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_indirect_call_contracts(fir: &FirFunction) -> Result<(), BackendError> {
+    for block in &fir.blocks {
+        for instruction in &block.instructions {
+            let FirInstructionKind::CallIndirect { callee, args, .. } = &instruction.kind else {
+                continue;
+            };
+            let callee_ty = value_type(fir, *callee, "indirect call callee")?;
+            let Ty::Function {
+                params,
+                result,
+                named_arguments: _,
+            } = callee_ty
+            else {
+                return Err(shape(format!(
+                    "indirect call callee has non-function type {callee_ty:?}"
+                )));
+            };
+            if args.len() != params.len() {
+                return Err(shape(format!(
+                    "indirect call has {} argument(s), expected {}",
+                    args.len(),
+                    params.len()
+                )));
+            }
+            for (index, (argument, expected)) in args.iter().zip(params).enumerate() {
+                let actual = value_type(fir, *argument, "indirect call argument")?;
+                if actual != expected {
+                    return Err(shape(format!(
+                        "indirect call argument {index} has type {actual:?}, expected {expected:?}"
+                    )));
+                }
+            }
+            match instruction.result {
+                Some(call_result) => {
+                    let actual = value_type(fir, call_result, "indirect call result")?;
+                    if actual != result.as_ref() {
+                        return Err(shape(format!(
+                            "indirect call result type {actual:?} differs from callee result {:?}",
+                            result
+                        )));
+                    }
+                }
+                None if result.as_ref() != &Ty::Void => {
+                    return Err(shape("non-void indirect call has no result"));
                 }
                 None => {}
             }
