@@ -79,6 +79,7 @@ impl CraneliftBackend {
         let mut functions = BTreeMap::new();
         for (owner, fir) in &all_functions {
             validate_c4_scalar_contract(fir, &self.layout, definitions)?;
+            validate_function_ref_contracts(fir, &all_functions)?;
             validate_c9_memory_places(fir)?;
             validate_global_access_contracts(fir, &module.globals)?;
             validate_sia32_privileged_operations(self.target, fir)?;
