@@ -1445,7 +1445,24 @@ fn captured_closure_lowers_environment_body_and_call() {
         op,
         FirInstructionKind::MakeClosure { captures, .. } if captures.len() == 1
     )));
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::CallClosure { .. })));
+    let mut saw_call = false;
+    for instruction in main.blocks.iter().flat_map(|block| &block.instructions) {
+        let FirInstructionKind::CallClosure { closure, args, .. } = &instruction.kind else {
+            continue;
+        };
+        let Ty::Closure { params, result } = &main.value_types[closure] else {
+            panic!("closure call target is not closure typed");
+        };
+        let actual = args
+            .iter()
+            .map(|argument| main.value_types[argument].clone())
+            .collect::<Vec<_>>();
+        assert_eq!(&actual, params);
+        let call_result = instruction.result.expect("closure-call result");
+        assert_eq!(&main.value_types[&call_result], result.as_ref());
+        saw_call = true;
+    }
+    assert!(saw_call);
 }
 
 #[test]
