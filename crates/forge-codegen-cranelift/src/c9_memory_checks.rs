@@ -19,6 +19,21 @@ pub(crate) fn validate_c9_memory_places(fir: &FirFunction) -> Result<(), Backend
             match &instruction.kind {
                 FirInstructionKind::Store { place, value } => {
                     validate_place(fir, place, Access::Write)?;
+                    if let FirPlace::Local { local } = place {
+                        let local_ty = &fir
+                            .locals
+                            .get(local)
+                            .ok_or_else(|| invalid(format!("missing FIR local {local:?}")))?
+                            .ty;
+                        let value_ty = fir.value_types.get(value).ok_or_else(|| {
+                            invalid(format!("missing type for local store value {value:?}"))
+                        })?;
+                        if value_ty != local_ty {
+                            return Err(invalid(format!(
+                                "local FIR store value type {value_ty:?} differs from local type {local_ty:?}"
+                            )));
+                        }
+                    }
                     if let Some(pointee) = safe_pointee_type(fir, place)? {
                         let value_ty = fir.value_types.get(value).ok_or_else(|| {
                             invalid(format!("missing type for safe store value {value:?}"))

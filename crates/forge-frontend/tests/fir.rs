@@ -624,6 +624,36 @@ fn local_address_preserves_reference_type_and_mutability() {
 }
 
 #[test]
+fn local_stores_preserve_the_declared_local_type() {
+    let output = lower(
+        r#"
+        module test.fir_local_store;
+        fn update(value: u32) -> u32 {
+            var copy: u32 = value;
+            copy = 7u32;
+            return copy;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let mut stores = 0;
+    for function in output.module.functions.values() {
+        for instruction in function.blocks.iter().flat_map(|block| &block.instructions) {
+            let FirInstructionKind::Store {
+                place: forge_frontend::FirPlace::Local { local },
+                value,
+            } = &instruction.kind
+            else {
+                continue;
+            };
+            stores += 1;
+            assert_eq!(function.locals[local].ty, function.value_types[value]);
+        }
+    }
+    assert!(stores > 0);
+}
+
+#[test]
 fn defer_call_is_emitted_before_return() {
     let output = lower(
         r#"
