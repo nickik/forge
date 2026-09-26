@@ -187,6 +187,32 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
+                FirInstructionKind::MakeResultOk { value } => {
+                    let Ty::Result { ok, .. } = result_ty else {
+                        return Err(shape(format!(
+                            "make-result-ok instruction has non-result FIR result type {result_ty:?}"
+                        )));
+                    };
+                    let payload = value_type(fir, *value, "result ok constructor payload")?;
+                    if payload != ok.as_ref() {
+                        return Err(shape(format!(
+                            "make-result-ok instruction has FIR payload type {payload:?}, ok payload is {ok:?}"
+                        )));
+                    }
+                }
+                FirInstructionKind::MakeResultErr { error: value } => {
+                    let Ty::Result { error, .. } = result_ty else {
+                        return Err(shape(format!(
+                            "make-result-err instruction has non-result FIR result type {result_ty:?}"
+                        )));
+                    };
+                    let payload = value_type(fir, *value, "result error constructor payload")?;
+                    if payload != error.as_ref() {
+                        return Err(shape(format!(
+                            "make-result-err instruction has FIR payload type {payload:?}, error payload is {error:?}"
+                        )));
+                    }
+                }
                 FirInstructionKind::ResultIsOk { value } => {
                     let source = value_type(fir, *value, "result test input")?;
                     if !matches!(source, Ty::Result { .. }) {
