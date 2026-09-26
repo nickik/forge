@@ -1594,12 +1594,9 @@ fn raw_pointer_dereference_lowers_with_unsafe_provenance() {
         })
         .expect("raw load");
     let FirInstructionKind::Load {
-        place:
-            forge_frontend::FirPlace::RawDeref {
-                address,
-                volatile,
-                ..
-            },
+        place: forge_frontend::FirPlace::RawDeref {
+            address, volatile, ..
+        },
     } = &instruction.kind
     else {
         unreachable!();
@@ -1649,12 +1646,9 @@ fn raw_pointer_store_uses_provenanced_raw_place() {
         })
         .expect("raw store");
     let FirInstructionKind::Store {
-        place:
-            forge_frontend::FirPlace::RawDeref {
-                address,
-                volatile,
-                ..
-            },
+        place: forge_frontend::FirPlace::RawDeref {
+            address, volatile, ..
+        },
         value,
     } = &instruction.kind
     else {
