@@ -271,11 +271,42 @@ fn explicit_option_and_result_constructors_reach_fir() {
         "#,
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeSome { .. })));
     let integer = Ty::Int {
         signed: false,
         width: IntWidth::W32,
     };
+    let optional_type = Ty::Optional {
+        inner: Box::new(integer.clone()),
+    };
+    let (some_function, some_instruction) = output
+        .module
+        .functions
+        .values()
+        .find_map(|function| {
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| &block.instructions)
+                .find(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::MakeSome { .. })
+                })
+                .map(|instruction| (function, instruction))
+        })
+        .unwrap();
+    let FirInstructionKind::MakeSome {
+        value: some_payload,
+    } = &some_instruction.kind
+    else {
+        unreachable!();
+    };
+    assert_eq!(
+        some_function
+            .value_types
+            .get(&some_instruction.result.unwrap()),
+        Some(&optional_type)
+    );
+    assert_eq!(some_function.value_types.get(some_payload), Some(&integer));
+
     let byte = Ty::Int {
         signed: false,
         width: IntWidth::W8,

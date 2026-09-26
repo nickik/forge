@@ -161,6 +161,19 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
+                FirInstructionKind::MakeSome { value } => {
+                    let Ty::Optional { inner } = result_ty else {
+                        return Err(shape(format!(
+                            "make-some instruction has non-optional FIR result type {result_ty:?}"
+                        )));
+                    };
+                    let payload = value_type(fir, *value, "option constructor payload")?;
+                    if payload != inner.as_ref() {
+                        return Err(shape(format!(
+                            "make-some instruction has FIR payload type {payload:?}, optional payload is {inner:?}"
+                        )));
+                    }
+                }
                 FirInstructionKind::OptionIsSome { value } => {
                     let source = value_type(fir, *value, "option test input")?;
                     if !matches!(source, Ty::Optional { .. }) {
