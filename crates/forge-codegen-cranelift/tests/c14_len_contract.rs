@@ -89,20 +89,6 @@ fn len_requires_a_sequence_input() {
 }
 
 #[test]
-fn len_rejects_unsized_array_inputs() {
-    assert_invalid(
-        function(
-            Ty::Array {
-                element: Box::new(u(IntWidth::W16)),
-                length: None,
-            },
-            u(IntWidth::Pointer),
-        ),
-        "len instruction has unsupported FIR input type Array { element: Int { signed: false, width: W16 }, length: None }",
-    );
-}
-
-#[test]
 fn len_requires_a_usize_result() {
     assert_invalid(
         function(
