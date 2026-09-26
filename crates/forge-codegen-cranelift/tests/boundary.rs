@@ -1231,6 +1231,141 @@ fn option_unwrap_requires_an_optional_input_and_its_payload_result_type() {
 }
 
 #[test]
+fn result_is_ok_requires_a_result_input_and_boolean_result() {
+    let integer = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let result_type = Ty::Result {
+        ok: Box::new(integer.clone()),
+        error: Box::new(Ty::Byte),
+    };
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let owner = DefId(21);
+        let payload = FirValueId(0);
+        let input = FirValueId(1);
+        let result = FirValueId(2);
+        let mut module = FirModule::default();
+        module.functions.insert(
+            owner,
+            FirFunction {
+                owner,
+                params: Vec::new(),
+                return_type: integer.clone(),
+                locals: BTreeMap::new(),
+                closures: BTreeMap::new(),
+                entry: FirBlockId(0),
+                blocks: vec![FirBasicBlock {
+                    id: FirBlockId(0),
+                    closure: None,
+                    instructions: vec![
+                        FirInstruction {
+                            span: Span::new(0, 4),
+                            result: Some(payload),
+                            kind: FirInstructionKind::Const {
+                                value: FirConst::Integer {
+                                    text: "0u32".into(),
+                                },
+                            },
+                        },
+                        FirInstruction {
+                            span: Span::new(5, 9),
+                            result: Some(input),
+                            kind: FirInstructionKind::MakeResultOk { value: payload },
+                        },
+                        FirInstruction {
+                            span: Span::new(10, 14),
+                            result: Some(result),
+                            kind: FirInstructionKind::ResultIsOk { value: input },
+                        },
+                    ],
+                    terminator: Some(FirTerminator::Return {
+                        value: Some(result),
+                    }),
+                }],
+                value_types: BTreeMap::from([
+                    (payload, integer.clone()),
+                    (input, result_type.clone()),
+                    (result, integer.clone()),
+                ]),
+            },
+        );
+
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("result test with integer FIR result unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: concat!(
+                    "result-is-ok instruction has non-bool FIR result type ",
+                    "Int { signed: false, width: W32 }"
+                )
+                .into(),
+            }
+        );
+
+        let owner = DefId(22);
+        let input = FirValueId(0);
+        let result = FirValueId(1);
+        let mut module = FirModule::default();
+        module.functions.insert(
+            owner,
+            FirFunction {
+                owner,
+                params: Vec::new(),
+                return_type: Ty::Bool,
+                locals: BTreeMap::new(),
+                closures: BTreeMap::new(),
+                entry: FirBlockId(0),
+                blocks: vec![FirBasicBlock {
+                    id: FirBlockId(0),
+                    closure: None,
+                    instructions: vec![
+                        FirInstruction {
+                            span: Span::new(0, 4),
+                            result: Some(input),
+                            kind: FirInstructionKind::Const {
+                                value: FirConst::Integer {
+                                    text: "0u32".into(),
+                                },
+                            },
+                        },
+                        FirInstruction {
+                            span: Span::new(5, 9),
+                            result: Some(result),
+                            kind: FirInstructionKind::ResultIsOk { value: input },
+                        },
+                    ],
+                    terminator: Some(FirTerminator::Return {
+                        value: Some(result),
+                    }),
+                }],
+                value_types: BTreeMap::from([(input, integer.clone()), (result, Ty::Bool)]),
+            },
+        );
+
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("result test with integer FIR input unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: concat!(
+                    "result-is-ok instruction has non-result FIR input type ",
+                    "Int { signed: false, width: W32 }"
+                )
+                .into(),
+            }
+        );
+    }
+}
+
+#[test]
 fn lossless_integer_conversion_with_boolean_source_is_an_invalid_producer_contract() {
     let owner = DefId(12);
     let input = FirValueId(0);
