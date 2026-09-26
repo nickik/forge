@@ -19,6 +19,16 @@ pub(crate) fn validate_c9_memory_places(fir: &FirFunction) -> Result<(), Backend
             match &instruction.kind {
                 FirInstructionKind::Store { place, value } => {
                     validate_place(fir, place, Access::Write)?;
+                    if let Some(pointee) = safe_pointee_type(fir, place)? {
+                        let value_ty = fir.value_types.get(value).ok_or_else(|| {
+                            invalid(format!("missing type for safe store value {value:?}"))
+                        })?;
+                        if value_ty != pointee {
+                            return Err(invalid(format!(
+                                "safe FIR store value type {value_ty:?} differs from pointee type {pointee:?}"
+                            )));
+                        }
+                    }
                     if let Some(pointee) = raw_pointee_type(fir, place)? {
                         let value_ty = fir.value_types.get(value).ok_or_else(|| {
                             invalid(format!("missing type for raw store value {value:?}"))
@@ -32,6 +42,19 @@ pub(crate) fn validate_c9_memory_places(fir: &FirFunction) -> Result<(), Backend
                 }
                 FirInstructionKind::Load { place } => {
                     validate_place(fir, place, Access::Read)?;
+                    if let Some(pointee) = safe_pointee_type(fir, place)? {
+                        let result = instruction
+                            .result
+                            .ok_or_else(|| invalid("safe FIR load has no result"))?;
+                        let result_ty = fir.value_types.get(&result).ok_or_else(|| {
+                            invalid(format!("missing type for safe load result {result:?}"))
+                        })?;
+                        if result_ty != pointee {
+                            return Err(invalid(format!(
+                                "safe FIR load result type {result_ty:?} differs from pointee type {pointee:?}"
+                            )));
+                        }
+                    }
                     if let Some(pointee) = raw_pointee_type(fir, place)? {
                         let result = instruction
                             .result
@@ -95,6 +118,26 @@ fn validate_place(fir: &FirFunction, place: &FirPlace, access: Access) -> Result
             Ok(())
         }
         FirPlace::ClosureCapture { .. } => Ok(()),
+    }
+}
+
+fn safe_pointee_type<'a>(
+    fir: &'a FirFunction,
+    place: &FirPlace,
+) -> Result<Option<&'a Ty>, BackendError> {
+    let FirPlace::Deref { address } = place else {
+        return Ok(None);
+    };
+    let ty = fir.value_types.get(address).ok_or_else(|| {
+        invalid(format!(
+            "missing type for safe dereference address {address:?}"
+        ))
+    })?;
+    match ty {
+        Ty::Reference { inner, .. } => Ok(Some(inner)),
+        _ => Err(invalid(format!(
+            "safe FIR dereference address has non-reference type {ty:?}"
+        ))),
     }
 }
 
