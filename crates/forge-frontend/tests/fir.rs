@@ -888,12 +888,18 @@ fn aggregate_constructor_materializes_defaulted_fields_before_fir() {
         .collect::<Vec<_>>();
     assert!(constructors.iter().any(|(variant, fields)| {
         variant.is_none()
-            && fields.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>()
+            && fields
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>()
                 == vec!["kind", "count"]
     }));
     assert!(constructors.iter().any(|(variant, fields)| {
         *variant == Some("Pair")
-            && fields.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>()
+            && fields
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>()
                 == vec!["left", "right"]
     }));
 }

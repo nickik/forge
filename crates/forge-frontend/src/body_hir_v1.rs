@@ -1048,10 +1048,8 @@ impl<'a, 'd> Lowerer<'a, 'd> {
                     .collect::<Vec<_>>();
                 match namespace {
                     HirTypeRef::Def(owner) => {
-                        if let Some(defaults) = self
-                            .field_defaults
-                            .get(&(owner, variant.clone()))
-                            .cloned()
+                        if let Some(defaults) =
+                            self.field_defaults.get(&(owner, variant.clone())).cloned()
                         {
                             for (name, value) in defaults {
                                 if !explicit.contains(name.as_str()) {
