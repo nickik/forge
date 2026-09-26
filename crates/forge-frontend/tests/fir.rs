@@ -82,6 +82,39 @@ fn value_for_array_and_slice_lower_to_explicit_iteration_cfg() {
 }
 
 #[test]
+fn array_literal_fir_preserves_checked_length_and_element_type() {
+    let output = lower(
+        r#"
+        module test.fir_array_literal;
+        fn values() -> [u16; 3] { return [1u16, 2u16, 3u16]; }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let function = output.module.functions.values().next().expect("function");
+    let instruction = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find(|instruction| matches!(instruction.kind, FirInstructionKind::MakeArray { .. }))
+        .expect("make-array instruction");
+    let FirInstructionKind::MakeArray { items } = &instruction.kind else {
+        unreachable!();
+    };
+    assert_eq!(items.len(), 3);
+    let result = instruction.result.expect("make-array result");
+    assert_eq!(
+        function.value_types[&result],
+        Ty::Array {
+            element: Box::new(Ty::Int {
+                signed: false,
+                width: IntWidth::W16,
+            }),
+            length: Some(3),
+        }
+    );
+}
+
+#[test]
 fn mutable_global_assignment_and_address_lower_to_explicit_fir_operations() {
     let output = lower(
         r#"
