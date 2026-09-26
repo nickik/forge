@@ -139,6 +139,29 @@ fn validate_c4_scalar_contract(
 ) -> Result<(), BackendError> {
     for block in &fir.blocks {
         for instruction in &block.instructions {
+            if let FirInstructionKind::BitFieldCheck { value, width } = &instruction.kind {
+                if instruction.result.is_some() {
+                    return Err(shape("bitfield range check unexpectedly has a result"));
+                }
+                let field_ty = value_type(fir, *value, "bitfield range-check input")?;
+                let Some((signed, bits)) = integer_shape(field_ty, layout) else {
+                    return Err(shape(
+                        "bitfield range check requires an unsigned integer value",
+                    ));
+                };
+                if signed {
+                    return Err(shape(
+                        "bitfield range check requires an unsigned integer value",
+                    ));
+                }
+                let Ok(width) = u16::try_from(*width) else {
+                    return Err(shape("bitfield range check has an invalid field width"));
+                };
+                if width == 0 || width >= bits {
+                    return Err(shape("bitfield range check has an invalid field width"));
+                }
+            }
+
             let Some(result) = instruction.result else {
                 continue;
             };
@@ -470,6 +493,51 @@ fn validate_c4_scalar_contract(
                         ));
                     }
                 }
+                FirInstructionKind::BitStructStorage { value, storage } => {
+                    let source = value_type(fir, *value, "bitstruct storage input")?;
+                    let Ty::Nominal(owner) = source else {
+                        return Err(shape(
+                            "bitstruct storage projection source is not nominal",
+                        ));
+                    };
+                    if result_ty != storage {
+                        return Err(shape(
+                            "bitstruct storage projection result type differs from storage",
+                        ));
+                    }
+                    let definition = definitions.get(owner).ok_or_else(|| {
+                        shape(format!(
+                            "bitstruct storage projection has unknown type {owner:?}"
+                        ))
+                    })?;
+                    let TypeDefinitionKind::BitStruct { storage: declared } = &definition.kind
+                    else {
+                        return Err(shape(
+                            "bitstruct storage projection source is not a bitstruct",
+                        ));
+                    };
+                    if declared != storage {
+                        return Err(shape(
+                            "bitstruct storage projection uses the wrong storage type",
+                        ));
+                    }
+                }
+                FirInstructionKind::BitStructFromStorage { value, bitstruct } => {
+                    if result_ty != &Ty::Nominal(*bitstruct) {
+                        return Err(shape(
+                            "bitstruct rebuild result has the wrong nominal type",
+                        ));
+                    }
+                    let definition = definitions.get(bitstruct).ok_or_else(|| {
+                        shape(format!("bitstruct rebuild has unknown type {bitstruct:?}"))
+                    })?;
+                    let TypeDefinitionKind::BitStruct { storage } = &definition.kind else {
+                        return Err(shape("bitstruct rebuild target is not a bitstruct"));
+                    };
+                    if value_type(fir, *value, "bitstruct rebuild input")? != storage {
+                        return Err(shape("bitstruct rebuild input differs from storage type"));
+                    }
+                }
                 FirInstructionKind::BitFieldExtract { value } => {
                     let source = value_type(fir, *value, "bitfield conversion input")?;
                     if !matches!(source, Ty::Byte | Ty::Int { signed: false, .. })
@@ -478,6 +546,15 @@ fn validate_c4_scalar_contract(
                         return Err(shape(
                             "bitfield conversion requires unsigned integer FIR types",
                         ));
+                    }
+                    let source_bits = integer_shape(source, layout)
+                        .expect("unsigned integer source has a shape")
+                        .1;
+                    let result_bits = integer_shape(result_ty, layout)
+                        .expect("unsigned integer result has a shape")
+                        .1;
+                    if source_bits < result_bits {
+                        return Err(shape("bitfield extract widens its storage value"));
                     }
                 }
                 FirInstructionKind::BitFieldExtend { value } => {
@@ -488,6 +565,17 @@ fn validate_c4_scalar_contract(
                         return Err(shape(
                             "bitfield extension requires a bool or unsigned integer input and unsigned storage",
                         ));
+                    }
+                    if source != &Ty::Bool {
+                        let source_bits = integer_shape(source, layout)
+                            .expect("unsigned integer source has a shape")
+                            .1;
+                        let result_bits = integer_shape(result_ty, layout)
+                            .expect("unsigned integer result has a shape")
+                            .1;
+                        if source_bits > result_bits {
+                            return Err(shape("bitfield extend narrows its field value"));
+                        }
                     }
                 }
                 _ => {}
