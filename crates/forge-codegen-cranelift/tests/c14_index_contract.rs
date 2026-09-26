@@ -145,11 +145,7 @@ fn index_unchecked(base_ty: Ty, index_ty: Ty, result_ty: Ty) -> FirFunction {
                 value: Some(result),
             }),
         }],
-        value_types: BTreeMap::from([
-            (base, base_ty),
-            (index, index_ty),
-            (result, result_ty),
-        ]),
+        value_types: BTreeMap::from([(base, base_ty), (index, index_ty), (result, result_ty)]),
     }
 }
 

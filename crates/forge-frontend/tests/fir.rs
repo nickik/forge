@@ -287,12 +287,7 @@ fn indexing_has_explicit_bounds_check() {
         .blocks
         .iter()
         .flat_map(|block| &block.instructions)
-        .find(|instruction| {
-            matches!(
-                instruction.kind,
-                FirInstructionKind::IndexUnchecked { .. }
-            )
-        })
+        .find(|instruction| matches!(instruction.kind, FirInstructionKind::IndexUnchecked { .. }))
         .expect("index-unchecked instruction");
     let FirInstructionKind::IndexUnchecked { base, index } = &indexed.kind else {
         unreachable!();
