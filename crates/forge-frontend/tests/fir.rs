@@ -1066,7 +1066,20 @@ fn sequence_rest_pattern_lowers_length_index_and_tail() {
         "#,
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::Len { .. })));
+    let function = output.module.functions.values().next().expect("function");
+    let len = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find(|instruction| matches!(instruction.kind, FirInstructionKind::Len { .. }))
+        .expect("len instruction");
+    assert_eq!(
+        function.value_types[&len.result.expect("len result")],
+        Ty::Int {
+            signed: false,
+            width: IntWidth::Pointer,
+        }
+    );
     assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::IndexUnchecked { .. })));
     assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::Subsequence { .. })));
 }
