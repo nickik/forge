@@ -638,11 +638,7 @@ fn local_stores_preserve_the_declared_local_type() {
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
     let mut stores = 0;
     for function in output.module.functions.values() {
-        for instruction in function
-            .blocks
-            .iter()
-            .flat_map(|block| &block.instructions)
-        {
+        for instruction in function.blocks.iter().flat_map(|block| &block.instructions) {
             let FirInstructionKind::Store {
                 place: forge_frontend::FirPlace::Local { local },
                 value,
