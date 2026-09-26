@@ -570,6 +570,60 @@ fn method_reference_receiver_becomes_explicit_address() {
 }
 
 #[test]
+fn local_address_preserves_reference_type_and_mutability() {
+    let output = lower(
+        r#"
+        module test.fir_address;
+        fn read(value: u32) -> u32 {
+            val address: &u32 = &value;
+            return *address;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let (function, instruction) = output
+        .module
+        .functions
+        .values()
+        .flat_map(|function| {
+            function.blocks.iter().flat_map(move |block| {
+                block
+                    .instructions
+                    .iter()
+                    .map(move |instruction| (function, instruction))
+            })
+        })
+        .find(|(_, instruction)| matches!(&instruction.kind, FirInstructionKind::AddressOf { .. }))
+        .expect("address-of instruction");
+    let FirInstructionKind::AddressOf {
+        place: forge_frontend::FirPlace::Local { local },
+        mutable,
+    } = &instruction.kind
+    else {
+        unreachable!();
+    };
+    let result = instruction.result.expect("address-of result");
+    assert!(!*mutable);
+    assert_eq!(
+        function.locals.get(local).map(|local| &local.ty),
+        Some(&Ty::Int {
+            signed: false,
+            width: IntWidth::W32,
+        })
+    );
+    assert_eq!(
+        function.value_types.get(&result),
+        Some(&Ty::Reference {
+            mutable: false,
+            inner: Box::new(Ty::Int {
+                signed: false,
+                width: IntWidth::W32,
+            }),
+        })
+    );
+}
+
+#[test]
 fn defer_call_is_emitted_before_return() {
     let output = lower(
         r#"

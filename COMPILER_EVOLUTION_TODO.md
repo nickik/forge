@@ -136,6 +136,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Require direct handwritten safe-dereference places to preserve exact
         reference-pointee load/store types before native lowering on AArch64
         and RISC-V.
+  - [x] Require direct handwritten local `AddressOf` instructions to preserve
+        requested mutability and exact local-pointee result types before native
+        lowering on AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
