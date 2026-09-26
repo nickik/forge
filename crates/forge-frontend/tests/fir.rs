@@ -593,9 +593,7 @@ fn local_address_preserves_reference_type_and_mutability() {
                     .map(move |instruction| (function, instruction))
             })
         })
-        .find(|(_, instruction)| {
-            matches!(&instruction.kind, FirInstructionKind::AddressOf { .. })
-        })
+        .find(|(_, instruction)| matches!(&instruction.kind, FirInstructionKind::AddressOf { .. }))
         .expect("address-of instruction");
     let FirInstructionKind::AddressOf {
         place: forge_frontend::FirPlace::Local { local },
