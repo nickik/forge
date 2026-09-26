@@ -102,14 +102,12 @@ fn assert_invalid(function: FirFunction, message: &str) {
 #[test]
 fn bitstruct_storage_projection_requires_declared_storage() {
     assert_invalid(
-        function(
-            Ty::Nominal(DefId(100)),
-            Some(u(IntWidth::W32)),
-            |value| FirInstructionKind::BitStructStorage {
+        function(Ty::Nominal(DefId(100)), Some(u(IntWidth::W32)), |value| {
+            FirInstructionKind::BitStructStorage {
                 value,
                 storage: u(IntWidth::W32),
-            },
-        ),
+            }
+        }),
         "bitstruct storage projection uses the wrong storage type",
     );
 }
