@@ -124,6 +124,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Require handwritten `BoundsCheck` operands to be `usize` and
         `IndexUnchecked` to use sequence bases, `usize` indices and exact
         element results before native lowering on AArch64 and RISC-V.
+  - [x] Require handwritten `PointerConvert` operation tags to match exact
+        pointer-to-integer, integer-to-pointer or distinct-pointer endpoint
+        types before native lowering on AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.

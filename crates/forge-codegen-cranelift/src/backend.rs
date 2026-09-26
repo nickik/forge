@@ -6,7 +6,7 @@ use cranelift_codegen::Context;
 use forge_fir::{
     verify_fir_module, BinaryOp, DefId, FirBasicBlock, FirFunction, FirInstructionKind, FirModule,
     FirPlace, FirTerminator, FirValueId, IntWidth, Ty, TypeDefinitionKind, TypeDefinitionTable,
-    TypeFieldDefinition,
+    TypeFieldDefinition, UnsafeOperationKind,
 };
 use target_lexicon::Triple;
 
@@ -530,6 +530,45 @@ fn validate_c4_scalar_contract(
                         return Err(BackendError::UnsupportedInstruction {
                             kind: "lossy integer conversion requires explicit FIR conversion semantics",
                         });
+                    }
+                }
+                FirInstructionKind::PointerConvert {
+                    value,
+                    target,
+                    operation,
+                    ..
+                } => {
+                    if target != result_ty {
+                        return Err(shape(format!(
+                            "pointer-convert target {target:?} does not match FIR result type {result_ty:?}"
+                        )));
+                    }
+                    let source = value_type(fir, *value, "pointer-convert input")?;
+                    let valid = match operation {
+                        UnsafeOperationKind::PointerToInteger => {
+                            matches!(source, Ty::Pointer { .. })
+                                && matches!(target, Ty::Int { .. } | Ty::Byte)
+                        }
+                        UnsafeOperationKind::IntegerToPointer => {
+                            matches!(source, Ty::Int { .. } | Ty::Byte)
+                                && matches!(target, Ty::Pointer { .. })
+                        }
+                        UnsafeOperationKind::PointerReinterpret => {
+                            matches!(source, Ty::Pointer { .. })
+                                && matches!(target, Ty::Pointer { .. })
+                                && source != target
+                        }
+                        UnsafeOperationKind::RawDereference { .. }
+                        | UnsafeOperationKind::PointerOffset { .. } => {
+                            return Err(shape(format!(
+                                "pointer-convert instruction uses non-conversion operation {operation:?}"
+                            )));
+                        }
+                    };
+                    if !valid {
+                        return Err(shape(format!(
+                            "pointer-convert operation {operation:?} is incompatible with FIR types {source:?} -> {target:?}"
+                        )));
                     }
                 }
                 FirInstructionKind::DistinctFromUnderlying { value, distinct } => {
