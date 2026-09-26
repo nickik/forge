@@ -121,6 +121,9 @@ available on every backend merely because the frontend accepts it.
         AArch64 and RISC-V.
   - [x] Require handwritten `Len` instructions to consume fixed arrays, slices
         or strings and produce `usize` on AArch64 and RISC-V.
+  - [x] Require handwritten `BoundsCheck` operands to be `usize` and
+        `IndexUnchecked` to use sequence bases, `usize` indices and exact
+        element results before native lowering on AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.

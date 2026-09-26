@@ -261,8 +261,54 @@ fn indexing_has_explicit_bounds_check() {
         "#,
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::BoundsCheck { .. })));
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::IndexUnchecked { .. })));
+    let function = output.module.functions.values().next().expect("function");
+    let usize_ty = Ty::Int {
+        signed: false,
+        width: IntWidth::Pointer,
+    };
+    let u32_ty = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let bounds = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find(|instruction| matches!(instruction.kind, FirInstructionKind::BoundsCheck { .. }))
+        .expect("bounds-check instruction");
+    let FirInstructionKind::BoundsCheck { index, len } = &bounds.kind else {
+        unreachable!();
+    };
+    assert!(bounds.result.is_none());
+    assert_eq!(function.value_types[index], usize_ty);
+    assert_eq!(function.value_types[len], usize_ty);
+
+    let indexed = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find(|instruction| {
+            matches!(
+                instruction.kind,
+                FirInstructionKind::IndexUnchecked { .. }
+            )
+        })
+        .expect("index-unchecked instruction");
+    let FirInstructionKind::IndexUnchecked { base, index } = &indexed.kind else {
+        unreachable!();
+    };
+    assert_eq!(
+        function.value_types[base],
+        Ty::Array {
+            element: Box::new(u32_ty.clone()),
+            length: Some(4),
+        }
+    );
+    assert_eq!(function.value_types[index], usize_ty);
+    assert_eq!(
+        function.value_types[&indexed.result.expect("index result")],
+        u32_ty
+    );
 }
 
 #[test]

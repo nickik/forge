@@ -162,6 +162,28 @@ fn validate_c4_scalar_contract(
                 }
             }
 
+            if let FirInstructionKind::BoundsCheck { index, len } = &instruction.kind {
+                if instruction.result.is_some() {
+                    return Err(shape("bounds-check instruction unexpectedly has a result"));
+                }
+                let usize_ty = Ty::Int {
+                    signed: false,
+                    width: forge_fir::IntWidth::Pointer,
+                };
+                let index_ty = value_type(fir, *index, "bounds-check index")?;
+                if index_ty != &usize_ty {
+                    return Err(shape(format!(
+                        "bounds-check index has non-usize FIR type {index_ty:?}"
+                    )));
+                }
+                let len_ty = value_type(fir, *len, "bounds-check length")?;
+                if len_ty != &usize_ty {
+                    return Err(shape(format!(
+                        "bounds-check length has non-usize FIR type {len_ty:?}"
+                    )));
+                }
+            }
+
             let Some(result) = instruction.result else {
                 continue;
             };
@@ -256,6 +278,40 @@ fn validate_c4_scalar_contract(
                     if result_ty != &usize_ty {
                         return Err(shape(format!(
                             "len instruction has non-usize FIR result type {result_ty:?}"
+                        )));
+                    }
+                }
+                FirInstructionKind::IndexUnchecked { base, index } => {
+                    let base_ty = value_type(fir, *base, "unchecked-index base")?;
+                    let expected = match base_ty {
+                        Ty::Array {
+                            element,
+                            length: Some(_),
+                        }
+                        | Ty::Slice { element, .. } => element.as_ref().clone(),
+                        Ty::Str => Ty::Int {
+                            signed: false,
+                            width: forge_fir::IntWidth::W8,
+                        },
+                        _ => {
+                            return Err(shape(format!(
+                                "index-unchecked instruction has unsupported FIR base type {base_ty:?}"
+                            )));
+                        }
+                    };
+                    let usize_ty = Ty::Int {
+                        signed: false,
+                        width: forge_fir::IntWidth::Pointer,
+                    };
+                    let index_ty = value_type(fir, *index, "unchecked-index index")?;
+                    if index_ty != &usize_ty {
+                        return Err(shape(format!(
+                            "index-unchecked instruction has non-usize FIR index type {index_ty:?}"
+                        )));
+                    }
+                    if result_ty != &expected {
+                        return Err(shape(format!(
+                            "index-unchecked instruction has FIR result type {result_ty:?}, indexed element type is {expected:?}"
                         )));
                     }
                 }
