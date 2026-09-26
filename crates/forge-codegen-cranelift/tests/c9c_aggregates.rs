@@ -81,9 +81,10 @@ fn assert_invalid_on_host_targets(
     let module = module_with(function);
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let backend = CraneliftBackend::new(target).expect("backend");
-        let error = backend
-            .prepare_module_with_types(&module, defs)
-            .expect_err("malformed variant FIR unexpectedly lowered");
+        let error = match backend.prepare_module_with_types(&module, defs) {
+            Ok(_) => panic!("malformed variant FIR unexpectedly lowered"),
+            Err(error) => error,
+        };
         assert_eq!(
             error,
             BackendError::InvalidFirShape {
