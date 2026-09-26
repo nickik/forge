@@ -110,6 +110,7 @@ impl CraneliftBackend {
             // Preserve all scalar semantic barriers established before C9.
             validate_c4_scalar_contract(fir, &self.layout, definitions)?;
             validate_function_ref_contracts(fir, &module.functions)?;
+            validate_direct_call_contracts(fir, &module.functions)?;
             validate_c9_memory_places(fir)?;
             validate_sia32_privileged_operations(self.target, fir)?;
 
@@ -165,6 +166,54 @@ fn validate_function_ref_contracts(
                 return Err(shape(format!(
                     "function-ref type {result_ty:?} does not match target {target:?} signature"
                 )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_direct_call_contracts(
+    fir: &FirFunction,
+    all_functions: &BTreeMap<DefId, FirFunction>,
+) -> Result<(), BackendError> {
+    for block in &fir.blocks {
+        for instruction in &block.instructions {
+            let FirInstructionKind::Call { target, args, .. } = &instruction.kind else {
+                continue;
+            };
+            let callee = all_functions.get(target).ok_or_else(|| {
+                shape(format!("direct call target {target:?} is not in module"))
+            })?;
+            let params = fir_parameter_types(callee)?;
+            if args.len() != params.len() {
+                return Err(shape(format!(
+                    "direct call to {target:?} has {} argument(s), expected {}",
+                    args.len(),
+                    params.len()
+                )));
+            }
+            for (index, (argument, expected)) in args.iter().zip(&params).enumerate() {
+                let actual = value_type(fir, *argument, "direct call argument")?;
+                if actual != expected {
+                    return Err(shape(format!(
+                        "direct call argument {index} has type {actual:?}, expected {expected:?}"
+                    )));
+                }
+            }
+            match instruction.result {
+                Some(result) => {
+                    let actual = value_type(fir, result, "direct call result")?;
+                    if actual != &callee.return_type {
+                        return Err(shape(format!(
+                            "direct call result type {actual:?} differs from callee result {:?}",
+                            callee.return_type
+                        )));
+                    }
+                }
+                None if callee.return_type != Ty::Void => {
+                    return Err(shape("non-void direct call has no result"));
+                }
+                None => {}
             }
         }
     }

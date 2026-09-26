@@ -1556,6 +1556,41 @@ fn named_function_reference_preserves_the_target_signature() {
 }
 
 #[test]
+fn direct_call_preserves_the_target_signature() {
+    let output = lower(
+        r#"
+        module test.fir_direct_call;
+        fn add(left: u32, right: u32) -> u32 { return left + right; }
+        fn main() -> u32 { return add(3u32, 4u32); }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let mut saw_call = false;
+    for function in output.module.functions.values() {
+        for instruction in function.blocks.iter().flat_map(|block| &block.instructions) {
+            let FirInstructionKind::Call { target, args, .. } = &instruction.kind else {
+                continue;
+            };
+            let callee = &output.module.functions[target];
+            let expected = callee
+                .params
+                .iter()
+                .map(|parameter| callee.locals[parameter].ty.clone())
+                .collect::<Vec<_>>();
+            let actual = args
+                .iter()
+                .map(|argument| function.value_types[argument].clone())
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected);
+            let result = instruction.result.expect("direct-call result");
+            assert_eq!(function.value_types[&result], callee.return_type);
+            saw_call = true;
+        }
+    }
+    assert!(saw_call);
+}
+
+#[test]
 fn required_tail_calls_remain_explicit_in_direct_and_indirect_fir() {
     let output = lower(
         r#"
