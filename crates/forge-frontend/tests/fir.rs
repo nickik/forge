@@ -272,8 +272,65 @@ fn explicit_option_and_result_constructors_reach_fir() {
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
     assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeSome { .. })));
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeResultOk { .. })));
-    assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::MakeResultErr { .. })));
+    let integer = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let byte = Ty::Int {
+        signed: false,
+        width: IntWidth::W8,
+    };
+    let result_type = Ty::Result {
+        ok: Box::new(integer.clone()),
+        error: Box::new(byte.clone()),
+    };
+    let (ok_function, ok_instruction) = output
+        .module
+        .functions
+        .values()
+        .find_map(|function| {
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| &block.instructions)
+                .find(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::MakeResultOk { .. })
+                })
+                .map(|instruction| (function, instruction))
+        })
+        .unwrap();
+    let FirInstructionKind::MakeResultOk { value: ok_payload } = &ok_instruction.kind else {
+        unreachable!();
+    };
+    assert_eq!(
+        ok_function.value_types.get(&ok_instruction.result.unwrap()),
+        Some(&result_type)
+    );
+    assert_eq!(ok_function.value_types.get(ok_payload), Some(&integer));
+
+    let (err_function, err_instruction) = output
+        .module
+        .functions
+        .values()
+        .find_map(|function| {
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| &block.instructions)
+                .find(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::MakeResultErr { .. })
+                })
+                .map(|instruction| (function, instruction))
+        })
+        .unwrap();
+    let FirInstructionKind::MakeResultErr { error: err_payload } = &err_instruction.kind else {
+        unreachable!();
+    };
+    assert_eq!(
+        err_function.value_types.get(&err_instruction.result.unwrap()),
+        Some(&result_type)
+    );
+    assert_eq!(err_function.value_types.get(err_payload), Some(&byte));
 }
 
 #[test]
