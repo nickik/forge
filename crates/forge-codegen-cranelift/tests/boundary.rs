@@ -991,6 +991,145 @@ fn make_none_with_integer_result_type_is_an_invalid_producer_contract() {
 }
 
 #[test]
+fn make_some_requires_an_optional_result_type() {
+    let integer = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let owner = DefId(27);
+        let payload = FirValueId(0);
+        let result = FirValueId(1);
+        let mut module = FirModule::default();
+        module.functions.insert(
+            owner,
+            FirFunction {
+                owner,
+                params: Vec::new(),
+                return_type: integer.clone(),
+                locals: BTreeMap::new(),
+                closures: BTreeMap::new(),
+                entry: FirBlockId(0),
+                blocks: vec![FirBasicBlock {
+                    id: FirBlockId(0),
+                    closure: None,
+                    instructions: vec![
+                        FirInstruction {
+                            span: Span::new(0, 4),
+                            result: Some(payload),
+                            kind: FirInstructionKind::Const {
+                                value: FirConst::Integer {
+                                    text: "0u32".into(),
+                                },
+                            },
+                        },
+                        FirInstruction {
+                            span: Span::new(5, 9),
+                            result: Some(result),
+                            kind: FirInstructionKind::MakeSome { value: payload },
+                        },
+                    ],
+                    terminator: Some(FirTerminator::Return {
+                        value: Some(result),
+                    }),
+                }],
+                value_types: BTreeMap::from([
+                    (payload, integer.clone()),
+                    (result, integer.clone()),
+                ]),
+            },
+        );
+
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("make-some with integer FIR result unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: concat!(
+                    "make-some instruction has non-optional FIR result type ",
+                    "Int { signed: false, width: W32 }"
+                )
+                .into(),
+            }
+        );
+    }
+}
+
+#[test]
+fn make_some_requires_the_exact_optional_payload_type() {
+    let integer = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let optional = Ty::Optional {
+        inner: Box::new(integer),
+    };
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let owner = DefId(28);
+        let payload = FirValueId(0);
+        let result = FirValueId(1);
+        let mut module = FirModule::default();
+        module.functions.insert(
+            owner,
+            FirFunction {
+                owner,
+                params: Vec::new(),
+                return_type: optional.clone(),
+                locals: BTreeMap::new(),
+                closures: BTreeMap::new(),
+                entry: FirBlockId(0),
+                blocks: vec![FirBasicBlock {
+                    id: FirBlockId(0),
+                    closure: None,
+                    instructions: vec![
+                        FirInstruction {
+                            span: Span::new(0, 4),
+                            result: Some(payload),
+                            kind: FirInstructionKind::Const {
+                                value: FirConst::Bool { value: true },
+                            },
+                        },
+                        FirInstruction {
+                            span: Span::new(5, 9),
+                            result: Some(result),
+                            kind: FirInstructionKind::MakeSome { value: payload },
+                        },
+                    ],
+                    terminator: Some(FirTerminator::Return {
+                        value: Some(result),
+                    }),
+                }],
+                value_types: BTreeMap::from([
+                    (payload, Ty::Bool),
+                    (result, optional.clone()),
+                ]),
+            },
+        );
+
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("make-some with mismatched FIR payload unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFirShape {
+                message: concat!(
+                    "make-some instruction has FIR payload type Bool, optional payload is ",
+                    "Int { signed: false, width: W32 }"
+                )
+                .into(),
+            }
+        );
+    }
+}
+
+#[test]
 fn option_is_some_requires_an_optional_input_and_boolean_result() {
     let integer = Ty::Int {
         signed: false,
