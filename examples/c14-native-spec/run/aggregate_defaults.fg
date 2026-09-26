@@ -1,0 +1,28 @@
+module examples.c14.aggregate_defaults;
+
+const DEFAULT_COUNT: u32 = 9u32;
+
+struct Packet {
+    kind: u8;
+    count: u32 = DEFAULT_COUNT;
+}
+
+tagged Message {
+    Pair { left: u16; right: u16 = 7u16; },
+}
+
+fn read_message(message: Message) -> u16 {
+    return match (message) {
+        Message::Pair{left, right} => left + right,
+    };
+}
+
+fn main() -> i32 {
+    val DEFAULT_COUNT: u32 = 99u32;
+    val packet: Packet = Packet{kind: 3u8};
+    val message: Message = Message::Pair{left: 5u16};
+    if (packet.kind != 3u8) { return 1i32; }
+    if (packet.count != 9u32) { return 2i32; }
+    if (read_message(message) != 12u16) { return 3i32; }
+    return 0i32;
+}

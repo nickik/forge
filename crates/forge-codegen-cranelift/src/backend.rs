@@ -568,6 +568,14 @@ fn validate_make_aggregate_contract(
             )));
         }
     }
+    for declared in declared_fields {
+        if !seen.contains(declared.name.as_str()) {
+            return Err(shape(format!(
+                "make-aggregate instruction is missing declared field `{}`",
+                declared.name
+            )));
+        }
+    }
     Ok(())
 }
 

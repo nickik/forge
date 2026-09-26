@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
@@ -414,6 +414,51 @@ pub enum HirTypeKind {
     },
 }
 
+type FieldDefaultTable = BTreeMap<(DefId, Option<String>), Vec<(String, ast::Expr)>>;
+
+fn collect_field_defaults(source: &ast::SourceFile) -> FieldDefaultTable {
+    let mut defaults = BTreeMap::new();
+    for (index, declaration) in source.declarations.iter().enumerate() {
+        let owner = DefId(index as u32);
+        match &declaration.kind.kind {
+            ast::DeclKind::Struct(value) => {
+                let fields = value
+                    .fields
+                    .iter()
+                    .filter_map(|field| {
+                        field
+                            .default
+                            .as_ref()
+                            .map(|default| (field.name.clone(), default.clone()))
+                    })
+                    .collect::<Vec<_>>();
+                if !fields.is_empty() {
+                    defaults.insert((owner, None), fields);
+                }
+            }
+            ast::DeclKind::Tagged(value) => {
+                for variant in &value.variants {
+                    let fields = variant
+                        .fields
+                        .iter()
+                        .filter_map(|field| {
+                            field
+                                .default
+                                .as_ref()
+                                .map(|default| (field.name.clone(), default.clone()))
+                        })
+                        .collect::<Vec<_>>();
+                    if !fields.is_empty() {
+                        defaults.insert((owner, Some(variant.name.clone())), fields);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    defaults
+}
+
 pub fn lower_resolved_bodies(source: &ast::SourceFile, module: &HirModule) -> BodyHirOutput {
     let imports = source
         .imports
@@ -422,12 +467,14 @@ pub fn lower_resolved_bodies(source: &ast::SourceFile, module: &HirModule) -> Bo
         .filter_map(|(i, path)| path.segments.last().map(|name| (name.clone(), i as u32)))
         .collect::<BTreeMap<_, _>>();
     let mut output = BodyHirOutput::default();
+    let field_defaults = collect_field_defaults(source);
 
     for (index, declaration) in source.declarations.iter().enumerate() {
         let owner = DefId(index as u32);
         match &declaration.kind.kind {
             ast::DeclKind::Function(function) => {
-                let mut lowerer = Lowerer::new(module, &imports, &mut output.diagnostics);
+                let mut lowerer =
+                    Lowerer::new(module, &imports, &field_defaults, &mut output.diagnostics);
                 lowerer.push_scope();
                 let mut params = Vec::new();
                 let mut param_defaults = BTreeMap::new();
@@ -462,7 +509,8 @@ pub fn lower_resolved_bodies(source: &ast::SourceFile, module: &HirModule) -> Bo
                 );
             }
             ast::DeclKind::Global(value) => {
-                let mut lowerer = Lowerer::new(module, &imports, &mut output.diagnostics);
+                let mut lowerer =
+                    Lowerer::new(module, &imports, &field_defaults, &mut output.diagnostics);
                 let ty = value.ty.as_ref().map(|ty| lowerer.lower_type(ty));
                 let expr = lowerer.lower_expr(&value.value);
                 let locals = lowerer.locals;
@@ -479,7 +527,12 @@ pub fn lower_resolved_bodies(source: &ast::SourceFile, module: &HirModule) -> Bo
             ast::DeclKind::Struct(value) => {
                 for field in &value.fields {
                     if let Some(default) = &field.default {
-                        let mut lowerer = Lowerer::new(module, &imports, &mut output.diagnostics);
+                        let mut lowerer = Lowerer::new(
+                            module,
+                            &imports,
+                            &field_defaults,
+                            &mut output.diagnostics,
+                        );
                         output.field_defaults.push(HirTypedDeclExpr {
                             owner,
                             label: field.name.clone(),
@@ -493,8 +546,12 @@ pub fn lower_resolved_bodies(source: &ast::SourceFile, module: &HirModule) -> Bo
                 for variant in &value.variants {
                     for field in &variant.fields {
                         if let Some(default) = &field.default {
-                            let mut lowerer =
-                                Lowerer::new(module, &imports, &mut output.diagnostics);
+                            let mut lowerer = Lowerer::new(
+                                module,
+                                &imports,
+                                &field_defaults,
+                                &mut output.diagnostics,
+                            );
                             output.field_defaults.push(HirTypedDeclExpr {
                                 owner,
                                 label: format!("{}::{}", variant.name, field.name),
@@ -508,7 +565,12 @@ pub fn lower_resolved_bodies(source: &ast::SourceFile, module: &HirModule) -> Bo
             ast::DeclKind::Enum(value) => {
                 for variant in &value.variants {
                     if let Some(explicit) = &variant.value {
-                        let mut lowerer = Lowerer::new(module, &imports, &mut output.diagnostics);
+                        let mut lowerer = Lowerer::new(
+                            module,
+                            &imports,
+                            &field_defaults,
+                            &mut output.diagnostics,
+                        );
                         output.enum_values.push(HirEnumValueExpr {
                             owner,
                             variant: variant.name.clone(),
@@ -524,7 +586,8 @@ pub fn lower_resolved_bodies(source: &ast::SourceFile, module: &HirModule) -> Bo
                     .filter(|method| method.impl_owner == owner)
                     .collect::<Vec<_>>();
                 for (method, method_def) in value.methods.iter().zip(method_defs) {
-                    let mut lowerer = Lowerer::new(module, &imports, &mut output.diagnostics);
+                    let mut lowerer =
+                        Lowerer::new(module, &imports, &field_defaults, &mut output.diagnostics);
                     lowerer.push_scope();
                     let mut params = Vec::new();
                     let mut param_defaults = BTreeMap::new();
@@ -569,6 +632,7 @@ pub fn lower_resolved_bodies(source: &ast::SourceFile, module: &HirModule) -> Bo
 struct Lowerer<'a, 'd> {
     module: &'a HirModule,
     imports: &'a BTreeMap<String, u32>,
+    field_defaults: &'a FieldDefaultTable,
     diagnostics: &'d mut Vec<HirDiagnostic>,
     scopes: Vec<BTreeMap<String, LocalId>>,
     locals: Vec<HirLocalDecl>,
@@ -580,11 +644,13 @@ impl<'a, 'd> Lowerer<'a, 'd> {
     fn new(
         module: &'a HirModule,
         imports: &'a BTreeMap<String, u32>,
+        field_defaults: &'a FieldDefaultTable,
         diagnostics: &'d mut Vec<HirDiagnostic>,
     ) -> Self {
         Self {
             module,
             imports,
+            field_defaults,
             diagnostics,
             scopes: Vec::new(),
             locals: Vec::new(),
@@ -598,6 +664,13 @@ impl<'a, 'd> Lowerer<'a, 'd> {
     }
     fn pop_scope(&mut self) {
         self.scopes.pop();
+    }
+
+    fn lower_declaration_default(&mut self, expr: &ast::Expr) -> HirExpr {
+        let scopes = std::mem::take(&mut self.scopes);
+        let lowered = self.lower_expr(expr);
+        self.scopes = scopes;
+        lowered
     }
 
     fn define_local(&mut self, span: Span, mutable: bool, parameter: bool, name: &str) -> LocalId {
@@ -963,14 +1036,43 @@ impl<'a, 'd> Lowerer<'a, 'd> {
                 variant,
                 fields,
                 ..
-            } => HirExprKind::StructInit {
-                namespace: self.lower_type_ref(namespace, expr.span),
-                variant: variant.clone(),
-                fields: fields
+            } => {
+                let namespace = self.lower_type_ref(namespace, expr.span);
+                let explicit = fields
                     .iter()
-                    .map(|f| (f.name.clone(), self.lower_expr(&f.value)))
-                    .collect(),
-            },
+                    .map(|field| field.name.as_str())
+                    .collect::<BTreeSet<_>>();
+                let mut lowered_fields = fields
+                    .iter()
+                    .map(|field| (field.name.clone(), self.lower_expr(&field.value)))
+                    .collect::<Vec<_>>();
+                match namespace {
+                    HirTypeRef::Def(owner) => {
+                        if let Some(defaults) = self
+                            .field_defaults
+                            .get(&(owner, variant.clone()))
+                            .cloned()
+                        {
+                            for (name, value) in defaults {
+                                if !explicit.contains(name.as_str()) {
+                                    lowered_fields
+                                        .push((name, self.lower_declaration_default(&value)));
+                                }
+                            }
+                        }
+                        HirExprKind::StructInit {
+                            namespace: HirTypeRef::Def(owner),
+                            variant: variant.clone(),
+                            fields: lowered_fields,
+                        }
+                    }
+                    namespace => HirExprKind::StructInit {
+                        namespace,
+                        variant: variant.clone(),
+                        fields: lowered_fields,
+                    },
+                }
+            }
             ExprKind::Unary { op, value } => HirExprKind::Unary {
                 op: *op,
                 value: Box::new(self.lower_expr(value)),
