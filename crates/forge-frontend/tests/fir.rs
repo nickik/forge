@@ -1857,12 +1857,41 @@ fn ordinary_reference_deref_remains_safe_fir_deref() {
         "#,
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|instruction| matches!(
-        instruction,
-        FirInstructionKind::Load {
-            place: forge_frontend::FirPlace::Deref { .. }
+    let function = output.module.functions.values().next().expect("function");
+    let instruction = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find(|instruction| {
+            matches!(
+                &instruction.kind,
+                FirInstructionKind::Load {
+                    place: forge_frontend::FirPlace::Deref { .. }
+                }
+            )
+        })
+        .expect("safe load");
+    let FirInstructionKind::Load {
+        place: forge_frontend::FirPlace::Deref { address },
+    } = &instruction.kind
+    else {
+        unreachable!();
+    };
+    let pointee = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    assert_eq!(
+        function.value_types[address],
+        Ty::Reference {
+            mutable: false,
+            inner: Box::new(pointee.clone()),
         }
-    )));
+    );
+    assert_eq!(
+        function.value_types[&instruction.result.expect("safe load result")],
+        pointee
+    );
     assert!(!instructions(&output).any(|instruction| matches!(
         instruction,
         FirInstructionKind::Load {
