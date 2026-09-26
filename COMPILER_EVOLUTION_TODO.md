@@ -113,6 +113,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Materialize omitted struct/tagged field defaults in body HIR before
         typechecking and FIR, then require every declared `MakeAggregate` field;
         struct and tagged defaults execute in the hosted native specification.
+  - [x] Validate dedicated bitstruct storage/rebuild/check/extract/extend FIR
+        contracts before AArch64/RISC-V lowering, including direction-sensitive
+        narrowing and extension, without relaxing generic integer conversion.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
