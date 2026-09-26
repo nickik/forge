@@ -624,6 +624,60 @@ fn local_address_preserves_reference_type_and_mutability() {
 }
 
 #[test]
+fn dereference_address_preserves_reference_pointee() {
+    let output = lower(
+        r#"
+        module test.fir_dereference_address;
+        fn reborrow(address: &u32) -> u32 {
+            val rebound: &u32 = &*address;
+            return *rebound;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let (function, instruction) = output
+        .module
+        .functions
+        .values()
+        .flat_map(|function| {
+            function.blocks.iter().flat_map(move |block| {
+                block
+                    .instructions
+                    .iter()
+                    .map(move |instruction| (function, instruction))
+            })
+        })
+        .find(|(_, instruction)| {
+            matches!(
+                &instruction.kind,
+                FirInstructionKind::AddressOf {
+                    place: forge_frontend::FirPlace::Deref { .. },
+                    ..
+                }
+            )
+        })
+        .expect("dereference address-of instruction");
+    let FirInstructionKind::AddressOf {
+        place: forge_frontend::FirPlace::Deref { address },
+        mutable,
+    } = &instruction.kind
+    else {
+        unreachable!();
+    };
+    let result = instruction.result.expect("address-of result");
+    let expected = Ty::Reference {
+        mutable: false,
+        inner: Box::new(Ty::Int {
+            signed: false,
+            width: IntWidth::W32,
+        }),
+    };
+    assert!(!*mutable);
+    assert_eq!(function.value_types.get(address), Some(&expected));
+    assert_eq!(function.value_types.get(&result), Some(&expected));
+}
+
+#[test]
 fn local_stores_preserve_the_declared_local_type() {
     let output = lower(
         r#"
