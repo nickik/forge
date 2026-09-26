@@ -125,11 +125,7 @@ fn assert_invalid(function: FirFunction, message: &str) {
 #[test]
 fn pointer_offset_requires_a_pointer_base() {
     assert_invalid(
-        function(
-            u(IntWidth::W32),
-            u(IntWidth::Pointer),
-            u(IntWidth::W32),
-        ),
+        function(u(IntWidth::W32), u(IntWidth::Pointer), u(IntWidth::W32)),
         "pointer offset base has non-pointer FIR type Int { signed: false, width: W32 }",
     );
 }
