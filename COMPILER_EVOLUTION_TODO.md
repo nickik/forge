@@ -150,6 +150,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Require handwritten named-function references to resolve to module
         functions and preserve their exact parameter and return signatures
         before native lowering on AArch64 and RISC-V.
+  - [x] Require handwritten direct calls to resolve to module functions and
+        preserve exact argument and result signatures before native lowering
+        on AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
