@@ -1621,10 +1621,34 @@ fn pointer_offset_is_a_dedicated_provenanced_fir_operation() {
         "#,
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
-    assert!(instructions(&output).any(|instruction| matches!(
-        instruction,
-        FirInstructionKind::PointerOffset { subtract: true, .. }
-    )));
+    let mut offsets = 0;
+    for function in output.module.functions.values() {
+        for instruction in function.blocks.iter().flat_map(|block| &block.instructions) {
+            let FirInstructionKind::PointerOffset {
+                pointer,
+                offset,
+                subtract,
+                ..
+            } = &instruction.kind
+            else {
+                continue;
+            };
+            assert!(*subtract);
+            let result = instruction.result.expect("pointer-offset result");
+            let pointer_ty = &function.value_types[pointer];
+            assert!(matches!(pointer_ty, Ty::Pointer { .. }));
+            assert_eq!(&function.value_types[&result], pointer_ty);
+            assert_eq!(
+                function.value_types[offset],
+                Ty::Int {
+                    signed: false,
+                    width: IntWidth::Pointer,
+                }
+            );
+            offsets += 1;
+        }
+    }
+    assert_eq!(offsets, 1);
     assert!(!instructions(&output).any(|instruction| matches!(
         instruction,
         FirInstructionKind::Binary {

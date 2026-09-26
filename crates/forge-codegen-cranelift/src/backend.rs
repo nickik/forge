@@ -571,6 +571,27 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
+                FirInstructionKind::PointerOffset {
+                    pointer, offset, ..
+                } => {
+                    let pointer_ty = value_type(fir, *pointer, "pointer-offset base")?;
+                    if !matches!(pointer_ty, Ty::Pointer { .. }) {
+                        return Err(shape(format!(
+                            "pointer offset base has non-pointer FIR type {pointer_ty:?}"
+                        )));
+                    }
+                    if result_ty != pointer_ty {
+                        return Err(shape(format!(
+                            "pointer offset result type {result_ty:?} differs from base type {pointer_ty:?}"
+                        )));
+                    }
+                    let offset_ty = value_type(fir, *offset, "pointer offset")?;
+                    if !matches!(offset_ty, Ty::Int { .. } | Ty::Byte) {
+                        return Err(shape(format!(
+                            "pointer offset has non-integer FIR type {offset_ty:?}"
+                        )));
+                    }
+                }
                 FirInstructionKind::DistinctFromUnderlying { value, distinct } => {
                     if result_ty != &Ty::Nominal(*distinct) {
                         return Err(shape(

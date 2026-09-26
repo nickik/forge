@@ -127,6 +127,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Require handwritten `PointerConvert` operation tags to match exact
         pointer-to-integer, integer-to-pointer or distinct-pointer endpoint
         types before native lowering on AArch64 and RISC-V.
+  - [x] Require handwritten `PointerOffset` instructions to use pointer bases,
+        concrete integer offsets and exact base-pointer results before native
+        lowering on AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
