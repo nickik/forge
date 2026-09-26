@@ -91,6 +91,8 @@ Legend:
   instructions with non-optional FIR result types are invalid producer contracts on AArch64/RISC-V.
 - Option patterns require optional scrutinees; handwritten `OptionIsSome` instructions require
   optional inputs and boolean results on AArch64/RISC-V.
+- Handwritten `OptionUnwrap` instructions require optional inputs and their exact payload result
+  type on AArch64/RISC-V.
 - `LosslessIntegerConvert` accepts only integer endpoints; malformed non-integer FIR endpoints are
   producer errors, while narrowing and signedness-loss conversions remain explicitly unsupported.
 - Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not

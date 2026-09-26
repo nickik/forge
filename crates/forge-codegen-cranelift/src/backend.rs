@@ -174,6 +174,19 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
+                FirInstructionKind::OptionUnwrap { value } => {
+                    let source = value_type(fir, *value, "option unwrap input")?;
+                    let Ty::Optional { inner } = source else {
+                        return Err(shape(format!(
+                            "option-unwrap instruction has non-optional FIR input type {source:?}"
+                        )));
+                    };
+                    if result_ty != inner.as_ref() {
+                        return Err(shape(format!(
+                            "option-unwrap instruction has FIR result type {result_ty:?}, optional payload is {inner:?}"
+                        )));
+                    }
+                }
                 FirInstructionKind::Load {
                     place: FirPlace::Local { local },
                 } => {
