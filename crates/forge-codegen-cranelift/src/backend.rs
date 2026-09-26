@@ -235,6 +235,30 @@ fn validate_c4_scalar_contract(
                         }
                     }
                 }
+                FirInstructionKind::Len { value } => {
+                    let source = value_type(fir, *value, "length input")?;
+                    if !matches!(
+                        source,
+                        Ty::Array {
+                            length: Some(_),
+                            ..
+                        } | Ty::Slice { .. }
+                            | Ty::Str
+                    ) {
+                        return Err(shape(format!(
+                            "len instruction has unsupported FIR input type {source:?}"
+                        )));
+                    }
+                    let usize_ty = Ty::Int {
+                        signed: false,
+                        width: forge_fir::IntWidth::Pointer,
+                    };
+                    if result_ty != &usize_ty {
+                        return Err(shape(format!(
+                            "len instruction has non-usize FIR result type {result_ty:?}"
+                        )));
+                    }
+                }
                 FirInstructionKind::Variant { ty, name } => {
                     if ty != result_ty {
                         return Err(shape(format!(
