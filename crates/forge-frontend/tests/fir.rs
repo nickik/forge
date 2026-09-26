@@ -296,6 +296,17 @@ fn result_patterns_lower_discriminant_tests_and_both_payload_projections() {
             .count()
             >= 2
     );
+    let function = output.module.functions.values().next().unwrap();
+    let test = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find(|instruction| matches!(&instruction.kind, FirInstructionKind::ResultIsOk { .. }))
+        .unwrap();
+    assert_eq!(
+        function.value_types.get(&test.result.unwrap()),
+        Some(&Ty::Bool)
+    );
     assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::ResultUnwrapOk { .. })));
     assert!(
         instructions(&output).any(|op| matches!(op, FirInstructionKind::ResultUnwrapErr { .. }))

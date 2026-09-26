@@ -187,6 +187,19 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
+                FirInstructionKind::ResultIsOk { value } => {
+                    let source = value_type(fir, *value, "result test input")?;
+                    if !matches!(source, Ty::Result { .. }) {
+                        return Err(shape(format!(
+                            "result-is-ok instruction has non-result FIR input type {source:?}"
+                        )));
+                    }
+                    if result_ty != &Ty::Bool {
+                        return Err(shape(format!(
+                            "result-is-ok instruction has non-bool FIR result type {result_ty:?}"
+                        )));
+                    }
+                }
                 FirInstructionKind::Load {
                     place: FirPlace::Local { local },
                 } => {
