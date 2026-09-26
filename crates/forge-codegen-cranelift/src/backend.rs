@@ -200,6 +200,32 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
+                FirInstructionKind::ResultUnwrapOk { value } => {
+                    let source = value_type(fir, *value, "result ok unwrap input")?;
+                    let Ty::Result { ok, .. } = source else {
+                        return Err(shape(format!(
+                            "result-unwrap-ok instruction has non-result FIR input type {source:?}"
+                        )));
+                    };
+                    if result_ty != ok.as_ref() {
+                        return Err(shape(format!(
+                            "result-unwrap-ok instruction has FIR result type {result_ty:?}, ok payload is {ok:?}"
+                        )));
+                    }
+                }
+                FirInstructionKind::ResultUnwrapErr { value } => {
+                    let source = value_type(fir, *value, "result error unwrap input")?;
+                    let Ty::Result { error, .. } = source else {
+                        return Err(shape(format!(
+                            "result-unwrap-err instruction has non-result FIR input type {source:?}"
+                        )));
+                    };
+                    if result_ty != error.as_ref() {
+                        return Err(shape(format!(
+                            "result-unwrap-err instruction has FIR result type {result_ty:?}, error payload is {error:?}"
+                        )));
+                    }
+                }
                 FirInstructionKind::Load {
                     place: FirPlace::Local { local },
                 } => {
