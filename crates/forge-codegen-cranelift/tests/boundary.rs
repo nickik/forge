@@ -1104,10 +1104,7 @@ fn make_some_requires_the_exact_optional_payload_type() {
                         value: Some(result),
                     }),
                 }],
-                value_types: BTreeMap::from([
-                    (payload, Ty::Bool),
-                    (result, optional.clone()),
-                ]),
+                value_types: BTreeMap::from([(payload, Ty::Bool), (result, optional.clone())]),
             },
         );
 
