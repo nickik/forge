@@ -94,16 +94,24 @@ pub(crate) fn validate_c9_memory_places(fir: &FirFunction) -> Result<(), Backend
                             Access::Read
                         },
                     )?;
-                    if let FirPlace::Local { local } = place {
-                        let local_data = fir
-                            .locals
-                            .get(local)
-                            .ok_or_else(|| invalid(format!("missing FIR local {local:?}")))?;
-                        if *mutable && !local_data.mutable {
-                            return Err(invalid(format!(
-                                "mutable address requested for immutable FIR local {local:?}"
-                            )));
+                    let pointee = match place {
+                        FirPlace::Local { local } => {
+                            let local_data = fir
+                                .locals
+                                .get(local)
+                                .ok_or_else(|| invalid(format!("missing FIR local {local:?}")))?;
+                            if *mutable && !local_data.mutable {
+                                return Err(invalid(format!(
+                                    "mutable address requested for immutable FIR local {local:?}"
+                                )));
+                            }
+                            Some(&local_data.ty)
                         }
+                        FirPlace::Deref { .. } => safe_pointee_type(fir, place)?,
+                        FirPlace::RawDeref { .. } => raw_pointee_type(fir, place)?,
+                        _ => None,
+                    };
+                    if let Some(pointee) = pointee {
                         let result = instruction
                             .result
                             .ok_or_else(|| invalid("address-of FIR instruction has no result"))?;
@@ -112,7 +120,7 @@ pub(crate) fn validate_c9_memory_places(fir: &FirFunction) -> Result<(), Backend
                         })?;
                         let expected = Ty::Reference {
                             mutable: *mutable,
-                            inner: Box::new(local_data.ty.clone()),
+                            inner: Box::new(pointee.clone()),
                         };
                         if result_ty != &expected {
                             return Err(invalid(format!(
