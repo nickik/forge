@@ -112,6 +112,7 @@ impl CraneliftBackend {
             validate_function_ref_contracts(fir, &module.functions)?;
             validate_direct_call_contracts(fir, &module.functions)?;
             validate_indirect_call_contracts(fir)?;
+            validate_closure_call_contracts(fir)?;
             validate_c9_memory_places(fir)?;
             validate_sia32_privileged_operations(self.target, fir)?;
 
@@ -267,6 +268,68 @@ fn validate_indirect_call_contracts(fir: &FirFunction) -> Result<(), BackendErro
                     return Err(shape("non-void indirect call has no result"));
                 }
                 None => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_closure_call_contracts(fir: &FirFunction) -> Result<(), BackendError> {
+    for block in &fir.blocks {
+        for instruction in &block.instructions {
+            let FirInstructionKind::CallClosure { closure, args, .. } = &instruction.kind else {
+                continue;
+            };
+            let closure_ty = value_type(fir, *closure, "closure call callee")?;
+            let Ty::Closure { params, result } = closure_ty else {
+                return Err(shape(format!(
+                    "closure call callee has non-closure type {closure_ty:?}"
+                )));
+            };
+            if args.len() != params.len() {
+                return Err(shape(format!(
+                    "closure call has {} argument(s), expected {}",
+                    args.len(),
+                    params.len()
+                )));
+            }
+            for (index, (argument, expected)) in args.iter().zip(params).enumerate() {
+                let actual = value_type(fir, *argument, "closure call argument")?;
+                if actual != expected {
+                    return Err(shape(format!(
+                        "closure call argument {index} has type {actual:?}, expected {expected:?}"
+                    )));
+                }
+            }
+            if result.as_ref() == &Ty::Void {
+                if instruction.result.is_some() {
+                    return Err(shape("void closure call unexpectedly has a result"));
+                }
+            } else {
+                let call_result = instruction
+                    .result
+                    .ok_or_else(|| shape("non-void closure call has no result"))?;
+                let actual = value_type(fir, call_result, "closure call result")?;
+                if actual != result.as_ref() {
+                    return Err(shape(format!(
+                        "closure call result type {actual:?} differs from callee result {:?}",
+                        result
+                    )));
+                }
+            }
+
+            let compatible_body = fir.closures.values().any(|candidate| {
+                !candidate.function_pointer
+                    && candidate.return_type == **result
+                    && candidate.params.len() == params.len()
+                    && candidate.params.iter().zip(params).all(|(local, expected)| {
+                        fir.locals
+                            .get(local)
+                            .is_some_and(|local| &local.ty == expected)
+                    })
+            });
+            if !compatible_body {
+                return Err(shape("closure call has no compatible local closure body"));
             }
         }
     }
