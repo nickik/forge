@@ -1608,6 +1608,7 @@ fn instruction_kind_name(kind: &FirInstructionKind) -> &'static str {
         FirInstructionKind::LoadGlobal { .. } => "global load",
         FirInstructionKind::StoreGlobal { .. } => "global store",
         FirInstructionKind::AddressOfGlobal { .. } => "global address of",
+        FirInstructionKind::StaticDataAddress { .. } => "static data address",
         FirInstructionKind::ContextLoad { .. } => "context load",
         FirInstructionKind::ContextSave { .. } => "context save",
         FirInstructionKind::ContextSet { .. } => "context set",

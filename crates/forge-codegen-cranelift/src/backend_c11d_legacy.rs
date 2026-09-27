@@ -191,6 +191,43 @@ fn validate_global_access_contracts(
                         )));
                     }
                 }
+                FirInstructionKind::StaticDataAddress { global } => {
+                    let result = instruction
+                        .result
+                        .ok_or_else(|| shape("static-data address has no result"))?;
+                    let declared = globals.get(global).ok_or_else(|| {
+                        shape(format!(
+                            "static-data address refers to missing global {global:?}"
+                        ))
+                    })?;
+                    if declared.mutable {
+                        return Err(shape(format!(
+                            "static-data address targets mutable global {global:?}"
+                        )));
+                    }
+                    if !matches!(
+                        &declared.ty,
+                        Ty::Array {
+                            element,
+                            length: Some(_),
+                        } if element.as_ref() == &Ty::Byte
+                    ) {
+                        return Err(shape(format!(
+                            "static-data address global {global:?} has non-byte-array type {:?}",
+                            declared.ty
+                        )));
+                    }
+                    let result_ty = value_type(fir, result, "static-data address result")?;
+                    let expected = Ty::Pointer {
+                        volatile: false,
+                        inner: Box::new(Ty::Byte),
+                    };
+                    if result_ty != &expected {
+                        return Err(shape(format!(
+                            "static-data address has non-byte-pointer FIR result type {result_ty:?}"
+                        )));
+                    }
+                }
                 _ => {}
             }
         }

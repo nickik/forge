@@ -1367,6 +1367,7 @@ fn block_ready(block: &FirBasicBlock, outer: &BTreeSet<FirValueId>) -> bool {
             | FirInstructionKind::FunctionRef { .. }
             | FirInstructionKind::LoadGlobal { .. }
             | FirInstructionKind::AddressOfGlobal { .. }
+            | FirInstructionKind::StaticDataAddress { .. }
             | FirInstructionKind::ContextLoad { .. }
             | FirInstructionKind::ContextSave { .. }
             | FirInstructionKind::MakeNone
