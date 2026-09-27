@@ -1058,18 +1058,18 @@ fn module_verifier_checks_direct_call_targets_and_signatures() {
 
     let (_, _, mut fir) = pipeline(source);
     assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
-    let function = fir
-        .module
-        .functions
-        .values_mut()
-        .find(|function| {
-            function.blocks.iter().any(|block| {
-                block.instructions.iter().any(|instruction| {
-                    matches!(&instruction.kind, FirInstructionKind::Call { .. })
+    let function =
+        fir.module
+            .functions
+            .values_mut()
+            .find(|function| {
+                function.blocks.iter().any(|block| {
+                    block.instructions.iter().any(|instruction| {
+                        matches!(&instruction.kind, FirInstructionKind::Call { .. })
+                    })
                 })
             })
-        })
-        .expect("direct-call producer");
+            .expect("direct-call producer");
     let function_owner = function.owner;
     let missing = DefId(u32::MAX);
     let (block, instruction_index, span) = function
@@ -1105,18 +1105,18 @@ fn module_verifier_checks_direct_call_targets_and_signatures() {
     assert!(diagnostic.message.contains("signature is None"));
 
     let (_, _, mut fir) = pipeline(source);
-    let function = fir
-        .module
-        .functions
-        .values_mut()
-        .find(|function| {
-            function.blocks.iter().any(|block| {
-                block.instructions.iter().any(|instruction| {
-                    matches!(&instruction.kind, FirInstructionKind::Call { .. })
+    let function =
+        fir.module
+            .functions
+            .values_mut()
+            .find(|function| {
+                function.blocks.iter().any(|block| {
+                    block.instructions.iter().any(|instruction| {
+                        matches!(&instruction.kind, FirInstructionKind::Call { .. })
+                    })
                 })
             })
-        })
-        .expect("direct-call producer");
+            .expect("direct-call producer");
     let (argument, result) = function
         .blocks
         .iter()
@@ -1135,21 +1135,23 @@ fn module_verifier_checks_direct_call_targets_and_signatures() {
         .expect("argument-type diagnostic");
     assert!(diagnostic.message.contains("types Some([Byte])"));
     assert!(diagnostic.message.contains("target signature is Some"));
-    assert!(diagnostic.message.contains("exact argument and result types"));
+    assert!(diagnostic
+        .message
+        .contains("exact argument and result types"));
 
     let (_, _, mut fir) = pipeline(source);
-    let function = fir
-        .module
-        .functions
-        .values_mut()
-        .find(|function| {
-            function.blocks.iter().any(|block| {
-                block.instructions.iter().any(|instruction| {
-                    matches!(&instruction.kind, FirInstructionKind::Call { .. })
+    let function =
+        fir.module
+            .functions
+            .values_mut()
+            .find(|function| {
+                function.blocks.iter().any(|block| {
+                    block.instructions.iter().any(|instruction| {
+                        matches!(&instruction.kind, FirInstructionKind::Call { .. })
+                    })
                 })
             })
-        })
-        .expect("direct-call producer");
+            .expect("direct-call producer");
     let result = function
         .blocks
         .iter()
