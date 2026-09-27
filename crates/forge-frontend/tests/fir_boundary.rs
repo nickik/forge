@@ -914,7 +914,10 @@ fn module_verifier_checks_dedicated_bitfield_width_contracts() {
         .find(|function| {
             function.blocks.iter().any(|block| {
                 block.instructions.iter().any(|instruction| {
-                    matches!(&instruction.kind, FirInstructionKind::BitFieldExtract { .. })
+                    matches!(
+                        &instruction.kind,
+                        FirInstructionKind::BitFieldExtract { .. }
+                    )
                 })
             })
         })

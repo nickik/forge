@@ -146,27 +146,21 @@ fn bitstruct_rebuild_requires_declared_storage() {
 
 #[test]
 fn bitfield_range_check_requires_a_strictly_narrower_width() {
-    assert_invalid_fir(
-        function(u(IntWidth::W8), None, |value| {
-            FirInstructionKind::BitFieldCheck { value, width: 8 }
-        }),
-    );
+    assert_invalid_fir(function(u(IntWidth::W8), None, |value| {
+        FirInstructionKind::BitFieldCheck { value, width: 8 }
+    }));
 }
 
 #[test]
 fn bitfield_extract_cannot_widen_storage() {
-    assert_invalid_fir(
-        function(u(IntWidth::W8), Some(u(IntWidth::W16)), |value| {
-            FirInstructionKind::BitFieldExtract { value }
-        }),
-    );
+    assert_invalid_fir(function(u(IntWidth::W8), Some(u(IntWidth::W16)), |value| {
+        FirInstructionKind::BitFieldExtract { value }
+    }));
 }
 
 #[test]
 fn bitfield_extend_cannot_narrow_payload() {
-    assert_invalid_fir(
-        function(u(IntWidth::W16), Some(u(IntWidth::W8)), |value| {
-            FirInstructionKind::BitFieldExtend { value }
-        }),
-    );
+    assert_invalid_fir(function(u(IntWidth::W16), Some(u(IntWidth::W8)), |value| {
+        FirInstructionKind::BitFieldExtend { value }
+    }));
 }
