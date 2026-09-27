@@ -4158,6 +4158,18 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                             function.owner, block.id
                         ),
                     });
+                } else if function.blocks[target.0 as usize].closure != block.closure {
+                    diagnostics.push(FirDiagnostic {
+                        span: Span::new(0, 0),
+                        code: "fir/verify-closure-control-flow".into(),
+                        message: format!(
+                            "function {:?} block {:?} owned by {:?} targets block {target:?} owned by {:?}; control flow must remain within one function or closure body",
+                            function.owner,
+                            block.id,
+                            block.closure,
+                            function.blocks[target.0 as usize].closure
+                        ),
+                    });
                 }
             }
             if let FirTerminator::Branch { condition, .. } = term {
