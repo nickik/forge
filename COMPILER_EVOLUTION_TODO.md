@@ -329,6 +329,9 @@ available on every backend merely because the frontend accepts it.
         result types at the shared FIR boundary before backend lowering.
   - [x] Indirect calls require a function-typed callee and exact argument and
         result types at the shared FIR boundary before backend lowering.
+  - [x] Local-closure calls require a closure-typed callee, exact argument and
+        result types, and a compatible function-local body at the shared FIR
+        boundary.
 - [ ] Keep lowering phases one-way: parser/HIR/typechecking decisions must be
       represented in FIR rather than reconstructed in codegen.
   - [x] Represent ordinary integer conversions as explicitly lossless FIR;

@@ -99,7 +99,7 @@ fn caller(callee_ty: Ty, argument_ty: Ty, result_ty: Ty) -> FirFunction {
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_invalid(function: FirFunction) {
     let module = FirModule {
         functions: BTreeMap::from([(function.owner, function)]),
         ..FirModule::default()
@@ -112,8 +112,8 @@ fn assert_invalid(function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -121,40 +121,33 @@ fn assert_invalid(function: FirFunction, message: &str) {
 
 #[test]
 fn closure_call_requires_a_closure_typed_callee() {
-    assert_invalid(
-        caller(Ty::Byte, u32_ty(), u32_ty()),
-        "closure call callee has non-closure type Byte",
-    );
+    assert_invalid(caller(Ty::Byte, u32_ty(), u32_ty()));
 }
 
 #[test]
 fn closure_call_arity_must_match_the_parameter_list() {
-    assert_invalid(
-        caller(closure_ty(vec![u32_ty(), u32_ty()]), u32_ty(), u32_ty()),
-        "closure call has 1 argument(s), expected 2",
-    );
+    assert_invalid(caller(
+        closure_ty(vec![u32_ty(), u32_ty()]),
+        u32_ty(),
+        u32_ty(),
+    ));
 }
 
 #[test]
 fn closure_call_argument_must_match_the_parameter_type() {
-    assert_invalid(
-        caller(closure_ty(vec![u32_ty()]), Ty::Byte, u32_ty()),
-        "closure call argument 0 has type Byte, expected Int { signed: false, width: W32 }",
-    );
+    assert_invalid(caller(closure_ty(vec![u32_ty()]), Ty::Byte, u32_ty()));
 }
 
 #[test]
 fn closure_call_result_must_match_the_callee_type() {
-    assert_invalid(
-        caller(closure_ty(vec![u32_ty()]), u32_ty(), Ty::Byte),
-        "closure call result type Byte differs from callee result Int { signed: false, width: W32 }",
-    );
+    assert_invalid(caller(closure_ty(vec![u32_ty()]), u32_ty(), Ty::Byte));
 }
 
 #[test]
 fn closure_call_requires_a_compatible_local_body() {
-    assert_invalid(
-        caller(closure_ty(vec![u32_ty()]), u32_ty(), u32_ty()),
-        "closure call has no compatible local closure body",
-    );
+    assert_invalid(caller(
+        closure_ty(vec![u32_ty()]),
+        u32_ty(),
+        u32_ty(),
+    ));
 }

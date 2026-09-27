@@ -618,6 +618,61 @@ fn verify_indirect_calls(function: &fir::FirFunction, diagnostics: &mut Vec<FirD
     }
 }
 
+fn verify_closure_calls(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::CallClosure { closure, args, .. } = &instruction.kind else {
+                continue;
+            };
+            let closure_type = function.value_types.get(closure);
+            let argument_types = args
+                .iter()
+                .map(|argument| function.value_types.get(argument).cloned())
+                .collect::<Option<Vec<_>>>();
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let compatible_body = match closure_type {
+                Some(Ty::Closure { params, result }) => function.closures.values().any(|candidate| {
+                    !candidate.function_pointer
+                        && candidate.return_type == **result
+                        && candidate.params.len() == params.len()
+                        && candidate.params.iter().zip(params).all(|(local, expected)| {
+                            function
+                                .locals
+                                .get(local)
+                                .is_some_and(|local| &local.ty == expected)
+                        })
+                }),
+                _ => false,
+            };
+            let valid = match closure_type {
+                Some(Ty::Closure { params, result }) => {
+                    argument_types.as_ref() == Some(params)
+                        && if result.as_ref() == &Ty::Void {
+                            instruction.result.is_none()
+                        } else {
+                            instruction.result.is_some()
+                                && result_type == Some(result.as_ref())
+                        }
+                        && compatible_body
+                }
+                _ => false,
+            };
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-closure-call",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} local closure call uses callee {closure:?} with type {closure_type:?}, arguments {args:?} with types {argument_types:?}, and result {:?} with type {result_type:?}; compatible local body={compatible_body}, expected a closure-typed callee with exact argument/result types and a compatible function-local closure body",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -745,6 +800,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_function_references(&initializer.function, module, &mut diagnostics);
         verify_direct_calls(&initializer.function, module, &mut diagnostics);
         verify_indirect_calls(&initializer.function, &mut diagnostics);
+        verify_closure_calls(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -766,6 +822,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_function_references(function, module, &mut diagnostics);
         verify_direct_calls(function, module, &mut diagnostics);
         verify_indirect_calls(function, &mut diagnostics);
+        verify_closure_calls(function, &mut diagnostics);
     }
 
     diagnostics
