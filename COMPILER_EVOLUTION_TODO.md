@@ -160,6 +160,10 @@ available on every backend merely because the frontend accepts it.
         preserve exact argument/result signatures and resolve to a compatible
         function-local closure body before native lowering on AArch64 and
         RISC-V.
+  - [x] Require handwritten `MakeClosure` instructions to resolve an exact
+        function-local body signature and preserve capture count, capture mode
+        storage types and environment metadata before native lowering on
+        AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.

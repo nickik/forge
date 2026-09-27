@@ -4,9 +4,9 @@ use cranelift_codegen::ir::{Function, Signature};
 use cranelift_codegen::isa::{CallConv, OwnedTargetIsa};
 use cranelift_codegen::Context;
 use forge_fir::{
-    verify_fir_module, BinaryOp, DefId, FirBasicBlock, FirFunction, FirInstructionKind, FirModule,
-    FirPlace, FirTerminator, FirValueId, IntWidth, Ty, TypeDefinitionKind, TypeDefinitionTable,
-    TypeFieldDefinition, UnsafeOperationKind,
+    verify_fir_module, BinaryOp, CaptureMode, DefId, FirBasicBlock, FirFunction,
+    FirInstructionKind, FirModule, FirPlace, FirTerminator, FirValueId, IntWidth, Ty,
+    TypeDefinitionKind, TypeDefinitionTable, TypeFieldDefinition, UnsafeOperationKind,
 };
 use target_lexicon::Triple;
 
@@ -112,6 +112,7 @@ impl CraneliftBackend {
             validate_function_ref_contracts(fir, &module.functions)?;
             validate_direct_call_contracts(fir, &module.functions)?;
             validate_indirect_call_contracts(fir)?;
+            validate_make_closure_contracts(fir)?;
             validate_closure_call_contracts(fir)?;
             validate_c9_memory_places(fir)?;
             validate_sia32_privileged_operations(self.target, fir)?;
@@ -330,6 +331,94 @@ fn validate_closure_call_contracts(fir: &FirFunction) -> Result<(), BackendError
             });
             if !compatible_body {
                 return Err(shape("closure call has no compatible local closure body"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_make_closure_contracts(fir: &FirFunction) -> Result<(), BackendError> {
+    for block in &fir.blocks {
+        for instruction in &block.instructions {
+            let FirInstructionKind::MakeClosure { closure, captures } = &instruction.kind else {
+                continue;
+            };
+            let result = instruction
+                .result
+                .ok_or_else(|| shape("make-closure has no result"))?;
+            let actual = value_type(fir, result, "make-closure result")?;
+            let metadata = fir
+                .closures
+                .get(closure)
+                .ok_or_else(|| shape(format!("make-closure references missing body {closure:?}")))?;
+            if metadata.id != *closure {
+                return Err(shape(format!(
+                    "make-closure body key {closure:?} differs from metadata id {:?}",
+                    metadata.id
+                )));
+            }
+            if metadata.function_pointer && !metadata.captures.is_empty() {
+                return Err(shape(
+                    "capture-free function-pointer closure unexpectedly declares captures",
+                ));
+            }
+
+            let params = metadata
+                .params
+                .iter()
+                .map(|local| {
+                    fir.locals
+                        .get(local)
+                        .map(|local| local.ty.clone())
+                        .ok_or_else(|| {
+                            shape(format!(
+                                "make-closure body parameter references missing local {local:?}"
+                            ))
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let expected = if metadata.function_pointer {
+                Ty::Function {
+                    params,
+                    result: Box::new(metadata.return_type.clone()),
+                    named_arguments: false,
+                }
+            } else {
+                Ty::Closure {
+                    params,
+                    result: Box::new(metadata.return_type.clone()),
+                }
+            };
+            if actual != &expected {
+                return Err(shape(format!(
+                    "make-closure result type {actual:?} differs from body signature {expected:?}"
+                )));
+            }
+            if captures.len() != metadata.captures.len() {
+                return Err(shape(format!(
+                    "make-closure has {} capture(s), expected {}",
+                    captures.len(),
+                    metadata.captures.len()
+                )));
+            }
+            for (index, (capture, field)) in captures.iter().zip(&metadata.captures).enumerate() {
+                let actual = value_type(fir, *capture, "make-closure capture")?;
+                let expected = match field.mode {
+                    CaptureMode::Value => field.ty.clone(),
+                    CaptureMode::SharedReference => Ty::Reference {
+                        mutable: false,
+                        inner: Box::new(field.ty.clone()),
+                    },
+                    CaptureMode::MutableReference => Ty::Reference {
+                        mutable: true,
+                        inner: Box::new(field.ty.clone()),
+                    },
+                };
+                if actual != &expected {
+                    return Err(shape(format!(
+                        "make-closure capture {index} has type {actual:?}, expected {expected:?}"
+                    )));
+                }
             }
         }
     }
