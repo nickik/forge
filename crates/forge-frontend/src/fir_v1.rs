@@ -167,6 +167,15 @@ pub enum FirInstructionKind {
         global: DefId,
         mutable: bool,
     },
+    /// Materialize the address of immutable compiler-generated static bytes.
+    ///
+    /// This is distinct from `AddressOfGlobal`: ordinary global address-taking
+    /// produces a safe reference to the global's declared type, while a C
+    /// string literal produces a raw pointer to the first byte of an immutable
+    /// NUL-terminated array.
+    StaticDataAddress {
+        global: DefId,
+    },
     ContextLoad {
         slot: ContextSlot,
     },

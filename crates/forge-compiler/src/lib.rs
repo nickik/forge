@@ -639,7 +639,7 @@ fn compile_ast(
     let definitions = collect_type_definitions(&ast, &hir.module, &bodies, &typed);
 
     rewrite_string_comparisons(&mut fir.module, &provider_owners)?;
-    let static_initializers = materialize_string_literals(&mut fir.module)?;
+    let static_initializers = materialize_static_literals(&mut fir.module)?;
 
     let main_owner = hir
         .module
@@ -884,17 +884,28 @@ fn reachable_provider_owners(
     providers
 }
 
-fn materialize_string_literals(
+fn materialize_static_literals(
     module: &mut FirModule,
 ) -> Result<StaticGlobalInitializerTable, CompilerError> {
-    fn collect(function: &FirFunction, literals: &mut BTreeSet<String>) {
+    fn collect(
+        function: &FirFunction,
+        strings: &mut BTreeSet<String>,
+        c_strings: &mut BTreeSet<String>,
+    ) {
         for block in &function.blocks {
             for instruction in &block.instructions {
-                if let FirInstructionKind::Const {
-                    value: FirConst::String { value },
-                } = &instruction.kind
-                {
-                    literals.insert(value.clone());
+                match &instruction.kind {
+                    FirInstructionKind::Const {
+                        value: FirConst::String { value },
+                    } => {
+                        strings.insert(value.clone());
+                    }
+                    FirInstructionKind::Const {
+                        value: FirConst::CString { value },
+                    } => {
+                        c_strings.insert(value.clone());
+                    }
+                    _ => {}
                 }
             }
         }
@@ -918,12 +929,13 @@ fn materialize_string_literals(
         }
     }
 
-    let mut literals = BTreeSet::new();
+    let mut strings = BTreeSet::new();
+    let mut c_strings = BTreeSet::new();
     for function in module.functions.values() {
-        collect(function, &mut literals);
+        collect(function, &mut strings, &mut c_strings);
     }
     for initializer in module.global_initializers.values() {
-        collect(&initializer.function, &mut literals);
+        collect(&initializer.function, &mut strings, &mut c_strings);
     }
 
     let mut used = BTreeSet::new();
@@ -933,7 +945,7 @@ fn materialize_string_literals(
     let mut descriptors = BTreeMap::new();
     let mut static_initializers = StaticGlobalInitializerTable::new();
 
-    for literal in literals {
+    for literal in strings {
         let bytes_owner = allocate(&mut used, &mut next)?;
         let descriptor_owner = allocate(&mut used, &mut next)?;
         let bytes = literal.as_bytes();
@@ -1008,26 +1020,75 @@ fn materialize_string_literals(
         descriptors.insert(literal, descriptor_owner);
     }
 
-    fn rewrite(function: &mut FirFunction, descriptors: &BTreeMap<String, DefId>) {
+    let mut c_string_storage = BTreeMap::new();
+    for literal in c_strings {
+        let bytes_owner = allocate(&mut used, &mut next)?;
+        let mut stored_bytes = literal.as_bytes().to_vec();
+        stored_bytes.push(0);
+        module.globals.insert(
+            bytes_owner,
+            FirGlobal {
+                owner: bytes_owner,
+                ty: Ty::Array {
+                    element: Box::new(Ty::Byte),
+                    length: Some(stored_bytes.len() as u64),
+                },
+                mutable: false,
+                constant: None,
+            },
+        );
+        static_initializers.insert(
+            bytes_owner,
+            StaticGlobalInitializer {
+                value: StaticValue::Array(
+                    stored_bytes
+                        .iter()
+                        .map(|byte| {
+                            StaticValue::Scalar(ConstValue::Integer {
+                                value: i128::from(*byte),
+                            })
+                        })
+                        .collect(),
+                ),
+                writable: false,
+            },
+        );
+        c_string_storage.insert(literal, bytes_owner);
+    }
+
+    fn rewrite(
+        function: &mut FirFunction,
+        descriptors: &BTreeMap<String, DefId>,
+        c_string_storage: &BTreeMap<String, DefId>,
+    ) {
         for block in &mut function.blocks {
             for instruction in &mut block.instructions {
-                let descriptor = match &instruction.kind {
+                let replacement = match &instruction.kind {
                     FirInstructionKind::Const {
                         value: FirConst::String { value },
-                    } => descriptors.get(value).copied(),
+                    } => descriptors
+                        .get(value)
+                        .copied()
+                        .map(|global| FirInstructionKind::LoadGlobal { global }),
+                    FirInstructionKind::Const {
+                        value: FirConst::CString { value },
+                    } => c_string_storage
+                        .get(value)
+                        .copied()
+                        .map(|global| FirInstructionKind::StaticDataAddress { global }),
                     _ => None,
                 };
-                if let Some(global) = descriptor {
-                    instruction.kind = FirInstructionKind::LoadGlobal { global };
+                if let Some(replacement) = replacement {
+                    instruction.kind = replacement;
                 }
             }
         }
     }
     for function in module.functions.values_mut() {
-        rewrite(function, &descriptors);
+        rewrite(function, &descriptors, &c_string_storage);
     }
     for initializer in module.global_initializers.values_mut() {
-        rewrite(&mut initializer.function, &descriptors);
+        rewrite(&mut initializer.function, &descriptors, &c_string_storage);
     }
 
     Ok(static_initializers)

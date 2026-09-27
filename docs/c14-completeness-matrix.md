@@ -19,7 +19,7 @@ Legend:
 | Modules, imports, visibility | 1 | Parser, resolver, multi-library compiler and build tests. |
 | `val`, `var`, `const`, assignment | 1 | Typecheck/FIR/native integer corpus; the FIR verifier performs a whole-CFG must-initialization audit and rejects local access unless every incoming path initializes it. |
 | Integer, bool, byte scalars | 1 | Checked/wrapping arithmetic, comparisons, shifts, conversions and ABI tests. |
-| String literals | 5 | Ordinary `str` literals lower and execute natively. `c"..."` preserves its non-volatile `*byte` FIR contract, but correct NUL-terminated static-data placement and relocation lowering remains a named AArch64/RISC-V milestone; Forge does not substitute escaping stack storage. |
+| String literals | 1 | Ordinary `str` literals lower and execute natively. `c"..."` literals are deduplicated into immutable NUL-terminated byte arrays and use dedicated static-data-address FIR plus AArch64/RISC-V object relocations; Forge does not substitute escaping stack storage. |
 | `char` | 1 | Native constants, locals, comparison, argument and return fixture. Arithmetic is rejected during typechecking; handwritten arithmetic `char` FIR is an invalid producer contract on AArch64/RISC-V. |
 | `duration` | 1 | Source builtin and reader form lower as signed nanoseconds; native argument, return, local, field load and field store execution is covered. |
 | `f32`, `f64` | 4 | Native AArch64 scalar constants, `+`/`-`/`*`/`/`, negation, comparisons, integer-to-float conversion, `f32`/`f64` argument-return calls, aggregate field storage, and executable fixtures are implemented. `%` is integer-only and floating-point `Rem` FIR is invalid. Unordered `NaN` comparisons, signed zero through division, integer-to-`f64` conversion, and explicit `f32`↔`f64` promotion/demotion execute in the hosted acceptance lane. Mixed-`f32`/`f64` aggregate arguments and returns execute through the production ABI. The AArch64 native matrix is complete; SIA32 deliberately rejects float FIR until C15, and RISC-V float support remains unclaimed. |
@@ -89,9 +89,10 @@ Legend:
 - Character literals in integer contexts are rejected during typechecking; handwritten character
   constants with non-character FIR result types are invalid producer contracts on AArch64/RISC-V.
 - Handwritten string constants require `str` result values on AArch64/RISC-V.
-- Handwritten C-string constants require non-volatile byte-pointer results on AArch64/RISC-V;
-  valid constants remain explicitly blocked on static-data placement/relocation lowering rather
-  than receiving unsafe function-stack storage.
+- Handwritten C-string constants require non-volatile byte-pointer results on AArch64/RISC-V.
+  The compiler rewrites valid source literals to dedicated static-data-address FIR backed by
+  immutable NUL-terminated byte arrays; raw handwritten constants remain blocked rather than
+  receiving unsafe function-stack storage.
 - Void expressions in integer contexts are rejected during typechecking; handwritten `Unit`
   instructions with non-void FIR result types are invalid producer contracts on AArch64/RISC-V.
 - `None` in integer contexts is rejected during typechecking; handwritten `MakeNone`

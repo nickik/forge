@@ -197,6 +197,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Require handwritten C-string constants to produce non-volatile byte
         pointers and pin their required static-data lowering as an explicit
         AArch64/RISC-V milestone rather than materializing escaping stack data.
+  - [x] Materialize valid C-string literals as deduplicated immutable
+        NUL-terminated byte arrays and lower their dedicated FIR static-data
+        addresses through AArch64/RISC-V object relocations.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.

@@ -148,6 +148,40 @@ fn lower_c11c_instruction(
         );
     }
 
+    if let FirInstructionKind::StaticDataAddress { global } = &instruction.kind {
+        let result = instruction
+            .result
+            .ok_or_else(|| shape("static-data address has no result"))?;
+        let global_data = all_globals.get(global).ok_or_else(|| {
+            shape(format!(
+                "static-data address refers to missing global {global:?}"
+            ))
+        })?;
+        if global_data.mutable
+            || !matches!(
+                &global_data.ty,
+                Ty::Array {
+                    element,
+                    length: Some(_),
+                } if element.as_ref() == &Ty::Byte
+            )
+        {
+            return Err(shape(format!(
+                "static-data address global {global:?} is not immutable byte-array storage"
+            )));
+        }
+        let expected = Ty::Pointer {
+            volatile: false,
+            inner: Box::new(Ty::Byte),
+        };
+        if value_type(fir, result)? != &expected {
+            return Err(shape("static-data address result is not a non-volatile byte pointer"));
+        }
+        let address = global_symbol_address(*global, types, cursor)?;
+        scalars.insert(result, address);
+        return Ok(());
+    }
+
     if let FirInstructionKind::PointerConvert {
         value,
         target,
