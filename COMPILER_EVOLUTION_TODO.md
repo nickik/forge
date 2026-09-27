@@ -166,8 +166,8 @@ available on every backend merely because the frontend accepts it.
         RISC-V.
   - [x] Require handwritten `MakeClosure` instructions to resolve an exact
         function-local body signature and preserve capture count, capture mode
-        storage types and environment metadata before native lowering on
-        AArch64 and RISC-V.
+        storage types and environment metadata at the shared FIR boundary
+        before native lowering on AArch64 and RISC-V.
   - [x] Require handwritten closure-capture places to stay within their owning
         closure body, use valid environment indexes, preserve exact direct
         load/store/address types and reject writes through shared captures

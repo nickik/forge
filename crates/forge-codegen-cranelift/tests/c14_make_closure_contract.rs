@@ -106,7 +106,7 @@ fn maker(
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_invalid(function: FirFunction) {
     let module = FirModule {
         functions: BTreeMap::from([(function.owner, function)]),
         ..FirModule::default()
@@ -119,8 +119,8 @@ fn assert_invalid(function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -128,42 +128,27 @@ fn assert_invalid(function: FirFunction, message: &str) {
 
 #[test]
 fn make_closure_requires_a_result() {
-    assert_invalid(
-        maker(None, u32_ty(), true, true),
-        "make-closure has no result",
-    );
+    assert_invalid(maker(None, u32_ty(), true, true));
 }
 
 #[test]
 fn make_closure_requires_local_body_metadata() {
-    assert_invalid(
-        maker(Some(closure_ty(Ty::Void)), u32_ty(), true, false),
-        "make-closure references missing body ExprId(7)",
-    );
+    assert_invalid(maker(Some(closure_ty(Ty::Void)), u32_ty(), true, false));
 }
 
 #[test]
 fn make_closure_result_must_match_the_body_signature() {
-    assert_invalid(
-        maker(Some(closure_ty(u32_ty())), u32_ty(), true, true),
-        "make-closure result type Closure { params: [], result: Int { signed: false, width: W32 } } differs from body signature Closure { params: [], result: Void }",
-    );
+    assert_invalid(maker(Some(closure_ty(u32_ty())), u32_ty(), true, true));
 }
 
 #[test]
 fn make_closure_capture_count_must_match_the_environment() {
-    assert_invalid(
-        maker(Some(closure_ty(Ty::Void)), u32_ty(), false, true),
-        "make-closure has 0 capture(s), expected 1",
-    );
+    assert_invalid(maker(Some(closure_ty(Ty::Void)), u32_ty(), false, true));
 }
 
 #[test]
 fn make_closure_capture_type_must_match_the_environment_field() {
-    assert_invalid(
-        maker(Some(closure_ty(Ty::Void)), Ty::Byte, true, true),
-        "make-closure capture 0 has type Byte, expected Int { signed: false, width: W32 }",
-    );
+    assert_invalid(maker(Some(closure_ty(Ty::Void)), Ty::Byte, true, true));
 }
 
 #[test]
@@ -175,8 +160,5 @@ fn make_closure_capture_mode_determines_the_environment_storage_type() {
         .expect("closure metadata")
         .captures[0]
         .mode = CaptureMode::MutableReference;
-    assert_invalid(
-        function,
-        "make-closure capture 0 has type Int { signed: false, width: W32 }, expected Reference { mutable: true, inner: Int { signed: false, width: W32 } }",
-    );
+    assert_invalid(function);
 }
