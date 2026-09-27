@@ -444,11 +444,16 @@ pub fn dump_clif_source_with_library_sources(
     libraries: &[(String, String)],
 ) -> Result<String, CompilerError> {
     let ast = link_source_with_library_sources(source, libraries)?;
-    let lowered = lower_ast(&ast)?;
+    let mut lowered = lower_ast(&ast)?;
     let definitions =
         collect_type_definitions(&ast, &lowered.hir.module, &lowered.bodies, &lowered.typed);
+    let static_initializers = materialize_static_literals(&mut lowered.fir.module)?;
     let backend = CraneliftBackend::aarch64()?;
-    let prepared = backend.prepare_module_with_types(&lowered.fir.module, &definitions)?;
+    let prepared = backend.prepare_module_with_static_initializers(
+        &lowered.fir.module,
+        &definitions,
+        &static_initializers,
+    )?;
     let mut dump = String::new();
     for (owner, function) in prepared.functions() {
         use std::fmt::Write as _;
@@ -468,11 +473,16 @@ pub fn dump_object_plan_source_with_library_sources(
     libraries: &[(String, String)],
 ) -> Result<String, CompilerError> {
     let ast = link_source_with_library_sources(source, libraries)?;
-    let lowered = lower_ast(&ast)?;
+    let mut lowered = lower_ast(&ast)?;
     let definitions =
         collect_type_definitions(&ast, &lowered.hir.module, &lowered.bodies, &lowered.typed);
+    let static_initializers = materialize_static_literals(&mut lowered.fir.module)?;
     let backend = CraneliftBackend::aarch64()?;
-    let prepared = backend.prepare_module_with_types(&lowered.fir.module, &definitions)?;
+    let prepared = backend.prepare_module_with_static_initializers(
+        &lowered.fir.module,
+        &definitions,
+        &static_initializers,
+    )?;
     let plan = backend.plan_object_module(&prepared)?;
 
     let functions = plan
