@@ -330,6 +330,16 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
                 ),
             ));
         }
+        if !initializer.function.params.is_empty() {
+            diagnostics.push(diagnostic(
+                Span::new(0, 0),
+                "fir/verify-global-init-signature",
+                format!(
+                    "runtime initializer {owner:?} takes {} parameters; expected none",
+                    initializer.function.params.len()
+                ),
+            ));
+        }
         let owner_position = positions.get(owner).copied();
         for dependency in &initializer.dependencies {
             let dependency_position = positions.get(dependency).copied();
