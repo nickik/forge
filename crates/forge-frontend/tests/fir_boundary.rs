@@ -1117,14 +1117,12 @@ fn module_verifier_checks_direct_call_targets_and_signatures() {
                 })
             })
             .expect("direct-call producer");
-    let (argument, result) = function
+    let argument = function
         .blocks
         .iter()
         .flat_map(|block| block.instructions.iter())
         .find_map(|instruction| match &instruction.kind {
-            FirInstructionKind::Call { args, .. } => {
-                Some((args[0], instruction.result.expect("direct-call result")))
-            }
+            FirInstructionKind::Call { args, .. } => Some(args[0]),
             _ => None,
         })
         .expect("direct call");
