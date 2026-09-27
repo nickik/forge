@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 
 use forge_codegen_cranelift::{BackendError, CraneliftBackend, CraneliftTarget};
 use forge_fir::{
-    DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction, FirInstructionKind,
-    FirModule, FirTerminator, FirValueId, IntWidth, Span, Ty, TypeDefinitionTable,
+    verify_fir_module, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirInstruction,
+    FirInstructionKind, FirModule, FirTerminator, FirValueId, IntWidth, Span, Ty,
+    TypeDefinitionTable,
 };
 
 fn u32_ty() -> Ty {
@@ -13,9 +14,12 @@ fn u32_ty() -> Ty {
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_invalid(function: FirFunction, code: &str) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
+    let diagnostics = verify_fir_module(&module);
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].code, code);
     let definitions = TypeDefinitionTable::new();
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let backend = CraneliftBackend::new(target).expect("backend");
@@ -25,8 +29,8 @@ fn assert_invalid(function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -74,10 +78,7 @@ fn branch_condition_requires_bool() {
             text: "1u32".into(),
         },
     };
-    assert_invalid(
-        function,
-        "branch condition has non-bool FIR type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(function, "fir/verify-branch");
 }
 
 #[test]
@@ -89,7 +90,7 @@ fn return_value_requires_the_callable_result_type() {
             Ty::Bool,
             FirTerminator::Return { value: Some(value) },
         ),
-        "return value has FIR type Bool, callable returns Int { signed: false, width: W32 }",
+        "fir/verify-return",
     );
 }
 
@@ -112,6 +113,6 @@ fn non_void_return_requires_a_value() {
     };
     assert_invalid(
         function,
-        "non-void callable returning Int { signed: false, width: W32 } has no return value",
+        "fir/verify-return",
     );
 }
