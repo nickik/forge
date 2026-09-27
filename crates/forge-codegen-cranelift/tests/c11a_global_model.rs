@@ -261,7 +261,12 @@ fn c11a_rejects_cross_category_definition_collision() {
         .expect("backend")
         .prepare_globals(&module, &TypeDefinitionTable::new())
         .expect_err("function/global owner collision must fail");
-    assert!(matches!(error, BackendError::InvalidFirShape { .. }));
+    assert_eq!(
+        error,
+        BackendError::InvalidFir {
+            diagnostic_count: 1,
+        }
+    );
 }
 
 #[test]
