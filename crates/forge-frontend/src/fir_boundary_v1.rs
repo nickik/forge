@@ -5,7 +5,9 @@ use crate::{
     body_hir::{BodyHirOutput, HirExpr, HirExprKind},
     fir::{self, FirDiagnostic, FirInstructionKind, FirModule, FirOutput},
     hir::DefId,
-    typecheck::{ConstValue, IntWidth, Ty, TypeCheckOutput, TypedBody, TypedExpr, TypedExprKind},
+    typecheck::{
+        CaptureMode, ConstValue, IntWidth, Ty, TypeCheckOutput, TypedBody, TypedExpr, TypedExprKind,
+    },
 };
 
 fn diagnostic(span: Span, code: &str, message: impl Into<String>) -> FirDiagnostic {
@@ -680,12 +682,12 @@ fn verify_closure_calls(function: &fir::FirFunction, diagnostics: &mut Vec<FirDi
 
 fn make_closure_capture_type(field: &fir::FirClosureField) -> Ty {
     match field.mode {
-        fir::CaptureMode::Value => field.ty.clone(),
-        fir::CaptureMode::SharedReference => Ty::Reference {
+        CaptureMode::Value => field.ty.clone(),
+        CaptureMode::SharedReference => Ty::Reference {
             mutable: false,
             inner: Box::new(field.ty.clone()),
         },
-        fir::CaptureMode::MutableReference => Ty::Reference {
+        CaptureMode::MutableReference => Ty::Reference {
             mutable: true,
             inner: Box::new(field.ty.clone()),
         },
