@@ -580,6 +580,44 @@ fn verify_direct_calls(
     }
 }
 
+fn verify_indirect_calls(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::CallIndirect { callee, args, .. } = &instruction.kind else {
+                continue;
+            };
+            let callee_type = function.value_types.get(callee);
+            let argument_types = args
+                .iter()
+                .map(|argument| function.value_types.get(argument).cloned())
+                .collect::<Option<Vec<_>>>();
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let valid = match callee_type {
+                Some(Ty::Function { params, result, .. }) => {
+                    argument_types.as_ref() == Some(params)
+                        && match instruction.result {
+                            Some(_) => result_type == Some(result.as_ref()),
+                            None => result.as_ref() == &Ty::Void,
+                        }
+                }
+                _ => false,
+            };
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-indirect-call",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} indirect call uses callee {callee:?} with type {callee_type:?}, arguments {args:?} with types {argument_types:?}, and result {:?} with type {result_type:?}; expected a function-typed callee with exact argument and result types",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -706,6 +744,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_bitfield_width_operations(&initializer.function, &mut diagnostics);
         verify_function_references(&initializer.function, module, &mut diagnostics);
         verify_direct_calls(&initializer.function, module, &mut diagnostics);
+        verify_indirect_calls(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -726,6 +765,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_bitfield_width_operations(function, &mut diagnostics);
         verify_function_references(function, module, &mut diagnostics);
         verify_direct_calls(function, module, &mut diagnostics);
+        verify_indirect_calls(function, &mut diagnostics);
     }
 
     diagnostics
