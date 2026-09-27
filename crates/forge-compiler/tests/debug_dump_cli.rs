@@ -257,3 +257,49 @@ fn answer(value: u32) -> u32 { return value + 1u32; }
     assert!(dump.contains("\"linkage\": \"local\""));
     assert!(dump.contains("\"global_init_order\": []"));
 }
+
+#[test]
+fn production_dumps_materialize_and_deduplicate_c_string_literals() {
+    let source =
+        std::env::temp_dir().join(format!("forgec-dump-c-string-{}.fg", std::process::id()));
+    std::fs::write(
+        &source,
+        r#"
+module test.c_string_dump;
+fn first() -> *byte { return c"same"; }
+fn second() -> *byte { return c"same"; }
+"#,
+    )
+    .expect("write C-string dump fixture");
+
+    let run = |flag: &str| {
+        Command::new(env!("CARGO_BIN_EXE_forgec"))
+            .arg(flag)
+            .arg(&source)
+            .output()
+            .expect("forgec should start")
+    };
+    let clif_first = run("--dump-clif");
+    let clif_second = run("--dump-clif");
+    let plan_first = run("--dump-object-plan");
+    let plan_second = run("--dump-object-plan");
+    let _ = std::fs::remove_file(&source);
+
+    for output in [&clif_first, &clif_second, &plan_first, &plan_second] {
+        assert!(
+            output.status.success(),
+            "literal dump failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.stderr.is_empty());
+    }
+    assert_eq!(clif_first.stdout, clif_second.stdout);
+    assert_eq!(plan_first.stdout, plan_second.stdout);
+
+    let clif = String::from_utf8(clif_first.stdout).expect("CLIF dump should be UTF-8");
+    assert!(clif.contains("symbol_value"));
+
+    let plan = String::from_utf8(plan_first.stdout).expect("object-plan dump should be UTF-8 JSON");
+    assert_eq!(plan.matches("\"storage\": \"read_only_data\"").count(), 1);
+    assert!(plan.contains("\"initialization\": \"static\""));
+}

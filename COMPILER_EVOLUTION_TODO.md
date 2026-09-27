@@ -337,6 +337,8 @@ available on every backend merely because the frontend accepts it.
   - [x] `forgec --dump-object-plan` emits deterministic production AArch64
         function/global symbols, linkage, layouts and initializer ordering
         before section construction, relocation encoding or serialization.
+  - [x] Production CLIF and object-plan dumps materialize and deduplicate the
+        same immutable string and C-string data used by native compilation.
 
 ## 6. Build, package and Cosmic readiness
 
