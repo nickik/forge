@@ -373,6 +373,46 @@ fn closure_verifier_rejects_control_flow_between_bodies() {
 }
 
 #[test]
+fn function_verifier_rejects_mismatched_block_identity_and_entry_owner() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_block_identity;
+        fn main() -> u32 { return 7u32; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let owner = function.owner;
+    let entry = function.entry;
+    function.blocks[entry.0 as usize].id = FirBlockId(7);
+    function.blocks[entry.0 as usize].closure = Some(ExprId(9));
+
+    let diagnostics = verify_fir_module(&fir.module);
+    let block_id = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-block-id")
+        .expect("block-id diagnostic");
+    assert!(block_id.message.contains(&format!("function {owner:?}")));
+    assert!(block_id.message.contains("block vector index 0"));
+    assert!(block_id.message.contains("id FirBlockId(7)"));
+
+    let entry_diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-entry")
+        .expect("function-entry diagnostic");
+    assert!(entry_diagnostic
+        .message
+        .contains(&format!("function {owner:?}")));
+    assert!(entry_diagnostic
+        .message
+        .contains(&format!("entry block {entry:?}")));
+    assert!(entry_diagnostic
+        .message
+        .contains("expected an existing outer-function block"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"
