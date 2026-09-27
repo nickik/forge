@@ -651,8 +651,12 @@ fn module_verifier_checks_static_data_address_producer_contract() {
         .find(|diagnostic| diagnostic.code == "fir/verify-static-data-address")
         .expect("mutable-storage diagnostic");
     assert_eq!(diagnostic.span, span);
-    assert!(diagnostic.message.contains(&format!("global {storage_owner:?}")));
-    assert!(diagnostic.message.contains("immutable fixed-length byte-array storage"));
+    assert!(diagnostic
+        .message
+        .contains(&format!("global {storage_owner:?}")));
+    assert!(diagnostic
+        .message
+        .contains("immutable fixed-length byte-array storage"));
 
     fir.module.globals.get_mut(&storage_owner).unwrap().mutable = false;
     fir.module
@@ -661,10 +665,13 @@ fn module_verifier_checks_static_data_address_producer_contract() {
         .next()
         .unwrap()
         .value_types
-        .insert(result, Ty::Pointer {
-            volatile: true,
-            inner: Box::new(Ty::Byte),
-        });
+        .insert(
+            result,
+            Ty::Pointer {
+                volatile: true,
+                inner: Box::new(Ty::Byte),
+            },
+        );
     let diagnostic = verify_fir_module(&fir.module)
         .into_iter()
         .find(|diagnostic| diagnostic.code == "fir/verify-static-data-address")
