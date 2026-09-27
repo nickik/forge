@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use forge_codegen_cranelift::{BackendError, CraneliftBackend, CraneliftTarget};
 use forge_fir::{
-    ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal,
-    FirInstruction, FirInstructionKind, FirModule, FirTerminator, FirValueId, IntWidth, Span,
+    ConstValue, DefId, FirBasicBlock, FirBlockId, FirConst, FirFunction, FirGlobal, FirInstruction,
+    FirInstructionKind, FirModule, FirTerminator, FirValueId, IntWidth, Span,
     StaticGlobalInitializer, StaticGlobalInitializerTable, StaticValue, Ty, TypeDefinitionTable,
 };
 
@@ -196,13 +196,7 @@ fn dedicated_static_data_address_lowers_for_immutable_nul_terminated_bytes() {
     let initializers = StaticGlobalInitializerTable::from([(
         storage_owner,
         StaticGlobalInitializer {
-            value: StaticValue::Array(vec![
-                byte(110),
-                byte(97),
-                byte(109),
-                byte(101),
-                byte(0),
-            ]),
+            value: StaticValue::Array(vec![byte(110), byte(97), byte(109), byte(101), byte(0)]),
             writable: false,
         },
     )]);
