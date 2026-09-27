@@ -1169,6 +1169,103 @@ fn module_verifier_checks_direct_call_targets_and_signatures() {
 }
 
 #[test]
+fn module_verifier_checks_indirect_call_callees_and_signatures() {
+    let source = r#"
+        module test.boundary_indirect_call;
+        fn add_one(value: u32) -> u32 { return value + 1u32; }
+        fn main() -> u32 {
+            val op: fn(u32) -> u32 = add_one;
+            return op(8u32);
+        }
+    "#;
+
+    let (_, _, mut fir) = pipeline(source);
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    let function =
+        fir.module
+            .functions
+            .values_mut()
+            .find(|function| {
+                function.blocks.iter().any(|block| {
+                    block.instructions.iter().any(|instruction| {
+                        matches!(&instruction.kind, FirInstructionKind::CallIndirect { .. })
+                    })
+                })
+            })
+            .expect("indirect-call producer");
+    let function_owner = function.owner;
+    let (callee, block, instruction_index, span) = function
+        .blocks
+        .iter()
+        .find_map(|block| {
+            block
+                .instructions
+                .iter()
+                .enumerate()
+                .find_map(|(index, instruction)| match &instruction.kind {
+                    FirInstructionKind::CallIndirect { callee, .. } => {
+                        Some((*callee, block.id, index, instruction.span))
+                    }
+                    _ => None,
+                })
+        })
+        .expect("indirect call");
+    function.value_types.insert(callee, Ty::Byte);
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-indirect-call")
+        .expect("callee-type diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("callee {callee:?} with type Some(Byte)")));
+    assert!(diagnostic.message.contains("function-typed callee"));
+
+    let (_, _, mut fir) = pipeline(source);
+    let function =
+        fir.module
+            .functions
+            .values_mut()
+            .find(|function| {
+                function.blocks.iter().any(|block| {
+                    block.instructions.iter().any(|instruction| {
+                        matches!(&instruction.kind, FirInstructionKind::CallIndirect { .. })
+                    })
+                })
+            })
+            .expect("indirect-call producer");
+    let (argument, result) = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .find_map(|instruction| match &instruction.kind {
+            FirInstructionKind::CallIndirect { args, .. } => {
+                Some((args[0], instruction.result.expect("indirect-call result")))
+            }
+            _ => None,
+        })
+        .expect("indirect call");
+    function.value_types.insert(argument, Ty::Byte);
+    function.value_types.insert(result, Ty::Byte);
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-indirect-call")
+        .expect("signature diagnostic");
+    assert!(diagnostic.message.contains("types Some([Byte])"));
+    assert!(diagnostic.message.contains("with type Some(Byte)"));
+    assert!(diagnostic
+        .message
+        .contains("exact argument and result types"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"

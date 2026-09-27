@@ -100,7 +100,7 @@ fn caller(callee_ty: Ty, argument_ty: Ty, result_ty: Ty) -> FirFunction {
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_invalid(function: FirFunction) {
     let module = FirModule {
         functions: BTreeMap::from([(function.owner, function)]),
         ..FirModule::default()
@@ -113,8 +113,8 @@ fn assert_invalid(function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -122,18 +122,12 @@ fn assert_invalid(function: FirFunction, message: &str) {
 
 #[test]
 fn indirect_call_requires_a_function_typed_callee() {
-    assert_invalid(
-        caller(Ty::Byte, u32_ty(), u32_ty()),
-        "indirect call callee has non-function type Byte",
-    );
+    assert_invalid(caller(Ty::Byte, u32_ty(), u32_ty()));
 }
 
 #[test]
 fn indirect_call_argument_must_match_the_parameter_type() {
-    assert_invalid(
-        caller(function_ty(), Ty::Byte, u32_ty()),
-        "indirect call argument 0 has type Byte, expected Int { signed: false, width: W32 }",
-    );
+    assert_invalid(caller(function_ty(), Ty::Byte, u32_ty()));
 }
 
 #[test]
@@ -143,16 +137,10 @@ fn indirect_call_arity_must_match_the_parameter_list() {
         result: Box::new(u32_ty()),
         named_arguments: false,
     };
-    assert_invalid(
-        caller(callee_ty, u32_ty(), u32_ty()),
-        "indirect call has 1 argument(s), expected 2",
-    );
+    assert_invalid(caller(callee_ty, u32_ty(), u32_ty()));
 }
 
 #[test]
 fn indirect_call_result_must_match_the_callee_type() {
-    assert_invalid(
-        caller(function_ty(), u32_ty(), Ty::Byte),
-        "indirect call result type Byte differs from callee result Int { signed: false, width: W32 }",
-    );
+    assert_invalid(caller(function_ty(), u32_ty(), Ty::Byte));
 }
