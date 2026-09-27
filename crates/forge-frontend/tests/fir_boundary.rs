@@ -335,6 +335,44 @@ fn closure_metadata_verifier_rejects_inconsistent_body_identity_and_parameters()
 }
 
 #[test]
+fn closure_verifier_rejects_control_flow_between_bodies() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_closure_control_flow;
+        fn main(input: u32) -> u32 {
+            val factor: u32 = input;
+            val value = [factor]() -> u32 { return factor; };
+            return value();
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let owner = function.owner;
+    let closure_entry = function.closures.values().next().expect("closure").entry;
+    let outer = function
+        .blocks
+        .iter_mut()
+        .find(|block| block.closure.is_none())
+        .expect("outer block");
+    let outer_id = outer.id;
+    outer.terminator = Some(FirTerminator::Goto {
+        target: closure_entry,
+    });
+
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-closure-control-flow")
+        .expect("closure-control-flow diagnostic");
+    assert!(diagnostic.message.contains(&format!("function {owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {outer_id:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("targets block {closure_entry:?}")));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"
