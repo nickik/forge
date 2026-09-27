@@ -1264,6 +1264,122 @@ fn module_verifier_checks_indirect_call_callees_and_signatures() {
 }
 
 #[test]
+fn module_verifier_checks_local_closure_call_contracts() {
+    let source = r#"
+        module test.boundary_closure_call;
+        fn main() -> u32 {
+            val factor: u32 = 4u32;
+            val scale = [factor](value: u32) -> u32 { return value * factor; };
+            return scale(3u32);
+        }
+    "#;
+
+    let (_, _, mut fir) = pipeline(source);
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::CallClosure { .. })
+                })
+            })
+        })
+        .expect("closure-call producer");
+    let function_owner = function.owner;
+    let (closure, block, instruction_index, span) = function
+        .blocks
+        .iter()
+        .find_map(|block| {
+            block.instructions.iter().enumerate().find_map(
+                |(index, instruction)| match &instruction.kind {
+                    FirInstructionKind::CallClosure { closure, .. } => {
+                        Some((*closure, block.id, index, instruction.span))
+                    }
+                    _ => None,
+                },
+            )
+        })
+        .expect("closure call");
+    function.value_types.insert(closure, Ty::Byte);
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-closure-call")
+        .expect("closure-type diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("callee {closure:?} with type Some(Byte)")));
+    assert!(diagnostic.message.contains("closure-typed callee"));
+
+    let (_, _, mut fir) = pipeline(source);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::CallClosure { .. })
+                })
+            })
+        })
+        .expect("closure-call producer");
+    let (argument, result) = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .find_map(|instruction| match &instruction.kind {
+            FirInstructionKind::CallClosure { args, .. } => {
+                Some((args[0], instruction.result.expect("closure-call result")))
+            }
+            _ => None,
+        })
+        .expect("closure call");
+    function.value_types.insert(argument, Ty::Byte);
+    function.value_types.insert(result, Ty::Byte);
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-closure-call")
+        .expect("signature diagnostic");
+    assert!(diagnostic.message.contains("types Some([Byte])"));
+    assert!(diagnostic.message.contains("with type Some(Byte)"));
+    assert!(diagnostic.message.contains("exact argument/result types"));
+
+    let (_, _, mut fir) = pipeline(source);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::CallClosure { .. })
+                })
+            })
+        })
+        .expect("closure-call producer");
+    function.closures.clear();
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-closure-call")
+        .expect("compatible-body diagnostic");
+    assert!(diagnostic.message.contains("compatible local body=false"));
+    assert!(diagnostic
+        .message
+        .contains("compatible function-local closure body"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"
