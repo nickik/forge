@@ -70,7 +70,9 @@ fn branch_condition_requires_bool() {
         },
     );
     function.blocks[0].instructions[0].kind = FirInstructionKind::Const {
-        value: FirConst::Integer { text: "1u32".into() },
+        value: FirConst::Integer {
+            text: "1u32".into(),
+        },
     };
     assert_invalid(
         function,
