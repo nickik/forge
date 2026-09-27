@@ -320,6 +320,16 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
                 format!("runtime initializer {owner:?} has invalid owner/result type"),
             ));
         }
+        if initializer.function.owner != *owner {
+            diagnostics.push(diagnostic(
+                Span::new(0, 0),
+                "fir/verify-global-init-function-owner",
+                format!(
+                    "runtime initializer {owner:?} function owner {:?} differs from its global owner",
+                    initializer.function.owner
+                ),
+            ));
+        }
         let owner_position = positions.get(owner).copied();
         for dependency in &initializer.dependencies {
             let dependency_position = positions.get(dependency).copied();
@@ -340,7 +350,17 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_no_poison(&initializer.function, &mut diagnostics);
     }
 
-    for function in module.functions.values() {
+    for (owner, function) in &module.functions {
+        if function.owner != *owner {
+            diagnostics.push(diagnostic(
+                Span::new(0, 0),
+                "fir/verify-function-owner",
+                format!(
+                    "function map key {owner:?} differs from function owner {:?}",
+                    function.owner
+                ),
+            ));
+        }
         diagnostics.extend(fir::verify_fir_function(function));
         verify_no_poison(function, &mut diagnostics);
     }
