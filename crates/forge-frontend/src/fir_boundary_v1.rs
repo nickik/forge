@@ -580,10 +580,7 @@ fn verify_direct_calls(
     }
 }
 
-fn verify_indirect_calls(
-    function: &fir::FirFunction,
-    diagnostics: &mut Vec<FirDiagnostic>,
-) {
+fn verify_indirect_calls(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
     for block in &function.blocks {
         for (instruction_index, instruction) in block.instructions.iter().enumerate() {
             let FirInstructionKind::CallIndirect { callee, args, .. } = &instruction.kind else {

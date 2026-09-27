@@ -1181,33 +1181,31 @@ fn module_verifier_checks_indirect_call_callees_and_signatures() {
 
     let (_, _, mut fir) = pipeline(source);
     assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
-    let function =
-        fir.module
-            .functions
-            .values_mut()
-            .find(|function| {
-                function.blocks.iter().any(|block| {
-                    block.instructions.iter().any(|instruction| {
-                        matches!(&instruction.kind, FirInstructionKind::CallIndirect { .. })
-                    })
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::CallIndirect { .. })
                 })
             })
-            .expect("indirect-call producer");
+        })
+        .expect("indirect-call producer");
     let function_owner = function.owner;
     let (callee, block, instruction_index, span) = function
         .blocks
         .iter()
         .find_map(|block| {
-            block
-                .instructions
-                .iter()
-                .enumerate()
-                .find_map(|(index, instruction)| match &instruction.kind {
+            block.instructions.iter().enumerate().find_map(
+                |(index, instruction)| match &instruction.kind {
                     FirInstructionKind::CallIndirect { callee, .. } => {
                         Some((*callee, block.id, index, instruction.span))
                     }
                     _ => None,
-                })
+                },
+            )
         })
         .expect("indirect call");
     function.value_types.insert(callee, Ty::Byte);
@@ -1229,18 +1227,18 @@ fn module_verifier_checks_indirect_call_callees_and_signatures() {
     assert!(diagnostic.message.contains("function-typed callee"));
 
     let (_, _, mut fir) = pipeline(source);
-    let function =
-        fir.module
-            .functions
-            .values_mut()
-            .find(|function| {
-                function.blocks.iter().any(|block| {
-                    block.instructions.iter().any(|instruction| {
-                        matches!(&instruction.kind, FirInstructionKind::CallIndirect { .. })
-                    })
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::CallIndirect { .. })
                 })
             })
-            .expect("indirect-call producer");
+        })
+        .expect("indirect-call producer");
     let (argument, result) = function
         .blocks
         .iter()
