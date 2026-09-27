@@ -3983,6 +3983,31 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
     let block_count = function.blocks.len() as u32;
     let mut definitions = BTreeSet::new();
 
+    match function.blocks.get(function.entry.0 as usize) {
+        Some(block) if block.closure.is_none() => {}
+        entry_block => diagnostics.push(FirDiagnostic {
+            span: Span::new(0, 0),
+            code: "fir/verify-entry".into(),
+            message: format!(
+                "function {:?} has entry block {:?} with metadata {entry_block:?}; expected an existing outer-function block within {block_count} blocks",
+                function.owner, function.entry
+            ),
+        }),
+    }
+    for (block_index, block) in function.blocks.iter().enumerate() {
+        let expected = FirBlockId(block_index as u32);
+        if block.id != expected {
+            diagnostics.push(FirDiagnostic {
+                span: Span::new(0, 0),
+                code: "fir/verify-block-id".into(),
+                message: format!(
+                    "function {:?} block vector index {block_index} contains id {:?}; expected {expected:?}",
+                    function.owner, block.id
+                ),
+            });
+        }
+    }
+
     if !fir_type_is_concrete(&function.return_type) {
         diagnostics.push(FirDiagnostic {
             span: Span::new(0, 0),

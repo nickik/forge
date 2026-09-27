@@ -175,6 +175,8 @@ available on every backend merely because the frontend accepts it.
   - [x] Keep outer-function and local-closure control-flow graphs isolated;
         handwritten branches cannot enter, leave or cross closure bodies before
         native lowering on AArch64 and RISC-V.
+  - [x] Require every FIR block ID to equal its vector index and every function
+        entry to name an existing outer-function block before native lowering.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
