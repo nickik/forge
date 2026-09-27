@@ -576,6 +576,32 @@ fn module_verifier_rejects_invalid_global_initialization_metadata() {
 }
 
 #[test]
+fn module_verifier_rejects_function_global_identity_collisions() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_definition_namespace;
+        const fixed: u32 = 7u32;
+        fn seed() -> u32 { return 1u32; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function_owner = *fir.module.functions.keys().next().expect("function");
+    let global_owner = *fir.module.globals.keys().next().expect("global");
+    let mut global = fir.module.globals.remove(&global_owner).unwrap();
+    global.owner = function_owner;
+    fir.module.globals.insert(function_owner, global);
+
+    let diagnostics = verify_fir_module(&fir.module);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-definition-namespace")
+        .expect("definition-namespace diagnostic");
+    assert!(diagnostic.message.contains(&format!("{function_owner:?}")));
+    assert!(diagnostic.message.contains("both a function and a global"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"
