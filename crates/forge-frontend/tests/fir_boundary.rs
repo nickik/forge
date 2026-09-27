@@ -1,7 +1,7 @@
 use forge_frontend::{
     dump_fir_module, lower_fir, lower_module, lower_resolved_bodies, parse_source,
     type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module, ExprId,
-    FirBlockId, FirInstructionKind, FirModule, FirPlace, FirTerminator, Ty,
+    FirBlockId, FirInstructionKind, FirLocalId, FirModule, FirPlace, FirTerminator, Ty,
 };
 
 fn pipeline(
@@ -410,6 +410,46 @@ fn function_verifier_rejects_mismatched_block_identity_and_entry_owner() {
     assert!(entry_diagnostic
         .message
         .contains("expected an existing outer-function block"));
+}
+
+#[test]
+fn function_verifier_rejects_inconsistent_local_and_parameter_metadata() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_local_metadata;
+        fn identity(value: u32) -> u32 { return value; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let owner = function.owner;
+    let parameter = function.params[0];
+    function.params.push(parameter);
+    function.locals.get_mut(&parameter).unwrap().id = FirLocalId(99);
+
+    let diagnostics = verify_fir_module(&fir.module);
+    let local_id = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-local-id")
+        .expect("local-id diagnostic");
+    assert!(local_id.message.contains(&format!("function {owner:?}")));
+    assert!(local_id
+        .message
+        .contains(&format!("local map key {parameter:?}")));
+    assert!(local_id.message.contains("metadata id FirLocalId(99)"));
+
+    let parameter_diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-parameter")
+        .expect("function-parameter diagnostic");
+    assert!(parameter_diagnostic
+        .message
+        .contains(&format!("function {owner:?}")));
+    assert!(parameter_diagnostic.message.contains("parameter 1"));
+    assert!(parameter_diagnostic
+        .message
+        .contains("expected a unique existing parameter local"));
 }
 
 #[test]
