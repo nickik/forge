@@ -3,10 +3,10 @@ module examples.c14.c_string_static;
 fn main() -> i32 {
     val text = c"Forge";
     unsafe {
-        if (*text != 70) { return 1; }
-        if (*(text + 1usize) != 111) { return 2; }
-        if (*(text + 4usize) != 101) { return 3; }
-        if (*(text + 5usize) != 0) { return 4; }
+        if (*text != byte(70)) { return 1; }
+        if (*(text + 1usize) != byte(111)) { return 2; }
+        if (*(text + 4usize) != byte(101)) { return 3; }
+        if (*(text + 5usize) != byte(0)) { return 4; }
     }
     return 0;
 }
