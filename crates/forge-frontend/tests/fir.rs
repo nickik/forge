@@ -1448,10 +1448,11 @@ fn captured_closure_lowers_environment_body_and_call() {
     {
         for instruction in &block.instructions {
             let FirInstructionKind::Load {
-                place: forge_frontend::FirPlace::ClosureCapture {
-                    closure: owner,
-                    index,
-                },
+                place:
+                    forge_frontend::FirPlace::ClosureCapture {
+                        closure: owner,
+                        index,
+                    },
             } = &instruction.kind
             else {
                 continue;
@@ -1459,7 +1460,10 @@ fn captured_closure_lowers_environment_body_and_call() {
             assert_eq!(owner, &closure.id);
             assert!((*index as usize) < closure.captures.len());
             let result = instruction.result.expect("closure-capture load result");
-            assert_eq!(&main.value_types[&result], &closure.captures[*index as usize].ty);
+            assert_eq!(
+                &main.value_types[&result],
+                &closure.captures[*index as usize].ty
+            );
         }
     }
     let mut saw_make = false;

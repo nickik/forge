@@ -238,9 +238,7 @@ fn shared_closure_capture_rejects_writes() {
             ExprId(7),
             0,
             CaptureMode::SharedReference,
-            CaptureOperation::Store {
-                value_ty: u32_ty(),
-            },
+            CaptureOperation::Store { value_ty: u32_ty() },
         ),
         "write through shared closure capture",
     );
