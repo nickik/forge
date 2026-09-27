@@ -129,7 +129,8 @@ Legend:
 - Direct-call FIR resolves to module functions and preserves exact argument and result signatures
   before AArch64/RISC-V lowering; required tail-call rejection remains explicit.
 - `MakeClosure` FIR resolves exact function-local body signatures and preserves capture count plus
-  value/shared-reference/mutable-reference environment storage types before AArch64/RISC-V lowering.
+  value/shared-reference/mutable-reference environment storage types at the shared FIR boundary
+  before AArch64/RISC-V lowering.
 - Closure-capture FIR places preserve body ownership, valid environment indexes, direct access
   types and shared-reference write protection before AArch64/RISC-V lowering.
 - `LosslessIntegerConvert` accepts only integer endpoints; malformed non-integer FIR endpoints are

@@ -5,7 +5,9 @@ use crate::{
     body_hir::{BodyHirOutput, HirExpr, HirExprKind},
     fir::{self, FirDiagnostic, FirInstructionKind, FirModule, FirOutput},
     hir::DefId,
-    typecheck::{ConstValue, IntWidth, Ty, TypeCheckOutput, TypedBody, TypedExpr, TypedExprKind},
+    typecheck::{
+        CaptureMode, ConstValue, IntWidth, Ty, TypeCheckOutput, TypedBody, TypedExpr, TypedExprKind,
+    },
 };
 
 fn diagnostic(span: Span, code: &str, message: impl Into<String>) -> FirDiagnostic {
@@ -678,6 +680,86 @@ fn verify_closure_calls(function: &fir::FirFunction, diagnostics: &mut Vec<FirDi
     }
 }
 
+fn make_closure_capture_type(field: &fir::FirClosureField) -> Ty {
+    match field.mode {
+        CaptureMode::Value => field.ty.clone(),
+        CaptureMode::SharedReference => Ty::Reference {
+            mutable: false,
+            inner: Box::new(field.ty.clone()),
+        },
+        CaptureMode::MutableReference => Ty::Reference {
+            mutable: true,
+            inner: Box::new(field.ty.clone()),
+        },
+    }
+}
+
+fn verify_make_closures(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::MakeClosure { closure, captures } = &instruction.kind else {
+                continue;
+            };
+            let metadata = function.closures.get(closure);
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let parameter_types = metadata.and_then(|metadata| {
+                metadata
+                    .params
+                    .iter()
+                    .map(|local| function.locals.get(local).map(|local| local.ty.clone()))
+                    .collect::<Option<Vec<_>>>()
+            });
+            let expected_result = metadata.and_then(|metadata| {
+                parameter_types.as_ref().map(|params| {
+                    if metadata.function_pointer {
+                        Ty::Function {
+                            params: params.clone(),
+                            result: Box::new(metadata.return_type.clone()),
+                            named_arguments: false,
+                        }
+                    } else {
+                        Ty::Closure {
+                            params: params.clone(),
+                            result: Box::new(metadata.return_type.clone()),
+                        }
+                    }
+                })
+            });
+            let capture_types = captures
+                .iter()
+                .map(|capture| function.value_types.get(capture).cloned())
+                .collect::<Option<Vec<_>>>();
+            let expected_capture_types = metadata.map(|metadata| {
+                metadata
+                    .captures
+                    .iter()
+                    .map(make_closure_capture_type)
+                    .collect::<Vec<_>>()
+            });
+            let metadata_matches = metadata.is_some_and(|metadata| {
+                metadata.id == *closure
+                    && (!metadata.function_pointer || metadata.captures.is_empty())
+            });
+            let valid = metadata_matches
+                && instruction.result.is_some()
+                && result_type == expected_result.as_ref()
+                && capture_types == expected_capture_types;
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-make-closure",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} MakeClosure {closure:?} has metadata {metadata:?}, result {:?} with type {result_type:?} (expected {expected_result:?}), and captures {captures:?} with types {capture_types:?} (expected {expected_capture_types:?}); expected an exact function-local body signature and capture environment",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -806,6 +888,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_direct_calls(&initializer.function, module, &mut diagnostics);
         verify_indirect_calls(&initializer.function, &mut diagnostics);
         verify_closure_calls(&initializer.function, &mut diagnostics);
+        verify_make_closures(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -828,6 +911,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_direct_calls(function, module, &mut diagnostics);
         verify_indirect_calls(function, &mut diagnostics);
         verify_closure_calls(function, &mut diagnostics);
+        verify_make_closures(function, &mut diagnostics);
     }
 
     diagnostics

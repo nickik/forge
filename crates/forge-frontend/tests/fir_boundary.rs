@@ -1380,6 +1380,123 @@ fn module_verifier_checks_local_closure_call_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_make_closure_contracts() {
+    let source = r#"
+        module test.boundary_make_closure;
+        fn main() -> u32 {
+            val factor: u32 = 4u32;
+            val scale = [factor](value: u32) -> u32 { return value * factor; };
+            return scale(3u32);
+        }
+    "#;
+
+    let (_, _, mut fir) = pipeline(source);
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::MakeClosure { .. })
+                })
+            })
+        })
+        .expect("make-closure producer");
+    let function_owner = function.owner;
+    let (closure, result, block, instruction_index, span) = function
+        .blocks
+        .iter()
+        .find_map(|block| {
+            block.instructions.iter().enumerate().find_map(
+                |(index, instruction)| match &instruction.kind {
+                    FirInstructionKind::MakeClosure { closure, .. } => Some((
+                        *closure,
+                        instruction.result.expect("make-closure result"),
+                        block.id,
+                        index,
+                        instruction.span,
+                    )),
+                    _ => None,
+                },
+            )
+        })
+        .expect("make closure");
+    function.value_types.insert(result, Ty::Byte);
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-make-closure")
+        .expect("result-type diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("MakeClosure {closure:?}")));
+    assert!(diagnostic.message.contains("result Some"));
+    assert!(diagnostic.message.contains("with type Some(Byte)"));
+    assert!(diagnostic
+        .message
+        .contains("exact function-local body signature"));
+
+    let (_, _, mut fir) = pipeline(source);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::MakeClosure { .. })
+                })
+            })
+        })
+        .expect("make-closure producer");
+    let capture = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .find_map(|instruction| match &instruction.kind {
+            FirInstructionKind::MakeClosure { captures, .. } => captures.first().copied(),
+            _ => None,
+        })
+        .expect("captured value");
+    function.value_types.insert(capture, Ty::Byte);
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-make-closure")
+        .expect("capture-type diagnostic");
+    assert!(diagnostic.message.contains("with types Some([Byte])"));
+    assert!(diagnostic.message.contains("capture environment"));
+
+    let (_, _, mut fir) = pipeline(source);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::MakeClosure { .. })
+                })
+            })
+        })
+        .expect("make-closure producer");
+    function.closures.clear();
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-make-closure")
+        .expect("missing-metadata diagnostic");
+    assert!(diagnostic.message.contains("has metadata None"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"
