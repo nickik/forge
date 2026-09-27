@@ -325,6 +325,8 @@ available on every backend merely because the frontend accepts it.
         dedicated unsigned FIR width contracts instead of generic conversions.
   - [x] Function references require an existing module target and an exact
         parameter/return signature before relocation-aware backend lowering.
+  - [x] Direct calls require an existing module target and exact argument and
+        result types at the shared FIR boundary before backend lowering.
 - [ ] Keep lowering phases one-way: parser/HIR/typechecking decisions must be
       represented in FIR rather than reconstructed in codegen.
   - [x] Represent ordinary integer conversions as explicitly lossless FIR;
