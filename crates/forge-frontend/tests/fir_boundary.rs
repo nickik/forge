@@ -778,11 +778,14 @@ fn module_verifier_checks_global_access_producer_contracts() {
         .iter()
         .flat_map(|block| block.instructions.iter())
         .find_map(|instruction| {
-            matches!(
+            if matches!(
                 &instruction.kind,
                 FirInstructionKind::AddressOfGlobal { .. }
-            )
-            .then_some(instruction.result.expect("address result"))
+            ) {
+                Some(instruction.result.expect("address result"))
+            } else {
+                None
+            }
         })
         .expect("global address");
     function.value_types.insert(
