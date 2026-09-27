@@ -111,8 +111,5 @@ fn non_void_return_requires_a_value() {
         }],
         value_types: BTreeMap::new(),
     };
-    assert_invalid(
-        function,
-        "fir/verify-return",
-    );
+    assert_invalid(function, "fir/verify-return");
 }
