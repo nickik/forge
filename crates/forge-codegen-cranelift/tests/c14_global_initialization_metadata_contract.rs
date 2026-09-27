@@ -88,9 +88,12 @@ fn native_backends_reject_invalid_global_initialization_metadata() {
     ] {
         for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
             let backend = CraneliftBackend::new(target).expect("backend");
-            let error = backend
+            let error = match backend
                 .prepare_module_with_types(&module, &TypeDefinitionTable::new())
-                .expect_err("invalid global initialization metadata unexpectedly lowered");
+            {
+                Ok(_) => panic!("invalid global initialization metadata unexpectedly lowered"),
+                Err(error) => error,
+            };
             assert_eq!(
                 error,
                 BackendError::InvalidFir {
