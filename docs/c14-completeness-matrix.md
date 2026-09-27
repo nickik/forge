@@ -38,7 +38,7 @@ Legend:
 | `match` | 1 | Bool, scalar, enum, tagged, Option, Result, nested projections, guards, OR/as, ranges, sequence-rest, and resolved map-protocol required/optional bindings execute natively. |
 | Functions and calls | 1 | Direct/indirect, named/default, method calls, scalar/aggregate ABI and non-main entry covered. Named references plus direct and indirect calls validate exact FIR signatures before native lowering. |
 | Function pointers | 1 | Named functions cross call boundaries; anonymous closure coercion is rejected. |
-| Local captured closures | 1 | Explicit capture lists and local calls execute. Closure construction validates exact local-body signatures plus capture/environment storage contracts, and local calls validate exact FIR signatures and a compatible function-local body. Return and call-argument escape are rejected with stable diagnostics, and a cross-function closure ABI is intentionally not part of C14. |
+| Local captured closures | 1 | Explicit capture lists and local calls execute. Closure construction validates exact local-body signatures plus capture/environment storage contracts; capture places validate body ownership, indexes, direct access types and shared-reference write protection; local calls validate exact FIR signatures and a compatible body. Return and call-argument escape are rejected, and a cross-function closure ABI is intentionally not part of C14. |
 | `defer` | 1 | Normal/direct return and `?` cleanup, break/continue exits, nested LIFO ordering, and cleanup-body control-flow rejection are covered. |
 | Globals | 1 | Static data, function/global pointer relocations, ordered runtime initialization, mutable scalar/whole-aggregate stores, shared/mutable addresses, direct global-rooted field reads/stores/addresses, and static aggregate pointers execute. AArch64 native and RISC-V/QEMU object tests cover the relocation paths. |
 | Overflow and traps | 1 | Checked/wrapping add/sub/mul, div/rem, shifts and divide-by-zero coverage exists. Ordinary integer conversions use dedicated lossless FIR semantics; narrowing and signed-to-unsigned conversions remain rejected until a future operation defines their policy. |
@@ -120,6 +120,8 @@ Legend:
   before AArch64/RISC-V lowering; required tail-call rejection remains explicit.
 - `MakeClosure` FIR resolves exact function-local body signatures and preserves capture count plus
   value/shared-reference/mutable-reference environment storage types before AArch64/RISC-V lowering.
+- Closure-capture FIR places preserve body ownership, valid environment indexes, direct access
+  types and shared-reference write protection before AArch64/RISC-V lowering.
 - `LosslessIntegerConvert` accepts only integer endpoints; malformed non-integer FIR endpoints are
   producer errors, while narrowing and signedness-loss conversions remain explicitly unsupported.
 - Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not

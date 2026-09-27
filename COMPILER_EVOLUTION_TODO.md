@@ -164,6 +164,10 @@ available on every backend merely because the frontend accepts it.
         function-local body signature and preserve capture count, capture mode
         storage types and environment metadata before native lowering on
         AArch64 and RISC-V.
+  - [x] Require handwritten closure-capture places to stay within their owning
+        closure body, use valid environment indexes, preserve exact direct
+        load/store/address types and reject writes through shared captures
+        before native lowering on AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
