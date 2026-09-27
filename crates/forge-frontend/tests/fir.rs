@@ -1170,10 +1170,26 @@ fn tagged_match_extracts_typed_payload_bindings() {
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
     assert!(instructions(&output).any(|op| matches!(op, FirInstructionKind::VariantIs { .. })));
-    assert!(instructions(&output).any(|op| matches!(
-        op,
-        FirInstructionKind::ExtractField { field, .. } if field == "value"
-    )));
+    let function = output.module.functions.values().next().expect("function");
+    let extraction = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find(|instruction| {
+            matches!(
+                &instruction.kind,
+                FirInstructionKind::ExtractField { field, .. } if field == "value"
+            )
+        })
+        .expect("payload extraction");
+    let result = extraction.result.expect("extract-field result");
+    assert_eq!(
+        function.value_types[&result],
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W32,
+        }
+    );
 }
 
 #[test]
