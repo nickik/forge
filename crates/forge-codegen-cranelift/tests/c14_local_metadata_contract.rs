@@ -69,10 +69,6 @@ fn native_backends_reject_mismatched_local_ids() {
 #[test]
 fn native_backends_reject_non_parameter_function_parameters() {
     let mut function = parameter_function();
-    function
-        .locals
-        .get_mut(&FirLocalId(0))
-        .unwrap()
-        .parameter = false;
+    function.locals.get_mut(&FirLocalId(0)).unwrap().parameter = false;
     assert_rejected(function);
 }
