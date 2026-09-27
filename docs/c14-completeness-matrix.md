@@ -106,6 +106,8 @@ Legend:
   `MakeAggregate`, and `VariantIs` produces booleans on AArch64/RISC-V.
 - Handwritten `MakeAggregate` instructions require matching declared/result types, unique supplied
   fields, complete declared field sets, and exact supplied payload types on AArch64/RISC-V.
+- Handwritten `ExtractField` instructions require field-bearing bases and exact declared field
+  result types on AArch64/RISC-V.
 - Omitted struct and tagged field defaults are materialized in body HIR before typechecking/FIR and
   execute through the hosted native specification.
 - Dedicated bitstruct storage/rebuild/check/extract/extend FIR validates nominal storage and

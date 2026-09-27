@@ -477,6 +477,20 @@ fn validate_c4_scalar_contract(
                 }
             }
 
+            if let FirInstructionKind::ExtractField { base, field } = &instruction.kind {
+                let result = instruction
+                    .result
+                    .ok_or_else(|| shape("extract-field has no result"))?;
+                let result_ty = value_type(fir, result, "extract-field result")?;
+                let base_ty = value_type(fir, *base, "extract-field base")?;
+                let field_ty = declared_field_type(definitions, base_ty, field)?;
+                if result_ty != &field_ty {
+                    return Err(shape(format!(
+                        "extract-field result has FIR type {result_ty:?}, declared field `{field}` has type {field_ty:?}"
+                    )));
+                }
+            }
+
             let Some(result) = instruction.result else {
                 continue;
             };
@@ -1151,6 +1165,76 @@ fn named_variant_is_fieldless(
         .find(|variant| variant.name == name)
         .ok_or_else(|| shape(format!("unknown variant `{name}` for FIR type {ty:?}")))?;
     Ok(variant.fields.is_empty())
+}
+
+fn declared_field_type(
+    definitions: &TypeDefinitionTable,
+    base_ty: &Ty,
+    field_name: &str,
+) -> Result<Ty, BackendError> {
+    fn resolve(
+        definitions: &TypeDefinitionTable,
+        base_ty: &Ty,
+        field_name: &str,
+        visited: &mut BTreeSet<DefId>,
+    ) -> Result<Ty, BackendError> {
+        if *base_ty == Ty::Str {
+            return match field_name {
+                "data" => Ok(Ty::Pointer {
+                    volatile: false,
+                    inner: Box::new(Ty::Int {
+                        signed: false,
+                        width: IntWidth::W8,
+                    }),
+                }),
+                "len" => Ok(Ty::Int {
+                    signed: false,
+                    width: IntWidth::Pointer,
+                }),
+                _ => Err(shape(format!("unknown str field {field_name:?}"))),
+            };
+        }
+
+        let Ty::Nominal(owner) = base_ty else {
+            return Err(shape(format!("field access on non-nominal {base_ty:?}")));
+        };
+        if !visited.insert(*owner) {
+            return Err(shape(format!(
+                "field access encounters a cyclic alias at {owner:?}"
+            )));
+        }
+        let definition = definitions
+            .get(owner)
+            .ok_or_else(|| shape(format!("missing definition {owner:?}")))?;
+        match &definition.kind {
+            TypeDefinitionKind::Struct { fields } => fields
+                .iter()
+                .find(|field| field.name == field_name)
+                .map(|field| field.ty.clone())
+                .ok_or_else(|| shape(format!("unknown field `{field_name}`"))),
+            TypeDefinitionKind::Alias { target }
+            | TypeDefinitionKind::Distinct { underlying: target } => {
+                resolve(definitions, target, field_name, visited)
+            }
+            TypeDefinitionKind::Tagged { variants } => {
+                let mut result = None;
+                for field in variants
+                    .iter()
+                    .flat_map(|variant| &variant.fields)
+                    .filter(|field| field.name == field_name)
+                {
+                    if result.as_ref().is_some_and(|ty| ty != &field.ty) {
+                        return Err(shape("variant-dependent tagged field type"));
+                    }
+                    result = Some(field.ty.clone());
+                }
+                result.ok_or_else(|| shape(format!("unknown tagged field `{field_name}`")))
+            }
+            _ => Err(shape("field access on type without fields")),
+        }
+    }
+
+    resolve(definitions, base_ty, field_name, &mut BTreeSet::new())
 }
 
 fn lossless_integer_conversion(
