@@ -181,6 +181,8 @@ available on every backend merely because the frontend accepts it.
         function parameters to name unique existing parameter locals.
   - [x] Require module function map keys and runtime-initializer function
         owners to match their defining owners before native lowering.
+  - [x] Require runtime global initializer functions to remain parameterless
+        before native lowering on AArch64 and RISC-V.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.

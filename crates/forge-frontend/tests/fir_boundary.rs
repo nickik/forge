@@ -1,7 +1,8 @@
 use forge_frontend::{
     dump_fir_module, lower_fir, lower_module, lower_resolved_bodies, parse_source,
     type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module, ExprId,
-    FirBlockId, FirInstructionKind, FirLocalId, FirModule, FirPlace, FirTerminator, Ty,
+    FirBlockId, FirInstructionKind, FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator,
+    IntWidth, Ty,
 };
 
 fn pipeline(
@@ -492,6 +493,49 @@ fn module_verifier_rejects_inconsistent_callable_owners() {
     assert!(initializer_owner
         .message
         .contains(&format!("runtime initializer {initializer_key:?}")));
+}
+
+#[test]
+fn module_verifier_rejects_parameterized_global_initializers() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_global_initializer_signature;
+        fn seed() -> u32 { return 1u32; }
+        val runtime: u32 = seed();
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let initializer = fir
+        .module
+        .global_initializers
+        .values_mut()
+        .next()
+        .expect("runtime initializer");
+    let parameter = FirLocalId(0);
+    initializer.function.params.push(parameter);
+    initializer.function.locals.insert(
+        parameter,
+        FirLocal {
+            id: parameter,
+            source: None,
+            ty: Ty::Int {
+                signed: false,
+                width: IntWidth::W32,
+            },
+            mutable: false,
+            parameter: true,
+            synthetic: false,
+        },
+    );
+
+    let diagnostics = verify_fir_module(&fir.module);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-global-init-signature")
+        .expect("initializer-signature diagnostic");
+    assert!(diagnostic.message.contains("takes 1 parameters"));
+    assert!(diagnostic.message.contains("expected none"));
 }
 
 #[test]
