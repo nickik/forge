@@ -142,6 +142,39 @@ fn string_literal_fir_preserves_str_type() {
 }
 
 #[test]
+fn c_string_literal_fir_preserves_byte_pointer_type() {
+    let output = lower(
+        r#"
+        module test.fir_c_string_literal;
+        fn key() -> *byte { return c"name"; }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let function = output.module.functions.values().next().expect("function");
+    let instruction = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find(|instruction| {
+            matches!(
+                &instruction.kind,
+                FirInstructionKind::Const {
+                    value: FirConst::CString { .. }
+                }
+            )
+        })
+        .expect("C string constant");
+    let result = instruction.result.expect("C string constant result");
+    assert_eq!(
+        function.value_types[&result],
+        Ty::Pointer {
+            volatile: false,
+            inner: Box::new(Ty::Byte),
+        }
+    );
+}
+
+#[test]
 fn branch_and_return_terminators_preserve_frontend_types() {
     let output = lower(
         r#"

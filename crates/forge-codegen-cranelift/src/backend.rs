@@ -494,6 +494,27 @@ fn validate_c4_scalar_contract(
                 }
             }
 
+            if matches!(
+                &instruction.kind,
+                FirInstructionKind::Const {
+                    value: forge_fir::FirConst::CString { .. }
+                }
+            ) {
+                let result = instruction
+                    .result
+                    .ok_or_else(|| shape("C string constant has no result"))?;
+                let result_ty = value_type(fir, result, "C string constant result")?;
+                let expected = forge_fir::Ty::Pointer {
+                    volatile: false,
+                    inner: Box::new(forge_fir::Ty::Byte),
+                };
+                if result_ty != &expected {
+                    return Err(shape(format!(
+                        "C string constant has non-byte-pointer FIR result type {result_ty:?}"
+                    )));
+                }
+            }
+
             if let FirInstructionKind::ExtractField { base, field } = &instruction.kind {
                 let result = instruction
                     .result
