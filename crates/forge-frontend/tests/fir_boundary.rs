@@ -1,7 +1,7 @@
 use forge_frontend::{
     dump_fir_module, lower_fir, lower_module, lower_resolved_bodies, parse_source,
-    type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module, ExprId,
-    ConstValue, FirBlockId, FirInstructionKind, FirLocal, FirLocalId, FirModule, FirPlace,
+    type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module, ConstValue,
+    ExprId, FirBlockId, FirInstructionKind, FirLocal, FirLocalId, FirModule, FirPlace,
     FirTerminator, IntWidth, Ty,
 };
 
@@ -564,8 +564,7 @@ fn module_verifier_rejects_invalid_global_initialization_metadata() {
         .keys()
         .next()
         .expect("runtime global");
-    fir.module.globals.get_mut(&runtime).unwrap().constant =
-        Some(ConstValue::Integer { value: 1 });
+    fir.module.globals.get_mut(&runtime).unwrap().constant = Some(ConstValue::Integer { value: 1 });
 
     let diagnostics = verify_fir_module(&fir.module);
     assert!(diagnostics
