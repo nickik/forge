@@ -1436,6 +1436,9 @@ fn lower_const(
                 "duration constant {value:?} has non-duration FIR result type {ty:?}"
             ))),
         },
+        FirConst::CString { .. } => Err(BackendError::UnsupportedInstruction {
+            kind: "C string literal requires static-data lowering",
+        }),
         _ => Err(BackendError::UnsupportedInstruction {
             kind: "non-integer scalar constant",
         }),

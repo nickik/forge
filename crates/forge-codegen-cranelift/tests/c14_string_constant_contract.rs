@@ -38,6 +38,38 @@ fn function(result_ty: Option<Ty>) -> FirFunction {
     }
 }
 
+fn c_string_function(result_ty: Option<Ty>) -> FirFunction {
+    let result = FirValueId(0);
+    let result_id = result_ty.as_ref().map(|_| result);
+    let value_types = result_ty
+        .clone()
+        .map(|ty| BTreeMap::from([(result, ty)]))
+        .unwrap_or_default();
+    FirFunction {
+        owner: DefId(1),
+        params: Vec::new(),
+        return_type: result_ty.unwrap_or(Ty::Void),
+        locals: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![FirInstruction {
+                span: Span::new(0, 0),
+                result: result_id,
+                kind: FirInstructionKind::Const {
+                    value: FirConst::CString {
+                        value: "name".into(),
+                    },
+                },
+            }],
+            terminator: Some(FirTerminator::Return { value: result_id }),
+        }],
+        value_types,
+    }
+}
+
 fn assert_invalid(function: FirFunction, message: &str) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
@@ -71,4 +103,44 @@ fn string_constant_requires_a_str_result() {
         })),
         "string constant has non-str FIR result type Int { signed: false, width: W32 }",
     );
+}
+
+#[test]
+fn c_string_constant_requires_a_result() {
+    assert_invalid(c_string_function(None), "C string constant has no result");
+}
+
+#[test]
+fn c_string_constant_requires_a_byte_pointer_result() {
+    assert_invalid(
+        c_string_function(Some(Ty::Int {
+            signed: false,
+            width: IntWidth::W32,
+        })),
+        "C string constant has non-byte-pointer FIR result type Int { signed: false, width: W32 }",
+    );
+}
+
+#[test]
+fn c_string_constant_pins_static_data_lowering_boundary() {
+    let mut module = FirModule::default();
+    let function = c_string_function(Some(Ty::Pointer {
+        volatile: false,
+        inner: Box::new(Ty::Byte),
+    }));
+    module.functions.insert(function.owner, function);
+    let definitions = TypeDefinitionTable::new();
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module_with_types(&module, &definitions) {
+            Ok(_) => panic!("C string constant unexpectedly lowered without static data"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::UnsupportedInstruction {
+                kind: "C string literal requires static-data lowering",
+            }
+        );
+    }
 }

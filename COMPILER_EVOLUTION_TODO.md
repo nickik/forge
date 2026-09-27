@@ -194,6 +194,9 @@ available on every backend merely because the frontend accepts it.
         identities before native lowering on AArch64 and RISC-V.
   - [x] Require branch conditions to be boolean and return values to match the
         enclosing function or local-closure result type before native lowering.
+  - [x] Require handwritten C-string constants to produce non-volatile byte
+        pointers and pin their required static-data lowering as an explicit
+        AArch64/RISC-V milestone rather than materializing escaping stack data.
 - [x] Continue rejecting compiler-internal sentinel types at the FIR boundary.
       The verified FIR module rejects every semantic sentinel with stable
       function, block, instruction and value context before code generation.
