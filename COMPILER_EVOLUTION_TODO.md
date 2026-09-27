@@ -323,6 +323,8 @@ available on every backend merely because the frontend accepts it.
         or reference types, and compatible mutability at the shared FIR boundary.
   - [x] Bitfield range checks, extraction narrowing and storage extension retain
         dedicated unsigned FIR width contracts instead of generic conversions.
+  - [x] Function references require an existing module target and an exact
+        parameter/return signature before relocation-aware backend lowering.
 - [ ] Keep lowering phases one-way: parser/HIR/typechecking decisions must be
       represented in FIR rather than reconstructed in codegen.
   - [x] Represent ordinary integer conversions as explicitly lossless FIR;
