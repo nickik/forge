@@ -4007,6 +4007,32 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
             });
         }
     }
+    for (local_key, local) in &function.locals {
+        if local_key != &local.id {
+            diagnostics.push(FirDiagnostic {
+                span: Span::new(0, 0),
+                code: "fir/verify-local-id".into(),
+                message: format!(
+                    "function {:?} local map key {local_key:?} differs from metadata id {:?}",
+                    function.owner, local.id
+                ),
+            });
+        }
+    }
+    let mut seen_params = BTreeSet::new();
+    for (parameter_index, parameter) in function.params.iter().enumerate() {
+        let local = function.locals.get(parameter);
+        if !seen_params.insert(*parameter) || !local.is_some_and(|local| local.parameter) {
+            diagnostics.push(FirDiagnostic {
+                span: Span::new(0, 0),
+                code: "fir/verify-parameter".into(),
+                message: format!(
+                    "function {:?} parameter {parameter_index} references local {parameter:?} with metadata {local:?}; expected a unique existing parameter local",
+                    function.owner
+                ),
+            });
+        }
+    }
 
     if !fir_type_is_concrete(&function.return_type) {
         diagnostics.push(FirDiagnostic {
