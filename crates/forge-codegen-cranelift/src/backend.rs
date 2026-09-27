@@ -108,6 +108,7 @@ impl CraneliftBackend {
         let mut functions = BTreeMap::new();
         for (owner, fir) in &module.functions {
             // Preserve all scalar semantic barriers established before C9.
+            validate_terminator_contracts(fir)?;
             validate_c4_scalar_contract(fir, &self.layout, definitions)?;
             validate_function_ref_contracts(fir, &module.functions)?;
             validate_direct_call_contracts(fir, &module.functions)?;
@@ -136,6 +137,50 @@ impl CraneliftBackend {
             functions,
         })
     }
+}
+
+fn validate_terminator_contracts(fir: &FirFunction) -> Result<(), BackendError> {
+    for block in &fir.blocks {
+        let return_type = match block.closure {
+            Some(closure) => &fir
+                .closures
+                .get(&closure)
+                .ok_or_else(|| shape(format!("block references missing closure {closure:?}")))?
+                .return_type,
+            None => &fir.return_type,
+        };
+        let Some(terminator) = &block.terminator else {
+            continue;
+        };
+        match terminator {
+            FirTerminator::Branch { condition, .. } => {
+                let condition_ty = value_type(fir, *condition, "branch condition")?;
+                if condition_ty != &Ty::Bool {
+                    return Err(shape(format!(
+                        "branch condition has non-bool FIR type {condition_ty:?}"
+                    )));
+                }
+            }
+            FirTerminator::Return { value: Some(value) } => {
+                let value_ty = value_type(fir, *value, "return value")?;
+                if value_ty != return_type {
+                    return Err(shape(format!(
+                        "return value has FIR type {value_ty:?}, callable returns {return_type:?}"
+                    )));
+                }
+            }
+            FirTerminator::Return { value: None } if return_type != &Ty::Void => {
+                return Err(shape(format!(
+                    "non-void callable returning {return_type:?} has no return value"
+                )));
+            }
+            FirTerminator::Goto { .. }
+            | FirTerminator::Return { value: None }
+            | FirTerminator::Select { .. }
+            | FirTerminator::Unreachable => {}
+        }
+    }
+    Ok(())
 }
 
 fn validate_function_ref_contracts(
