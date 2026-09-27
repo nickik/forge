@@ -4005,7 +4005,17 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
             });
         }
     }
-    for closure in function.closures.values() {
+    for (closure_key, closure) in &function.closures {
+        if closure_key != &closure.id {
+            diagnostics.push(FirDiagnostic {
+                span: Span::new(0, 0),
+                code: "fir/verify-closure-id".into(),
+                message: format!(
+                    "function {:?} closure map key {closure_key:?} differs from metadata id {:?}",
+                    function.owner, closure.id
+                ),
+            });
+        }
         let entry_owner = function
             .blocks
             .get(closure.entry.0 as usize)
@@ -4046,9 +4056,47 @@ pub fn verify_fir_function(function: &FirFunction) -> Vec<FirDiagnostic> {
                 ),
             });
         }
+        let mut seen_params = BTreeSet::new();
+        for (parameter_index, parameter) in closure.params.iter().enumerate() {
+            let local = function.locals.get(parameter);
+            if !seen_params.insert(*parameter) || local.is_none() {
+                diagnostics.push(FirDiagnostic {
+                    span: Span::new(0, 0),
+                    code: "fir/verify-closure-parameter".into(),
+                    message: format!(
+                        "function {:?} closure {:?} parameter {parameter_index} references local {parameter:?} with metadata {local:?}; expected a unique existing local",
+                        function.owner, closure.id
+                    ),
+                });
+            }
+        }
+        if closure.function_pointer && !closure.captures.is_empty() {
+            diagnostics.push(FirDiagnostic {
+                span: Span::new(0, 0),
+                code: "fir/verify-closure-captures".into(),
+                message: format!(
+                    "function {:?} function-pointer closure {:?} declares {} capture(s); expected none",
+                    function.owner,
+                    closure.id,
+                    closure.captures.len()
+                ),
+            });
+        }
     }
 
     for block in &function.blocks {
+        if let Some(closure) = block.closure {
+            if !function.closures.contains_key(&closure) {
+                diagnostics.push(FirDiagnostic {
+                    span: Span::new(0, 0),
+                    code: "fir/verify-closure-owner".into(),
+                    message: format!(
+                        "function {:?} block {:?} names missing closure owner {closure:?}",
+                        function.owner, block.id
+                    ),
+                });
+            }
+        }
         if block.terminator.is_none() {
             diagnostics.push(FirDiagnostic {
                 span: Span::new(0, 0),

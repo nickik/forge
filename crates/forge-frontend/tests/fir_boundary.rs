@@ -1,7 +1,7 @@
 use forge_frontend::{
     dump_fir_module, lower_fir, lower_module, lower_resolved_bodies, parse_source,
-    type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module, FirBlockId,
-    FirInstructionKind, FirModule, FirPlace, FirTerminator, Ty,
+    type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module, ExprId,
+    FirBlockId, FirInstructionKind, FirModule, FirPlace, FirTerminator, Ty,
 };
 
 fn pipeline(
@@ -293,6 +293,45 @@ fn signature_local_and_closure_verifiers_report_owner_context() {
         .message
         .contains(&format!("closure {closure_id:?}")));
     assert!(closure_type.message.contains("expected concrete FIR types"));
+}
+
+#[test]
+fn closure_metadata_verifier_rejects_inconsistent_body_identity_and_parameters() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_closure_metadata;
+        fn main(input: u32) -> u32 {
+            val factor: u32 = input;
+            val scale = [factor](value: u32) -> u32 { return value * factor; };
+            return scale(3u32);
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let owner = function.owner;
+    let closure_key = *function.closures.keys().next().expect("closure");
+    let mut closure = function.closures.remove(&closure_key).expect("closure");
+    let parameter = closure.params[0];
+    closure.params.push(parameter);
+    closure.function_pointer = true;
+    let bad_key = ExprId(closure_key.0 + 1);
+    function.closures.insert(bad_key, closure);
+
+    let diagnostics = verify_fir_module(&fir.module);
+    for code in [
+        "fir/verify-closure-id",
+        "fir/verify-closure-parameter",
+        "fir/verify-closure-captures",
+        "fir/verify-closure-owner",
+    ] {
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == code)
+            .unwrap_or_else(|| panic!("missing {code}: {diagnostics:?}"));
+        assert!(diagnostic.message.contains(&format!("function {owner:?}")));
+    }
 }
 
 #[test]
