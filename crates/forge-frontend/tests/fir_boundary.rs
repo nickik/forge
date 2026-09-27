@@ -453,6 +453,48 @@ fn function_verifier_rejects_inconsistent_local_and_parameter_metadata() {
 }
 
 #[test]
+fn module_verifier_rejects_inconsistent_callable_owners() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_callable_owners;
+        fn seed() -> u32 { return 1u32; }
+        val runtime: u32 = seed();
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let (function_key, function) = fir.module.functions.iter_mut().next().expect("function");
+    let function_key = *function_key;
+    function.owner = forge_frontend::DefId(function_key.0 + 100);
+
+    let (initializer_key, initializer) = fir
+        .module
+        .global_initializers
+        .iter_mut()
+        .next()
+        .expect("runtime initializer");
+    let initializer_key = *initializer_key;
+    initializer.function.owner = forge_frontend::DefId(initializer_key.0 + 100);
+
+    let diagnostics = verify_fir_module(&fir.module);
+    let function_owner = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-function-owner")
+        .expect("function-owner diagnostic");
+    assert!(function_owner
+        .message
+        .contains(&format!("function map key {function_key:?}")));
+
+    let initializer_owner = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-global-init-function-owner")
+        .expect("initializer-function-owner diagnostic");
+    assert!(initializer_owner
+        .message
+        .contains(&format!("runtime initializer {initializer_key:?}")));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"
