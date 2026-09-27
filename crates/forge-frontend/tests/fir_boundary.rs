@@ -1,7 +1,7 @@
 use forge_frontend::{
     dump_fir_module, lower_fir, lower_module, lower_resolved_bodies, parse_source,
     type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module, ExprId,
-    FirBlockId, FirInstructionKind, FirModule, FirPlace, FirTerminator, Ty,
+    FirBlockId, FirInstructionKind, FirLocalId, FirModule, FirPlace, FirTerminator, Ty,
 };
 
 fn pipeline(
