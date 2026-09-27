@@ -632,28 +632,33 @@ fn verify_closure_calls(function: &fir::FirFunction, diagnostics: &mut Vec<FirDi
             let result_type = instruction
                 .result
                 .and_then(|result| function.value_types.get(&result));
-            let compatible_body = match closure_type {
-                Some(Ty::Closure { params, result }) => function.closures.values().any(|candidate| {
-                    !candidate.function_pointer
-                        && candidate.return_type == **result
-                        && candidate.params.len() == params.len()
-                        && candidate.params.iter().zip(params).all(|(local, expected)| {
-                            function
-                                .locals
-                                .get(local)
-                                .is_some_and(|local| &local.ty == expected)
-                        })
-                }),
-                _ => false,
-            };
+                    let compatible_body = match closure_type {
+                        Some(Ty::Closure { params, result }) => {
+                            function.closures.values().any(|candidate| {
+                                !candidate.function_pointer
+                                    && candidate.return_type == **result
+                                    && candidate.params.len() == params.len()
+                                    && candidate
+                                        .params
+                                        .iter()
+                                        .zip(params)
+                                        .all(|(local, expected)| {
+                                            function
+                                                .locals
+                                                .get(local)
+                                                .is_some_and(|local| &local.ty == expected)
+                                        })
+                            })
+                        }
+                        _ => false,
+                    };
             let valid = match closure_type {
                 Some(Ty::Closure { params, result }) => {
                     argument_types.as_ref() == Some(params)
                         && if result.as_ref() == &Ty::Void {
                             instruction.result.is_none()
                         } else {
-                            instruction.result.is_some()
-                                && result_type == Some(result.as_ref())
+                            instruction.result.is_some() && result_type == Some(result.as_ref())
                         }
                         && compatible_body
                 }

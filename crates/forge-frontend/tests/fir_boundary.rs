@@ -1353,9 +1353,7 @@ fn module_verifier_checks_local_closure_call_contracts() {
         .expect("signature diagnostic");
     assert!(diagnostic.message.contains("types Some([Byte])"));
     assert!(diagnostic.message.contains("with type Some(Byte)"));
-    assert!(diagnostic
-        .message
-        .contains("exact argument/result types"));
+    assert!(diagnostic.message.contains("exact argument/result types"));
 
     let (_, _, mut fir) = pipeline(source);
     let function = fir

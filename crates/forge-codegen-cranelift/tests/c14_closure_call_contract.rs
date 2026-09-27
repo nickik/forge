@@ -145,9 +145,5 @@ fn closure_call_result_must_match_the_callee_type() {
 
 #[test]
 fn closure_call_requires_a_compatible_local_body() {
-    assert_invalid(caller(
-        closure_ty(vec![u32_ty()]),
-        u32_ty(),
-        u32_ty(),
-    ));
+    assert_invalid(caller(closure_ty(vec![u32_ty()]), u32_ty(), u32_ty()));
 }
