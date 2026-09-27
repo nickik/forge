@@ -948,6 +948,107 @@ fn module_verifier_checks_dedicated_bitfield_width_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_function_reference_targets_and_signatures() {
+    let source = r#"
+        module test.boundary_function_ref;
+        fn add_one(value: u32) -> u32 { return value + 1u32; }
+        fn main() -> u32 {
+            val op: fn(u32) -> u32 = add_one;
+            return op(8u32);
+        }
+    "#;
+
+    let (_, _, mut fir) = pipeline(source);
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::FunctionRef { .. })
+                })
+            })
+        })
+        .expect("function-reference producer");
+    let function_owner = function.owner;
+    let missing = DefId(u32::MAX);
+    let (block, instruction_index, span) = function
+        .blocks
+        .iter_mut()
+        .find_map(|block| {
+            block
+                .instructions
+                .iter_mut()
+                .enumerate()
+                .find_map(|(index, instruction)| match &mut instruction.kind {
+                    FirInstructionKind::FunctionRef { target } => {
+                        *target = missing;
+                        Some((block.id, index, instruction.span))
+                    }
+                    _ => None,
+                })
+        })
+        .expect("function reference");
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-function-ref")
+        .expect("missing-target diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic.message.contains(&format!("target {missing:?}")));
+    assert!(diagnostic.message.contains("signature None"));
+
+    let (_, _, mut fir) = pipeline(source);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::FunctionRef { .. })
+                })
+            })
+        })
+        .expect("function-reference producer");
+    let result = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .find_map(|instruction| match &instruction.kind {
+            FirInstructionKind::FunctionRef { .. } => instruction.result,
+            _ => None,
+        })
+        .expect("function-reference result");
+    function.value_types.insert(
+        result,
+        Ty::Function {
+            params: vec![Ty::Byte],
+            result: Box::new(Ty::Int {
+                signed: false,
+                width: IntWidth::W32,
+            }),
+            named_arguments: false,
+        },
+    );
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-function-ref")
+        .expect("signature-mismatch diagnostic");
+    assert!(diagnostic.message.contains("params: [Byte]"));
+    assert!(diagnostic.message.contains("signature Some"));
+    assert!(diagnostic.message.contains("exact function result type"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"

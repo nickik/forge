@@ -80,7 +80,7 @@ fn caller(target: DefId, result_ty: Ty) -> FirFunction {
     }
 }
 
-fn assert_invalid(module: FirModule, message: &str) {
+fn assert_invalid(module: FirModule) {
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let backend = CraneliftBackend::new(target).expect("backend");
         let error = match backend.prepare_module_with_types(&module, &TypeDefinitionTable::new()) {
@@ -89,8 +89,8 @@ fn assert_invalid(module: FirModule, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -100,37 +100,28 @@ fn assert_invalid(module: FirModule, message: &str) {
 fn function_reference_requires_a_module_target() {
     let target = DefId(1);
     let function = caller(target, function_ty(vec![u32_ty()], u32_ty()));
-    assert_invalid(
-        FirModule {
-            functions: BTreeMap::from([(function.owner, function)]),
-            ..FirModule::default()
-        },
-        "function-ref target DefId(1) is not in module",
-    );
+    assert_invalid(FirModule {
+        functions: BTreeMap::from([(function.owner, function)]),
+        ..FirModule::default()
+    });
 }
 
 #[test]
 fn function_reference_requires_a_function_result_type() {
     let target = DefId(1);
     let function = caller(target, Ty::Byte);
-    assert_invalid(
-        FirModule {
-            functions: BTreeMap::from([(target, callee(target)), (function.owner, function)]),
-            ..FirModule::default()
-        },
-        "function-ref has non-function result type Byte",
-    );
+    assert_invalid(FirModule {
+        functions: BTreeMap::from([(target, callee(target)), (function.owner, function)]),
+        ..FirModule::default()
+    });
 }
 
 #[test]
 fn function_reference_must_match_the_target_signature() {
     let target = DefId(1);
     let function = caller(target, function_ty(vec![Ty::Byte], u32_ty()));
-    assert_invalid(
-        FirModule {
-            functions: BTreeMap::from([(target, callee(target)), (function.owner, function)]),
-            ..FirModule::default()
-        },
-        "function-ref type Function { params: [Byte], result: Int { signed: false, width: W32 }, named_arguments: false } does not match target DefId(1) signature",
-    );
+    assert_invalid(FirModule {
+        functions: BTreeMap::from([(target, callee(target)), (function.owner, function)]),
+        ..FirModule::default()
+    });
 }

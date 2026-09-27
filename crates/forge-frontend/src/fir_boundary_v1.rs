@@ -494,6 +494,48 @@ fn verify_bitfield_width_operations(
     }
 }
 
+fn verify_function_references(
+    function: &fir::FirFunction,
+    module: &FirModule,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::FunctionRef { target } = &instruction.kind else {
+                continue;
+            };
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let expected = module.functions.get(target).and_then(|callee| {
+                callee
+                    .params
+                    .iter()
+                    .map(|parameter| callee.locals.get(parameter).map(|local| local.ty.clone()))
+                    .collect::<Option<Vec<_>>>()
+                    .map(|params| (params, callee.return_type.clone()))
+            });
+            let valid = matches!(
+                (result_type, expected.as_ref()),
+                (
+                    Some(Ty::Function { params, result, .. }),
+                    Some((expected_params, expected_result)),
+                ) if params == expected_params && result.as_ref() == expected_result
+            );
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-function-ref",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} function reference result {:?} has type {result_type:?} and target {target:?} has signature {expected:?}; expected an existing module function with an exact function result type",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -618,6 +660,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_static_data_addresses(&initializer.function, module, &mut diagnostics);
         verify_global_accesses(&initializer.function, module, &mut diagnostics);
         verify_bitfield_width_operations(&initializer.function, &mut diagnostics);
+        verify_function_references(&initializer.function, module, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -636,6 +679,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_static_data_addresses(function, module, &mut diagnostics);
         verify_global_accesses(function, module, &mut diagnostics);
         verify_bitfield_width_operations(function, &mut diagnostics);
+        verify_function_references(function, module, &mut diagnostics);
     }
 
     diagnostics
