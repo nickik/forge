@@ -142,6 +142,42 @@ fn string_literal_fir_preserves_str_type() {
 }
 
 #[test]
+fn branch_and_return_terminators_preserve_frontend_types() {
+    let output = lower(
+        r#"
+        module test.fir_terminators;
+        fn choose(flag: bool) -> u32 {
+            if (flag) { return 1u32; }
+            return 2u32;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let function = output.module.functions.values().next().expect("function");
+    let expected_return = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let mut saw_branch = false;
+    let mut return_count = 0;
+    for block in &function.blocks {
+        match block.terminator.as_ref().expect("terminator") {
+            FirTerminator::Branch { condition, .. } => {
+                assert_eq!(function.value_types[condition], Ty::Bool);
+                saw_branch = true;
+            }
+            FirTerminator::Return { value: Some(value) } => {
+                assert_eq!(function.value_types[value], expected_return);
+                return_count += 1;
+            }
+            _ => {}
+        }
+    }
+    assert!(saw_branch);
+    assert_eq!(return_count, 2);
+}
+
+#[test]
 fn mutable_global_assignment_and_address_lower_to_explicit_fir_operations() {
     let output = lower(
         r#"
