@@ -230,4 +230,28 @@ fn dedicated_static_data_address_lowers_for_immutable_nul_terminated_bytes() {
         assert_eq!(first, second, "{target:?} object must be deterministic");
         assert_eq!(&first[..4], b"\x7fELF");
     }
+
+    let mut malformed = module.clone();
+    malformed
+        .globals
+        .get_mut(&storage_owner)
+        .expect("literal storage")
+        .mutable = true;
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module_with_static_initializers(
+            &malformed,
+            &TypeDefinitionTable::new(),
+            &initializers,
+        ) {
+            Ok(_) => panic!("mutable static-data address storage unexpectedly verified"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
+            }
+        );
+    }
 }
