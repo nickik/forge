@@ -4,7 +4,7 @@ use crate::{
     ast::{FdnValue, Span},
     body_hir::{BodyHirOutput, HirExpr, HirExprKind},
     fir::{self, FirDiagnostic, FirInstructionKind, FirModule, FirOutput},
-    typecheck::{Ty, TypeCheckOutput, TypedBody, TypedExpr, TypedExprKind},
+    typecheck::{ConstValue, Ty, TypeCheckOutput, TypedBody, TypedExpr, TypedExprKind},
 };
 
 fn diagnostic(span: Span, code: &str, message: impl Into<String>) -> FirDiagnostic {
@@ -28,6 +28,14 @@ fn type_is_concrete(ty: &Ty) -> bool {
             params.iter().all(type_is_concrete) && type_is_concrete(result)
         }
         _ => true,
+    }
+}
+
+fn global_constant_matches_type(constant: &ConstValue, ty: &Ty) -> bool {
+    match constant {
+        ConstValue::Integer { .. } => matches!(ty, Ty::Byte | Ty::Int { .. }),
+        ConstValue::Bool { .. } => matches!(ty, Ty::Bool),
+        ConstValue::Char { .. } => matches!(ty, Ty::Char),
     }
 }
 
@@ -279,6 +287,18 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
                 format!("global {owner:?} has invalid owner/type metadata"),
             ));
         }
+        if let Some(constant) = &global.constant {
+            if !global_constant_matches_type(constant, &global.ty) {
+                diagnostics.push(diagnostic(
+                    Span::new(0, 0),
+                    "fir/verify-global-constant",
+                    format!(
+                        "global {owner:?} constant {constant:?} does not match type {:?}",
+                        global.ty
+                    ),
+                ));
+            }
+        }
     }
 
     let mut positions = BTreeMap::new();
@@ -313,6 +333,15 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
             ));
             continue;
         };
+        if global.constant.is_some() {
+            diagnostics.push(diagnostic(
+                Span::new(0, 0),
+                "fir/verify-global-initialization",
+                format!(
+                    "global {owner:?} has both a compile-time constant and a runtime initializer"
+                ),
+            ));
+        }
         if initializer.owner != *owner || initializer.function.return_type != global.ty {
             diagnostics.push(diagnostic(
                 Span::new(0, 0),

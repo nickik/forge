@@ -216,7 +216,12 @@ fn c11a_rejects_compile_time_and_runtime_initializer_conflict() {
         .expect("backend")
         .prepare_globals(&module, &TypeDefinitionTable::new())
         .expect_err("conflicting initializers must fail");
-    assert!(matches!(error, BackendError::InvalidFirShape { .. }));
+    assert_eq!(
+        error,
+        BackendError::InvalidFir {
+            diagnostic_count: 1,
+        }
+    );
 }
 
 #[test]

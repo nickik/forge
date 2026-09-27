@@ -1,8 +1,8 @@
 use forge_frontend::{
     dump_fir_module, lower_fir, lower_module, lower_resolved_bodies, parse_source,
-    type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module, ExprId,
-    FirBlockId, FirInstructionKind, FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator,
-    IntWidth, Ty,
+    type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module, ConstValue,
+    ExprId, FirBlockId, FirInstructionKind, FirLocal, FirLocalId, FirModule, FirPlace,
+    FirTerminator, IntWidth, Ty,
 };
 
 fn pipeline(
@@ -536,6 +536,43 @@ fn module_verifier_rejects_parameterized_global_initializers() {
         .expect("initializer-signature diagnostic");
     assert!(diagnostic.message.contains("takes 1 parameters"));
     assert!(diagnostic.message.contains("expected none"));
+}
+
+#[test]
+fn module_verifier_rejects_invalid_global_initialization_metadata() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_global_initialization_metadata;
+        const fixed: u32 = 7u32;
+        fn seed() -> u32 { return 1u32; }
+        val runtime: u32 = seed();
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let constant = fir
+        .module
+        .globals
+        .values_mut()
+        .find(|global| global.constant.is_some())
+        .expect("compile-time global");
+    constant.constant = Some(ConstValue::Bool { value: true });
+
+    let runtime = *fir
+        .module
+        .global_initializers
+        .keys()
+        .next()
+        .expect("runtime global");
+    fir.module.globals.get_mut(&runtime).unwrap().constant = Some(ConstValue::Integer { value: 1 });
+
+    let diagnostics = verify_fir_module(&fir.module);
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == "fir/verify-global-constant"));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == "fir/verify-global-initialization"));
 }
 
 #[test]
