@@ -86,6 +86,7 @@ Legend:
   constants with non-integer FIR result types are invalid producer contracts on AArch64/RISC-V.
 - Character literals in integer contexts are rejected during typechecking; handwritten character
   constants with non-character FIR result types are invalid producer contracts on AArch64/RISC-V.
+- Handwritten string constants require `str` result values on AArch64/RISC-V.
 - Void expressions in integer contexts are rejected during typechecking; handwritten `Unit`
   instructions with non-void FIR result types are invalid producer contracts on AArch64/RISC-V.
 - `None` in integer contexts is rejected during typechecking; handwritten `MakeNone`

@@ -115,6 +115,33 @@ fn array_literal_fir_preserves_checked_length_and_element_type() {
 }
 
 #[test]
+fn string_literal_fir_preserves_str_type() {
+    let output = lower(
+        r#"
+        module test.fir_string_literal;
+        fn key() -> str { return "name"; }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    let function = output.module.functions.values().next().expect("function");
+    let instruction = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find(|instruction| {
+            matches!(
+                &instruction.kind,
+                FirInstructionKind::Const {
+                    value: FirConst::String { .. }
+                }
+            )
+        })
+        .expect("string constant");
+    let result = instruction.result.expect("string constant result");
+    assert_eq!(function.value_types[&result], Ty::Str);
+}
+
+#[test]
 fn mutable_global_assignment_and_address_lower_to_explicit_fir_operations() {
     let output = lower(
         r#"
