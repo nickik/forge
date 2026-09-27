@@ -87,7 +87,7 @@ fn caller(target: DefId, argument_ty: Ty, result_ty: Ty) -> FirFunction {
     }
 }
 
-fn assert_invalid(module: FirModule, message: &str) {
+fn assert_invalid(module: FirModule) {
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let backend = CraneliftBackend::new(target).expect("backend");
         let error = match backend.prepare_module_with_types(&module, &TypeDefinitionTable::new()) {
@@ -96,8 +96,8 @@ fn assert_invalid(module: FirModule, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -107,37 +107,28 @@ fn assert_invalid(module: FirModule, message: &str) {
 fn direct_call_requires_a_module_target() {
     let target = DefId(1);
     let function = caller(target, u32_ty(), u32_ty());
-    assert_invalid(
-        FirModule {
-            functions: BTreeMap::from([(function.owner, function)]),
-            ..FirModule::default()
-        },
-        "direct call target DefId(1) is not in module",
-    );
+    assert_invalid(FirModule {
+        functions: BTreeMap::from([(function.owner, function)]),
+        ..FirModule::default()
+    });
 }
 
 #[test]
 fn direct_call_argument_must_match_the_parameter_type() {
     let target = DefId(1);
     let function = caller(target, Ty::Byte, u32_ty());
-    assert_invalid(
-        FirModule {
-            functions: BTreeMap::from([(target, callee(target)), (function.owner, function)]),
-            ..FirModule::default()
-        },
-        "direct call argument 0 has type Byte, expected Int { signed: false, width: W32 }",
-    );
+    assert_invalid(FirModule {
+        functions: BTreeMap::from([(target, callee(target)), (function.owner, function)]),
+        ..FirModule::default()
+    });
 }
 
 #[test]
 fn direct_call_result_must_match_the_callee_type() {
     let target = DefId(1);
     let function = caller(target, u32_ty(), Ty::Byte);
-    assert_invalid(
-        FirModule {
-            functions: BTreeMap::from([(target, callee(target)), (function.owner, function)]),
-            ..FirModule::default()
-        },
-        "direct call result type Byte differs from callee result Int { signed: false, width: W32 }",
-    );
+    assert_invalid(FirModule {
+        functions: BTreeMap::from([(target, callee(target)), (function.owner, function)]),
+        ..FirModule::default()
+    });
 }

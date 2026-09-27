@@ -1049,6 +1049,126 @@ fn module_verifier_checks_function_reference_targets_and_signatures() {
 }
 
 #[test]
+fn module_verifier_checks_direct_call_targets_and_signatures() {
+    let source = r#"
+        module test.boundary_direct_call;
+        fn add_one(value: u32) -> u32 { return value + 1u32; }
+        fn main() -> u32 { return add_one(8u32); }
+    "#;
+
+    let (_, _, mut fir) = pipeline(source);
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::Call { .. })
+                })
+            })
+        })
+        .expect("direct-call producer");
+    let function_owner = function.owner;
+    let missing = DefId(u32::MAX);
+    let (block, instruction_index, span) = function
+        .blocks
+        .iter_mut()
+        .find_map(|block| {
+            block
+                .instructions
+                .iter_mut()
+                .enumerate()
+                .find_map(|(index, instruction)| match &mut instruction.kind {
+                    FirInstructionKind::Call { target, .. } => {
+                        *target = missing;
+                        Some((block.id, index, instruction.span))
+                    }
+                    _ => None,
+                })
+        })
+        .expect("direct call");
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-direct-call")
+        .expect("missing-target diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic.message.contains(&format!("call to {missing:?}")));
+    assert!(diagnostic.message.contains("signature is None"));
+
+    let (_, _, mut fir) = pipeline(source);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::Call { .. })
+                })
+            })
+        })
+        .expect("direct-call producer");
+    let (argument, result) = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .find_map(|instruction| match &instruction.kind {
+            FirInstructionKind::Call { args, .. } => {
+                Some((args[0], instruction.result.expect("direct-call result")))
+            }
+            _ => None,
+        })
+        .expect("direct call");
+    function.value_types.insert(argument, Ty::Byte);
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-direct-call")
+        .expect("argument-type diagnostic");
+    assert!(diagnostic.message.contains("types Some([Byte])"));
+    assert!(diagnostic.message.contains("target signature is Some"));
+    assert!(diagnostic.message.contains("exact argument and result types"));
+
+    let (_, _, mut fir) = pipeline(source);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::Call { .. })
+                })
+            })
+        })
+        .expect("direct-call producer");
+    let result = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .find_map(|instruction| match &instruction.kind {
+            FirInstructionKind::Call { .. } => instruction.result,
+            _ => None,
+        })
+        .expect("direct-call result");
+    function.value_types.insert(result, Ty::Byte);
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-direct-call")
+        .expect("result-type diagnostic");
+    assert!(diagnostic.message.contains("with type Some(Byte)"));
+    assert!(diagnostic.message.contains("target signature is Some"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"

@@ -4,6 +4,7 @@ use crate::{
     ast::{FdnValue, Span},
     body_hir::{BodyHirOutput, HirExpr, HirExprKind},
     fir::{self, FirDiagnostic, FirInstructionKind, FirModule, FirOutput},
+    hir::DefId,
     typecheck::{ConstValue, IntWidth, Ty, TypeCheckOutput, TypedBody, TypedExpr, TypedExprKind},
 };
 
@@ -494,6 +495,17 @@ fn verify_bitfield_width_operations(
     }
 }
 
+fn module_function_signature(module: &FirModule, target: DefId) -> Option<(Vec<Ty>, Ty)> {
+    module.functions.get(&target).and_then(|callee| {
+        callee
+            .params
+            .iter()
+            .map(|parameter| callee.locals.get(parameter).map(|local| local.ty.clone()))
+            .collect::<Option<Vec<_>>>()
+            .map(|params| (params, callee.return_type.clone()))
+    })
+}
+
 fn verify_function_references(
     function: &fir::FirFunction,
     module: &FirModule,
@@ -507,14 +519,7 @@ fn verify_function_references(
             let result_type = instruction
                 .result
                 .and_then(|result| function.value_types.get(&result));
-            let expected = module.functions.get(target).and_then(|callee| {
-                callee
-                    .params
-                    .iter()
-                    .map(|parameter| callee.locals.get(parameter).map(|local| local.ty.clone()))
-                    .collect::<Option<Vec<_>>>()
-                    .map(|params| (params, callee.return_type.clone()))
-            });
+            let expected = module_function_signature(module, *target);
             let valid = matches!(
                 (result_type, expected.as_ref()),
                 (
@@ -528,6 +533,45 @@ fn verify_function_references(
                     "fir/verify-function-ref",
                     format!(
                         "FIR function {:?} block {:?} instruction {instruction_index} function reference result {:?} has type {result_type:?} and target {target:?} has signature {expected:?}; expected an existing module function with an exact function result type",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
+fn verify_direct_calls(
+    function: &fir::FirFunction,
+    module: &FirModule,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::Call { target, args, .. } = &instruction.kind else {
+                continue;
+            };
+            let argument_types = args
+                .iter()
+                .map(|argument| function.value_types.get(argument).cloned())
+                .collect::<Option<Vec<_>>>();
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let expected = module_function_signature(module, *target);
+            let valid = expected.as_ref().is_some_and(|(params, result)| {
+                argument_types.as_ref() == Some(params)
+                    && match instruction.result {
+                        Some(_) => result_type == Some(result),
+                        None => result == &Ty::Void,
+                    }
+            });
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-direct-call",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} direct call to {target:?} uses arguments {args:?} with types {argument_types:?} and result {:?} with type {result_type:?}; target signature is {expected:?}, expected an existing module function with exact argument and result types",
                         function.owner, block.id, instruction.result
                     ),
                 ));
@@ -661,6 +705,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_global_accesses(&initializer.function, module, &mut diagnostics);
         verify_bitfield_width_operations(&initializer.function, &mut diagnostics);
         verify_function_references(&initializer.function, module, &mut diagnostics);
+        verify_direct_calls(&initializer.function, module, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -680,6 +725,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_global_accesses(function, module, &mut diagnostics);
         verify_bitfield_width_operations(function, &mut diagnostics);
         verify_function_references(function, module, &mut diagnostics);
+        verify_direct_calls(function, module, &mut diagnostics);
     }
 
     diagnostics
