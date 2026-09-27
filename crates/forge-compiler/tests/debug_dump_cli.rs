@@ -297,7 +297,7 @@ fn second() -> *byte { return c"same"; }
     assert_eq!(plan_first.stdout, plan_second.stdout);
 
     let clif = String::from_utf8(clif_first.stdout).expect("CLIF dump should be UTF-8");
-    assert!(clif.contains("global_value"));
+    assert!(clif.contains("symbol_value"));
 
     let plan = String::from_utf8(plan_first.stdout).expect("object-plan dump should be UTF-8 JSON");
     assert_eq!(plan.matches("\"storage\": \"read_only_data\"").count(), 1);
