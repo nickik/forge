@@ -279,6 +279,16 @@ fn verify_no_poison(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagno
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
+    for owner in module.globals.keys() {
+        if module.functions.contains_key(owner) {
+            diagnostics.push(diagnostic(
+                Span::new(0, 0),
+                "fir/verify-definition-namespace",
+                format!("definition {owner:?} appears as both a function and a global"),
+            ));
+        }
+    }
+
     for (owner, global) in &module.globals {
         if global.owner != *owner || !type_is_concrete(&global.ty) {
             diagnostics.push(diagnostic(
