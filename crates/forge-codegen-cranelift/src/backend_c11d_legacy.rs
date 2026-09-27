@@ -82,6 +82,7 @@ impl CraneliftBackend {
             validate_function_ref_contracts(fir, &all_functions)?;
             validate_direct_call_contracts(fir, &all_functions)?;
             validate_indirect_call_contracts(fir)?;
+            validate_make_closure_contracts(fir)?;
             validate_closure_call_contracts(fir)?;
             validate_c9_memory_places(fir)?;
             validate_global_access_contracts(fir, &module.globals)?;

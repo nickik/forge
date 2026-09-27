@@ -1441,10 +1441,35 @@ fn captured_closure_lowers_environment_body_and_call() {
         .blocks
         .iter()
         .any(|block| block.closure == Some(closure.id)));
-    assert!(instructions(&output).any(|op| matches!(
-        op,
-        FirInstructionKind::MakeClosure { captures, .. } if captures.len() == 1
-    )));
+    let mut saw_make = false;
+    for instruction in main.blocks.iter().flat_map(|block| &block.instructions) {
+        let FirInstructionKind::MakeClosure {
+            closure: closure_id,
+            captures,
+        } = &instruction.kind
+        else {
+            continue;
+        };
+        let metadata = &main.closures[closure_id];
+        let result = instruction.result.expect("make-closure result");
+        let Ty::Closure { params, result } = &main.value_types[&result] else {
+            panic!("make-closure result is not closure typed");
+        };
+        let metadata_params = metadata
+            .params
+            .iter()
+            .map(|local| main.locals[local].ty.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(params, &metadata_params);
+        assert_eq!(result.as_ref(), &metadata.return_type);
+        assert_eq!(captures.len(), metadata.captures.len());
+        for (capture, field) in captures.iter().zip(&metadata.captures) {
+            assert_eq!(field.mode, forge_frontend::CaptureMode::Value);
+            assert_eq!(&main.value_types[capture], &field.ty);
+        }
+        saw_make = true;
+    }
+    assert!(saw_make);
     let mut saw_call = false;
     for instruction in main.blocks.iter().flat_map(|block| &block.instructions) {
         let FirInstructionKind::CallClosure { closure, args, .. } = &instruction.kind else {
