@@ -2,11 +2,15 @@ module examples.c14.c_string_static;
 
 fn main() -> i32 {
     val text = c"Forge";
+    val capital_f = c"F";
+    val lower_o = c"o";
+    val lower_e = c"e";
+    val nul = c"";
     unsafe {
-        if (*text != byte(70u8)) { return 1; }
-        if (*(text + 1usize) != byte(111u8)) { return 2; }
-        if (*(text + 4usize) != byte(101u8)) { return 3; }
-        if (*(text + 5usize) != byte(0u8)) { return 4; }
+        if (*text != *capital_f) { return 1; }
+        if (*(text + 1usize) != *lower_o) { return 2; }
+        if (*(text + 4usize) != *lower_e) { return 3; }
+        if (*(text + 5usize) != *nul) { return 4; }
     }
     return 0;
 }
