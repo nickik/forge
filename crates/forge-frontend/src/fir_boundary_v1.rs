@@ -4,7 +4,7 @@ use crate::{
     ast::{FdnValue, Span},
     body_hir::{BodyHirOutput, HirExpr, HirExprKind},
     fir::{self, FirDiagnostic, FirInstructionKind, FirModule, FirOutput},
-    typecheck::{ConstValue, Ty, TypeCheckOutput, TypedBody, TypedExpr, TypedExprKind},
+    typecheck::{ConstValue, IntWidth, Ty, TypeCheckOutput, TypedBody, TypedExpr, TypedExprKind},
 };
 
 fn diagnostic(span: Span, code: &str, message: impl Into<String>) -> FirDiagnostic {
@@ -391,6 +391,109 @@ fn verify_global_accesses(
     }
 }
 
+fn unsigned_integer_bits(ty: &Ty) -> Option<u32> {
+    match ty {
+        Ty::Byte
+        | Ty::Int {
+            signed: false,
+            width: IntWidth::W8,
+        } => Some(8),
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W16,
+        } => Some(16),
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W32,
+        } => Some(32),
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W64,
+        } => Some(64),
+        _ => None,
+    }
+}
+
+fn bitfield_value_bits(ty: &Ty) -> Option<u32> {
+    if ty == &Ty::Bool {
+        Some(1)
+    } else {
+        unsigned_integer_bits(ty)
+    }
+}
+
+fn verify_bitfield_width_operations(
+    function: &fir::FirFunction,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let (code, valid, facts) = match &instruction.kind {
+                FirInstructionKind::BitFieldCheck { value, width } => {
+                    let value_type = function.value_types.get(value);
+                    let value_bits = value_type.and_then(unsigned_integer_bits);
+                    (
+                        "fir/verify-bitfield-check",
+                        instruction.result.is_none()
+                            && value_bits.is_some_and(|bits| *width > 0 && *width < bits),
+                        format!(
+                            "range check result {:?} uses value {value:?} with type {value_type:?} ({value_bits:?} bits) and field width {width}; expected no result and an unsigned field width strictly between zero and its value width",
+                            instruction.result
+                        ),
+                    )
+                }
+                FirInstructionKind::BitFieldExtract { value } => {
+                    let source_type = function.value_types.get(value);
+                    let source_bits = source_type.and_then(unsigned_integer_bits);
+                    let result_type = instruction
+                        .result
+                        .and_then(|result| function.value_types.get(&result));
+                    let result_bits = result_type.and_then(bitfield_value_bits);
+                    (
+                        "fir/verify-bitfield-extract",
+                        source_bits.is_some()
+                            && result_bits.is_some()
+                            && result_bits <= source_bits,
+                        format!(
+                            "extract value {value:?} has type {source_type:?} ({source_bits:?} bits) and result {:?} has type {result_type:?} ({result_bits:?} bits); expected dedicated unsigned narrowing without widening",
+                            instruction.result
+                        ),
+                    )
+                }
+                FirInstructionKind::BitFieldExtend { value } => {
+                    let source_type = function.value_types.get(value);
+                    let source_bits = source_type.and_then(bitfield_value_bits);
+                    let result_type = instruction
+                        .result
+                        .and_then(|result| function.value_types.get(&result));
+                    let result_bits = result_type.and_then(unsigned_integer_bits);
+                    (
+                        "fir/verify-bitfield-extend",
+                        source_bits.is_some()
+                            && result_bits.is_some()
+                            && source_bits <= result_bits,
+                        format!(
+                            "extend value {value:?} has type {source_type:?} ({source_bits:?} bits) and result {:?} has type {result_type:?} ({result_bits:?} bits); expected a boolean or unsigned field value widened to unsigned storage",
+                            instruction.result
+                        ),
+                    )
+                }
+                _ => continue,
+            };
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    code,
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} bitfield operation is invalid: {facts}",
+                        function.owner, block.id
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -514,6 +617,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_no_poison(&initializer.function, &mut diagnostics);
         verify_static_data_addresses(&initializer.function, module, &mut diagnostics);
         verify_global_accesses(&initializer.function, module, &mut diagnostics);
+        verify_bitfield_width_operations(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -531,6 +635,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_no_poison(function, &mut diagnostics);
         verify_static_data_addresses(function, module, &mut diagnostics);
         verify_global_accesses(function, module, &mut diagnostics);
+        verify_bitfield_width_operations(function, &mut diagnostics);
     }
 
     diagnostics

@@ -99,6 +99,25 @@ fn assert_invalid(function: FirFunction, message: &str) {
     }
 }
 
+fn assert_invalid_fir(function: FirFunction) {
+    let mut module = FirModule::default();
+    module.functions.insert(function.owner, function);
+    let definitions = definitions();
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module_with_types(&module, &definitions) {
+            Ok(_) => panic!("malformed bitfield FIR unexpectedly verified"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
+            }
+        );
+    }
+}
+
 #[test]
 fn bitstruct_storage_projection_requires_declared_storage() {
     assert_invalid(
@@ -127,30 +146,21 @@ fn bitstruct_rebuild_requires_declared_storage() {
 
 #[test]
 fn bitfield_range_check_requires_a_strictly_narrower_width() {
-    assert_invalid(
-        function(u(IntWidth::W8), None, |value| {
-            FirInstructionKind::BitFieldCheck { value, width: 8 }
-        }),
-        "bitfield range check has an invalid field width",
-    );
+    assert_invalid_fir(function(u(IntWidth::W8), None, |value| {
+        FirInstructionKind::BitFieldCheck { value, width: 8 }
+    }));
 }
 
 #[test]
 fn bitfield_extract_cannot_widen_storage() {
-    assert_invalid(
-        function(u(IntWidth::W8), Some(u(IntWidth::W16)), |value| {
-            FirInstructionKind::BitFieldExtract { value }
-        }),
-        "bitfield extract widens its storage value",
-    );
+    assert_invalid_fir(function(u(IntWidth::W8), Some(u(IntWidth::W16)), |value| {
+        FirInstructionKind::BitFieldExtract { value }
+    }));
 }
 
 #[test]
 fn bitfield_extend_cannot_narrow_payload() {
-    assert_invalid(
-        function(u(IntWidth::W16), Some(u(IntWidth::W8)), |value| {
-            FirInstructionKind::BitFieldExtend { value }
-        }),
-        "bitfield extend narrows its field value",
-    );
+    assert_invalid_fir(function(u(IntWidth::W16), Some(u(IntWidth::W8)), |value| {
+        FirInstructionKind::BitFieldExtend { value }
+    }));
 }

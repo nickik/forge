@@ -805,6 +805,149 @@ fn module_verifier_checks_global_access_producer_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_dedicated_bitfield_width_contracts() {
+    let write_source = r#"
+        module test.boundary_bitfield_write;
+        bitstruct Status: u16 { ready: 1; mode: 3; reserved: 12; }
+        fn update() -> u8 {
+            var status: Status = Status(0u16);
+            status.mode = 7u8;
+            return status.mode;
+        }
+    "#;
+
+    let (_, _, mut fir) = pipeline(write_source);
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::BitFieldCheck { .. })
+                })
+            })
+        })
+        .expect("bitfield-writing function");
+    let function_owner = function.owner;
+    let (block, instruction_index, span) = function
+        .blocks
+        .iter_mut()
+        .find_map(|block| {
+            block
+                .instructions
+                .iter_mut()
+                .enumerate()
+                .find_map(|(index, instruction)| match &mut instruction.kind {
+                    FirInstructionKind::BitFieldCheck { width, .. } => {
+                        *width = 8;
+                        Some((block.id, index, instruction.span))
+                    }
+                    _ => None,
+                })
+        })
+        .expect("bitfield range check");
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-bitfield-check")
+        .expect("bitfield-check diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic.message.contains("field width 8"));
+    assert!(diagnostic.message.contains("Some(8) bits"));
+
+    let (_, _, mut fir) = pipeline(write_source);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::BitFieldExtend { .. })
+                })
+            })
+        })
+        .expect("bitfield-extending function");
+    let source = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .find_map(|instruction| match &instruction.kind {
+            FirInstructionKind::BitFieldExtend { value } => Some(*value),
+            _ => None,
+        })
+        .expect("bitfield extension");
+    function.value_types.insert(
+        source,
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W32,
+        },
+    );
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-bitfield-extend")
+        .expect("bitfield-extend diagnostic");
+    assert!(diagnostic.message.contains("Some(32) bits"));
+    assert!(diagnostic.message.contains("Some(16) bits"));
+    assert!(diagnostic.message.contains("widened to unsigned storage"));
+
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_bitfield_read;
+        bitstruct Status: u16 { ready: 1; mode: 3; reserved: 12; }
+        fn mode(status: Status) -> u8 { return status.mode; }
+        "#,
+    );
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(
+                        &instruction.kind,
+                        FirInstructionKind::BitFieldExtract { .. }
+                    )
+                })
+            })
+        })
+        .expect("bitfield-extracting function");
+    let result = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .find_map(|instruction| match &instruction.kind {
+            FirInstructionKind::BitFieldExtract { .. } => instruction.result,
+            _ => None,
+        })
+        .expect("bitfield extraction result");
+    function.value_types.insert(
+        result,
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W32,
+        },
+    );
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-bitfield-extract")
+        .expect("bitfield-extract diagnostic");
+    assert!(diagnostic.message.contains("Some(16) bits"));
+    assert!(diagnostic.message.contains("Some(32) bits"));
+    assert!(diagnostic.message.contains("without widening"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"
