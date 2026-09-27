@@ -1,4 +1,6 @@
-use forge_fir::{FirFunction, FirInstructionKind, FirPlace, Ty};
+use forge_fir::{
+    CaptureMode, ExprId, FirClosureField, FirFunction, FirInstructionKind, FirPlace, Ty,
+};
 
 use crate::BackendError;
 
@@ -18,7 +20,7 @@ pub(crate) fn validate_c9_memory_places(fir: &FirFunction) -> Result<(), Backend
         for instruction in &block.instructions {
             match &instruction.kind {
                 FirInstructionKind::Store { place, value } => {
-                    validate_place(fir, place, Access::Write)?;
+                    validate_place(fir, place, Access::Write, block.closure)?;
                     if let FirPlace::Local { local } = place {
                         let local_ty = &fir
                             .locals
@@ -31,6 +33,19 @@ pub(crate) fn validate_c9_memory_places(fir: &FirFunction) -> Result<(), Backend
                         if value_ty != local_ty {
                             return Err(invalid(format!(
                                 "local FIR store value type {value_ty:?} differs from local type {local_ty:?}"
+                            )));
+                        }
+                    }
+                    if let Some(field) = direct_closure_capture_field(fir, place)? {
+                        let value_ty = fir.value_types.get(value).ok_or_else(|| {
+                            invalid(format!(
+                                "missing type for closure capture store value {value:?}"
+                            ))
+                        })?;
+                        if value_ty != &field.ty {
+                            return Err(invalid(format!(
+                                "closure capture store value type {value_ty:?} differs from field type {:?}",
+                                field.ty
                             )));
                         }
                     }
@@ -56,7 +71,23 @@ pub(crate) fn validate_c9_memory_places(fir: &FirFunction) -> Result<(), Backend
                     }
                 }
                 FirInstructionKind::Load { place } => {
-                    validate_place(fir, place, Access::Read)?;
+                    validate_place(fir, place, Access::Read, block.closure)?;
+                    if let Some(field) = direct_closure_capture_field(fir, place)? {
+                        let result = instruction
+                            .result
+                            .ok_or_else(|| invalid("closure capture load has no result"))?;
+                        let result_ty = fir.value_types.get(&result).ok_or_else(|| {
+                            invalid(format!(
+                                "missing type for closure capture load result {result:?}"
+                            ))
+                        })?;
+                        if result_ty != &field.ty {
+                            return Err(invalid(format!(
+                                "closure capture load result type {result_ty:?} differs from field type {:?}",
+                                field.ty
+                            )));
+                        }
+                    }
                     if let Some(pointee) = safe_pointee_type(fir, place)? {
                         let result = instruction
                             .result
@@ -93,6 +124,7 @@ pub(crate) fn validate_c9_memory_places(fir: &FirFunction) -> Result<(), Backend
                         } else {
                             Access::Read
                         },
+                        block.closure,
                     )?;
                     let pointee = match place {
                         FirPlace::Local { local } => {
@@ -109,6 +141,9 @@ pub(crate) fn validate_c9_memory_places(fir: &FirFunction) -> Result<(), Backend
                         }
                         FirPlace::Deref { .. } => safe_pointee_type(fir, place)?,
                         FirPlace::RawDeref { .. } => raw_pointee_type(fir, place)?,
+                        FirPlace::ClosureCapture { .. } => {
+                            direct_closure_capture_field(fir, place)?.map(|field| &field.ty)
+                        }
                         _ => None,
                     };
                     if let Some(pointee) = pointee {
@@ -136,11 +171,16 @@ pub(crate) fn validate_c9_memory_places(fir: &FirFunction) -> Result<(), Backend
     Ok(())
 }
 
-fn validate_place(fir: &FirFunction, place: &FirPlace, access: Access) -> Result<(), BackendError> {
+fn validate_place(
+    fir: &FirFunction,
+    place: &FirPlace,
+    access: Access,
+    active_closure: Option<ExprId>,
+) -> Result<(), BackendError> {
     match place {
         FirPlace::Local { .. } => Ok(()),
         FirPlace::Field { base, .. } | FirPlace::Index { base, .. } => {
-            validate_place(fir, base, access)
+            validate_place(fir, base, access, active_closure)
         }
         FirPlace::Deref { address } => {
             let ty = fir.value_types.get(address).ok_or_else(|| {
@@ -166,8 +206,44 @@ fn validate_place(fir: &FirFunction, place: &FirPlace, access: Access) -> Result
             raw_deref_pointee_type(fir, *address, *volatile)?;
             Ok(())
         }
-        FirPlace::ClosureCapture { .. } => Ok(()),
+        FirPlace::ClosureCapture { closure, index } => {
+            let active = active_closure
+                .ok_or_else(|| invalid("closure capture place used outside a closure body"))?;
+            if *closure != active {
+                return Err(invalid(format!(
+                    "closure body {active:?} refers to capture owned by {closure:?}"
+                )));
+            }
+            let field = closure_capture_field(fir, *closure, *index)?;
+            if access == Access::Write && field.mode == CaptureMode::SharedReference {
+                return Err(invalid("write through shared closure capture"));
+            }
+            Ok(())
+        }
     }
+}
+
+fn direct_closure_capture_field<'a>(
+    fir: &'a FirFunction,
+    place: &FirPlace,
+) -> Result<Option<&'a FirClosureField>, BackendError> {
+    let FirPlace::ClosureCapture { closure, index } = place else {
+        return Ok(None);
+    };
+    closure_capture_field(fir, *closure, *index).map(Some)
+}
+
+fn closure_capture_field(
+    fir: &FirFunction,
+    closure: ExprId,
+    index: u32,
+) -> Result<&FirClosureField, BackendError> {
+    fir.closures
+        .get(&closure)
+        .ok_or_else(|| invalid(format!("missing closure metadata {closure:?}")))?
+        .captures
+        .get(index as usize)
+        .ok_or_else(|| invalid(format!("closure capture index {index} is out of range")))
 }
 
 fn safe_pointee_type<'a>(

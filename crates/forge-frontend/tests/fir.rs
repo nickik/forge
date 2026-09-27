@@ -1441,6 +1441,31 @@ fn captured_closure_lowers_environment_body_and_call() {
         .blocks
         .iter()
         .any(|block| block.closure == Some(closure.id)));
+    for block in main
+        .blocks
+        .iter()
+        .filter(|block| block.closure == Some(closure.id))
+    {
+        for instruction in &block.instructions {
+            let FirInstructionKind::Load {
+                place:
+                    forge_frontend::FirPlace::ClosureCapture {
+                        closure: owner,
+                        index,
+                    },
+            } = &instruction.kind
+            else {
+                continue;
+            };
+            assert_eq!(owner, &closure.id);
+            assert!((*index as usize) < closure.captures.len());
+            let result = instruction.result.expect("closure-capture load result");
+            assert_eq!(
+                &main.value_types[&result],
+                &closure.captures[*index as usize].ty
+            );
+        }
+    }
     let mut saw_make = false;
     for instruction in main.blocks.iter().flat_map(|block| &block.instructions) {
         let FirInstructionKind::MakeClosure {
