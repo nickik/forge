@@ -48,7 +48,7 @@ fn function(kind: FirInstructionKind, result_ty: Option<Ty>) -> FirFunction {
     }
 }
 
-fn assert_invalid(global: FirGlobal, function: FirFunction, message: &str) {
+fn assert_invalid(global: FirGlobal, function: FirFunction) {
     let module = FirModule {
         functions: BTreeMap::from([(function.owner, function)]),
         globals: BTreeMap::from([(global.owner, global)]),
@@ -62,8 +62,8 @@ fn assert_invalid(global: FirGlobal, function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -78,7 +78,6 @@ fn global_load_result_must_match_the_declared_type() {
             FirInstructionKind::LoadGlobal { global: owner },
             Some(Ty::Byte),
         ),
-        "global load result type Byte differs from global type Int { signed: false, width: W32 }",
     );
 }
 
@@ -100,11 +99,7 @@ fn global_store_value_must_match_the_declared_type() {
             value,
         },
     });
-    assert_invalid(
-        global(owner, true),
-        function,
-        "global store value type Byte differs from global type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(global(owner, true), function);
 }
 
 #[test]
@@ -125,11 +120,7 @@ fn global_store_requires_mutable_storage() {
             value,
         },
     });
-    assert_invalid(
-        global(owner, false),
-        function,
-        "global store targets immutable global DefId(1)",
-    );
+    assert_invalid(global(owner, false), function);
 }
 
 #[test]
@@ -147,7 +138,6 @@ fn global_address_result_must_match_mutability_and_pointee() {
                 inner: Box::new(Ty::Byte),
             }),
         ),
-        "global address-of result type Reference { mutable: false, inner: Byte } does not match expected reference type Reference { mutable: true, inner: Int { signed: false, width: W32 } }",
     );
 }
 
@@ -166,6 +156,5 @@ fn mutable_global_address_requires_mutable_storage() {
                 inner: Box::new(u32_ty()),
             }),
         ),
-        "mutable global address targets immutable global DefId(1)",
     );
 }

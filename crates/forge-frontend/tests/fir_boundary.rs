@@ -681,6 +681,130 @@ fn module_verifier_checks_static_data_address_producer_contract() {
 }
 
 #[test]
+fn module_verifier_checks_global_access_producer_contracts() {
+    let source = r#"
+        module test.boundary_global_access;
+        var COUNTER: i32 = 1i32;
+        fn write(value: &mut i32) { *value = 9i32; }
+        fn main() -> i32 {
+            COUNTER = 3i32;
+            write(&mut COUNTER);
+            return COUNTER;
+        }
+    "#;
+
+    let (_, _, mut fir) = pipeline(source);
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(&instruction.kind, FirInstructionKind::LoadGlobal { .. })
+                })
+            })
+        })
+        .expect("global-loading function");
+    let (block, instruction_index, result, span) = function
+        .blocks
+        .iter()
+        .find_map(|block| {
+            block
+                .instructions
+                .iter()
+                .enumerate()
+                .find_map(|(index, instruction)| {
+                    if matches!(&instruction.kind, FirInstructionKind::LoadGlobal { .. }) {
+                        Some((
+                            block.id,
+                            index,
+                            instruction.result.expect("load result"),
+                            instruction.span,
+                        ))
+                    } else {
+                        None
+                    }
+                })
+        })
+        .expect("global load");
+    let function_owner = function.owner;
+    function.value_types.insert(result, Ty::Byte);
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-global-load")
+        .expect("global-load diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic.message.contains("type Some(Byte)"));
+    assert!(diagnostic.message.contains("exact global type"));
+
+    let (_, _, mut fir) = pipeline(source);
+    let global = *fir.module.globals.keys().next().expect("global");
+    fir.module.globals.get_mut(&global).unwrap().mutable = false;
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-global-store")
+        .expect("immutable-global-store diagnostic");
+    assert!(diagnostic.message.contains(&format!("global {global:?}")));
+    assert!(diagnostic.message.contains("mutable: false"));
+    assert!(diagnostic.message.contains("mutable storage"));
+
+    let (_, _, mut fir) = pipeline(source);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(
+                        &instruction.kind,
+                        FirInstructionKind::AddressOfGlobal { .. }
+                    )
+                })
+            })
+        })
+        .expect("global-addressing function");
+    let result = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .find_map(|instruction| {
+            if matches!(
+                &instruction.kind,
+                FirInstructionKind::AddressOfGlobal { .. }
+            ) {
+                Some(instruction.result.expect("address result"))
+            } else {
+                None
+            }
+        })
+        .expect("global address");
+    function.value_types.insert(
+        result,
+        Ty::Reference {
+            mutable: false,
+            inner: Box::new(Ty::Byte),
+        },
+    );
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-global-address")
+        .expect("global-address diagnostic");
+    assert!(diagnostic.message.contains("requested mutable=true"));
+    assert!(diagnostic.message.contains("expected result type"));
+    assert!(diagnostic.message.contains("inner: Byte"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"
