@@ -276,6 +276,48 @@ fn verify_no_poison(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagno
     }
 }
 
+fn verify_static_data_addresses(
+    function: &fir::FirFunction,
+    module: &FirModule,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    let expected = Ty::Pointer {
+        volatile: false,
+        inner: Box::new(Ty::Byte),
+    };
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::StaticDataAddress { global } = &instruction.kind else {
+                continue;
+            };
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let storage = module.globals.get(global);
+            let valid_storage = storage.is_some_and(|storage| {
+                !storage.mutable
+                    && matches!(
+                        &storage.ty,
+                        Ty::Array {
+                            element,
+                            length: Some(_),
+                        } if element.as_ref() == &Ty::Byte
+                    )
+            });
+            if result_type != Some(&expected) || !valid_storage {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-static-data-address",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} static-data address result {:?} has type {result_type:?} and global {global:?} has metadata {storage:?}; expected a non-volatile byte pointer to immutable fixed-length byte-array storage",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -397,6 +439,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         }
         diagnostics.extend(fir::verify_fir_function(&initializer.function));
         verify_no_poison(&initializer.function, &mut diagnostics);
+        verify_static_data_addresses(&initializer.function, module, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -412,6 +455,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         }
         diagnostics.extend(fir::verify_fir_function(function));
         verify_no_poison(function, &mut diagnostics);
+        verify_static_data_addresses(function, module, &mut diagnostics);
     }
 
     diagnostics

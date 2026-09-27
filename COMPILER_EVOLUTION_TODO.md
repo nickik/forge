@@ -317,6 +317,8 @@ available on every backend merely because the frontend accepts it.
         and expose the invalid entry/type facts.
   - [x] Whole-CFG must-initialization rejects local access unless every incoming
         control-flow path initializes it, including branch joins and loops.
+  - [x] Static-data addresses require an exact non-volatile byte-pointer result
+        and immutable fixed-length byte-array storage at the shared FIR boundary.
 - [ ] Keep lowering phases one-way: parser/HIR/typechecking decisions must be
       represented in FIR rather than reconstructed in codegen.
   - [x] Represent ordinary integer conversions as explicitly lossless FIR;

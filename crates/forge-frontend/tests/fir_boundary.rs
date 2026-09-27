@@ -1,8 +1,8 @@
 use forge_frontend::{
     dump_fir_module, lower_fir, lower_module, lower_resolved_bodies, parse_source,
     type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module, ConstValue,
-    ExprId, FirBlockId, FirInstructionKind, FirLocal, FirLocalId, FirModule, FirPlace,
-    FirTerminator, IntWidth, Ty,
+    DefId, ExprId, FirBlockId, FirGlobal, FirInstructionKind, FirLocal, FirLocalId, FirModule,
+    FirPlace, FirTerminator, IntWidth, Ty,
 };
 
 fn pipeline(
@@ -599,6 +599,85 @@ fn module_verifier_rejects_function_global_identity_collisions() {
         .expect("definition-namespace diagnostic");
     assert!(diagnostic.message.contains(&format!("{function_owner:?}")));
     assert!(diagnostic.message.contains("both a function and a global"));
+}
+
+#[test]
+fn module_verifier_checks_static_data_address_producer_contract() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_static_data_address;
+        fn name() -> *byte { return c"name"; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let storage_owner = DefId(u32::MAX);
+    let function = fir.module.functions.values_mut().next().expect("function");
+    let instruction = function
+        .blocks
+        .iter_mut()
+        .flat_map(|block| block.instructions.iter_mut())
+        .find(|instruction| {
+            matches!(
+                &instruction.kind,
+                FirInstructionKind::Const {
+                    value: forge_frontend::FirConst::CString { .. }
+                }
+            )
+        })
+        .expect("C-string constant");
+    let result = instruction.result.expect("C-string result");
+    let span = instruction.span;
+    instruction.kind = FirInstructionKind::StaticDataAddress {
+        global: storage_owner,
+    };
+    fir.module.globals.insert(
+        storage_owner,
+        FirGlobal {
+            owner: storage_owner,
+            ty: Ty::Array {
+                element: Box::new(Ty::Byte),
+                length: Some(5),
+            },
+            mutable: false,
+            constant: None,
+        },
+    );
+    assert!(verify_fir_module(&fir.module).is_empty());
+
+    fir.module.globals.get_mut(&storage_owner).unwrap().mutable = true;
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-static-data-address")
+        .expect("mutable-storage diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("global {storage_owner:?}")));
+    assert!(diagnostic
+        .message
+        .contains("immutable fixed-length byte-array storage"));
+
+    fir.module.globals.get_mut(&storage_owner).unwrap().mutable = false;
+    fir.module
+        .functions
+        .values_mut()
+        .next()
+        .unwrap()
+        .value_types
+        .insert(
+            result,
+            Ty::Pointer {
+                volatile: true,
+                inner: Box::new(Ty::Byte),
+            },
+        );
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-static-data-address")
+        .expect("result-type diagnostic");
+    assert!(diagnostic.message.contains("volatile: true"));
+    assert!(diagnostic.message.contains("non-volatile byte pointer"));
 }
 
 #[test]
