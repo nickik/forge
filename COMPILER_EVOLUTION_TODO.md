@@ -83,6 +83,8 @@ available on every backend merely because the frontend accepts it.
   - [x] Reject character literals in integer contexts during typechecking and
         treat handwritten character constants with non-character FIR result
         types as invalid producer contracts on AArch64 and RISC-V.
+  - [x] Require handwritten string constants to produce `str` values on
+        AArch64 and RISC-V.
   - [x] Reject void expressions in integer contexts during typechecking and
         treat handwritten `Unit` instructions with non-void FIR result types
         as invalid producer contracts on AArch64 and RISC-V.

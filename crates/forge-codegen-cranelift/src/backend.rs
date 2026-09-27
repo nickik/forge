@@ -477,6 +477,23 @@ fn validate_c4_scalar_contract(
                 }
             }
 
+            if matches!(
+                &instruction.kind,
+                FirInstructionKind::Const {
+                    value: forge_fir::FirConst::String { .. }
+                }
+            ) {
+                let result = instruction
+                    .result
+                    .ok_or_else(|| shape("string constant has no result"))?;
+                let result_ty = value_type(fir, result, "string constant result")?;
+                if result_ty != &Ty::Str {
+                    return Err(shape(format!(
+                        "string constant has non-str FIR result type {result_ty:?}"
+                    )));
+                }
+            }
+
             if let FirInstructionKind::ExtractField { base, field } = &instruction.kind {
                 let result = instruction
                     .result
