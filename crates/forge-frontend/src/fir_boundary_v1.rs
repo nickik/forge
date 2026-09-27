@@ -318,6 +318,79 @@ fn verify_static_data_addresses(
     }
 }
 
+fn verify_global_accesses(
+    function: &fir::FirFunction,
+    module: &FirModule,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let (code, valid, facts) = match &instruction.kind {
+                FirInstructionKind::LoadGlobal { global } => {
+                    let storage = module.globals.get(global);
+                    let result_type = instruction
+                        .result
+                        .and_then(|result| function.value_types.get(&result));
+                    (
+                        "fir/verify-global-load",
+                        storage.is_some_and(|storage| result_type == Some(&storage.ty)),
+                        format!(
+                            "load result {:?} has type {result_type:?} and global {global:?} has metadata {storage:?}; expected a result with the exact global type",
+                            instruction.result
+                        ),
+                    )
+                }
+                FirInstructionKind::StoreGlobal { global, value } => {
+                    let storage = module.globals.get(global);
+                    let value_type = function.value_types.get(value);
+                    (
+                        "fir/verify-global-store",
+                        instruction.result.is_none()
+                            && storage.is_some_and(|storage| {
+                                storage.mutable && value_type == Some(&storage.ty)
+                            }),
+                        format!(
+                            "store result {:?} uses value {value:?} with type {value_type:?} and global {global:?} has metadata {storage:?}; expected no result, mutable storage, and the exact global value type",
+                            instruction.result
+                        ),
+                    )
+                }
+                FirInstructionKind::AddressOfGlobal { global, mutable } => {
+                    let storage = module.globals.get(global);
+                    let result_type = instruction
+                        .result
+                        .and_then(|result| function.value_types.get(&result));
+                    let expected = storage.map(|storage| Ty::Reference {
+                        mutable: *mutable,
+                        inner: Box::new(storage.ty.clone()),
+                    });
+                    (
+                        "fir/verify-global-address",
+                        storage.is_some_and(|storage| {
+                            (!*mutable || storage.mutable) && result_type == expected.as_ref()
+                        }),
+                        format!(
+                            "address result {:?} has type {result_type:?}, requested mutable={mutable}, and global {global:?} has metadata {storage:?}; expected result type {expected:?} and compatible storage mutability",
+                            instruction.result
+                        ),
+                    )
+                }
+                _ => continue,
+            };
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    code,
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} global access is invalid: {facts}",
+                        function.owner, block.id
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -440,6 +513,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         diagnostics.extend(fir::verify_fir_function(&initializer.function));
         verify_no_poison(&initializer.function, &mut diagnostics);
         verify_static_data_addresses(&initializer.function, module, &mut diagnostics);
+        verify_global_accesses(&initializer.function, module, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -456,6 +530,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         diagnostics.extend(fir::verify_fir_function(function));
         verify_no_poison(function, &mut diagnostics);
         verify_static_data_addresses(function, module, &mut diagnostics);
+        verify_global_accesses(function, module, &mut diagnostics);
     }
 
     diagnostics
