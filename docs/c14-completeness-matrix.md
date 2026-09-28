@@ -69,7 +69,8 @@ Legend:
 - Non-comparison `char` operations are rejected during typechecking; handwritten arithmetic
   `char` FIR is diagnosed as an invalid producer contract rather than deferred backend support.
 - Sequence patterns are restricted to arrays and slices during typechecking; incompatible
-  `Subsequence` source/result FIR is an invalid producer contract, not deferred lowering.
+  `Subsequence` source/result FIR fails at the shared boundary unless slices preserve exact type or
+  fixed arrays preserve element type and residual length.
 - `%` is integer-only during typechecking; handwritten floating-point `Rem` FIR is an invalid
   producer contract rather than an unimplemented AArch64 operation.
 - Logical-not is boolean-only during typechecking; handwritten non-boolean logical-not FIR is an

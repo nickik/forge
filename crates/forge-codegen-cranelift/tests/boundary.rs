@@ -269,10 +269,6 @@ fn invalid_subsequence_types_are_a_producer_contract_error() {
         mutable: false,
         element: Box::new(Ty::Bool),
     };
-    let expected = concat!(
-        "invalid subsequence from Slice { mutable: false, element: Byte } ",
-        "to Slice { mutable: false, element: Bool } at start 1"
-    );
     let mut module = FirModule::default();
     module.functions.insert(
         owner,
@@ -324,8 +320,8 @@ fn invalid_subsequence_types_are_a_producer_contract_error() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: expected.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }

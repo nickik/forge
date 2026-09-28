@@ -1165,6 +1165,61 @@ fn module_verifier_checks_numeric_conversion_producer_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_subsequence_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_subsequence;
+        fn choose(values: u32[]) -> u32 {
+            return match (values) {
+                [first, second, ..rest] => first + second,
+                _ => 0u32,
+            };
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module(&fir.module).is_empty());
+
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(instruction.kind, FirInstructionKind::Subsequence { .. })
+                })
+            })
+        })
+        .expect("subsequence function");
+    let result = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .find_map(|instruction| match instruction.kind {
+            FirInstructionKind::Subsequence { .. } => instruction.result,
+            _ => None,
+        })
+        .expect("subsequence result");
+    function.value_types.insert(
+        result,
+        Ty::Slice {
+            mutable: false,
+            element: Box::new(Ty::Bool),
+        },
+    );
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-subsequence")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(diagnostics[0]
+        .message
+        .contains("matching element type and residual length"));
+}
+
+#[test]
 fn module_verifier_checks_function_reference_targets_and_signatures() {
     let source = r#"
         module test.boundary_function_ref;

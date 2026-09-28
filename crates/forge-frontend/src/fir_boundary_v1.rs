@@ -544,6 +544,57 @@ fn verify_slice_from_array_references(
     }
 }
 
+fn verify_subsequences(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::Subsequence { base, start } = &instruction.kind else {
+                continue;
+            };
+            let base_type = function.value_types.get(base);
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let valid = match (base_type, result_type) {
+                (
+                    Some(Ty::Array {
+                        element: base_element,
+                        length: Some(base_length),
+                    }),
+                    Some(Ty::Array {
+                        element: result_element,
+                        length: Some(result_length),
+                    }),
+                ) => {
+                    base_element == result_element
+                        && start <= base_length
+                        && *result_length == *base_length - *start
+                }
+                (
+                    Some(Ty::Slice {
+                        mutable: base_mutable,
+                        element: base_element,
+                    }),
+                    Some(Ty::Slice {
+                        mutable: result_mutable,
+                        element: result_element,
+                    }),
+                ) => base_mutable == result_mutable && base_element == result_element,
+                _ => false,
+            };
+            if instruction.result.is_none() || !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-subsequence",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} Subsequence starts at {start} from base {base:?} with type {base_type:?} and produces result {:?} with type {result_type:?}; expected an exact slice tail or a fixed-array tail with matching element type and residual length",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 fn module_function_signature(module: &FirModule, target: DefId) -> Option<(Vec<Ty>, Ty)> {
     module.functions.get(&target).and_then(|callee| {
         callee
@@ -2247,6 +2298,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_global_accesses(&initializer.function, module, &mut diagnostics);
         verify_bitfield_width_operations(&initializer.function, &mut diagnostics);
         verify_slice_from_array_references(&initializer.function, &mut diagnostics);
+        verify_subsequences(&initializer.function, &mut diagnostics);
         verify_function_references(&initializer.function, module, &mut diagnostics);
         verify_direct_calls(&initializer.function, module, &mut diagnostics);
         verify_indirect_calls(&initializer.function, &mut diagnostics);
@@ -2289,6 +2341,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_global_accesses(function, module, &mut diagnostics);
         verify_bitfield_width_operations(function, &mut diagnostics);
         verify_slice_from_array_references(function, &mut diagnostics);
+        verify_subsequences(function, &mut diagnostics);
         verify_function_references(function, module, &mut diagnostics);
         verify_direct_calls(function, module, &mut diagnostics);
         verify_indirect_calls(function, &mut diagnostics);
