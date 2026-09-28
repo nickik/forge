@@ -1133,9 +1133,8 @@ fn verify_pointer_conversions(function: &fir::FirFunction, diagnostics: &mut Vec
                 crate::typecheck::UnsafeOperationKind::RawDereference { .. }
                 | crate::typecheck::UnsafeOperationKind::PointerOffset { .. } => false,
             };
-            let valid = instruction.result.is_some()
-                && result_type == Some(target)
-                && operation_matches;
+            let valid =
+                instruction.result.is_some() && result_type == Some(target) && operation_matches;
             if !valid {
                 diagnostics.push(diagnostic(
                     instruction.span,

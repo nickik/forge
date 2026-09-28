@@ -1972,8 +1972,11 @@ fn module_verifier_checks_pointer_conversion_contracts() {
         .blocks
         .iter_mut()
         .find_map(|block| {
-            block.instructions.iter_mut().enumerate().find_map(
-                |(index, instruction)| match &mut instruction.kind {
+            block
+                .instructions
+                .iter_mut()
+                .enumerate()
+                .find_map(|(index, instruction)| match &mut instruction.kind {
                     FirInstructionKind::PointerConvert {
                         value, operation, ..
                     } => {
@@ -1981,8 +1984,7 @@ fn module_verifier_checks_pointer_conversion_contracts() {
                         Some((*value, block.id, index, instruction.span))
                     }
                     _ => None,
-                },
-            )
+                })
         })
         .expect("pointer-convert producer");
 
