@@ -121,7 +121,7 @@ Legend:
   direction-sensitive width contracts before AArch64/RISC-V lowering; generic numeric conversion
   remains lossless-only.
 - Direct safe/raw dereference `AddressOf` FIR preserves requested mutability and exact pointee
-  result types before AArch64/RISC-V lowering.
+  result types at the shared FIR boundary before AArch64/RISC-V lowering.
 - Direct local `AddressOf` FIR preserves requested mutability, mutable-storage requirements and
   exact local-pointee result types at the shared FIR boundary before AArch64/RISC-V lowering.
 - Direct local stores preserve their exact declared local type at the shared FIR boundary before

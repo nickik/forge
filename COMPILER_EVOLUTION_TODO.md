@@ -148,7 +148,8 @@ available on every backend merely because the frontend accepts it.
         AArch64 and RISC-V.
   - [x] Require direct handwritten safe/raw dereference `AddressOf`
         instructions to preserve requested mutability and exact pointee result
-        types before native lowering on AArch64 and RISC-V.
+        types at the shared FIR boundary before native lowering on AArch64 and
+        RISC-V.
   - [x] Require handwritten global loads, stores and addresses to preserve the
         declared global type, storage mutability and requested reference
         mutability before native lowering on AArch64 and RISC-V.
