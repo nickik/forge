@@ -1068,6 +1068,38 @@ fn verify_direct_raw_dereferences(
     }
 }
 
+fn verify_pointer_offsets(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::PointerOffset {
+                pointer, offset, ..
+            } = &instruction.kind
+            else {
+                continue;
+            };
+            let pointer_type = function.value_types.get(pointer);
+            let offset_type = function.value_types.get(offset);
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let valid = matches!(pointer_type, Some(Ty::Pointer { .. }))
+                && matches!(offset_type, Some(Ty::Byte | Ty::Int { .. }))
+                && instruction.result.is_some()
+                && result_type == pointer_type;
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-pointer-offset",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} offsets pointer value {pointer:?} with type {pointer_type:?} by value {offset:?} with type {offset_type:?}, producing result {:?} with type {result_type:?}; expected a pointer base, concrete integer offset, result value, and the exact base-pointer result type",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1203,6 +1235,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_direct_dereference_addresses(&initializer.function, &mut diagnostics);
         verify_direct_safe_dereferences(&initializer.function, &mut diagnostics);
         verify_direct_raw_dereferences(&initializer.function, &mut diagnostics);
+        verify_pointer_offsets(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -1232,6 +1265,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_direct_dereference_addresses(function, &mut diagnostics);
         verify_direct_safe_dereferences(function, &mut diagnostics);
         verify_direct_raw_dereferences(function, &mut diagnostics);
+        verify_pointer_offsets(function, &mut diagnostics);
     }
 
     diagnostics

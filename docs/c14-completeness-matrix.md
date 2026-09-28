@@ -126,6 +126,8 @@ Legend:
   shared references at the shared FIR boundary before AArch64/RISC-V lowering.
 - Direct raw-pointer loads and stores preserve pointer volatility and exact pointee types at the
   shared FIR boundary before AArch64/RISC-V lowering.
+- Pointer-offset FIR requires pointer bases, concrete integer offsets, result values and exact
+  base-pointer result types at the shared FIR boundary before AArch64/RISC-V lowering.
 - Direct local `AddressOf` FIR preserves requested mutability, mutable-storage requirements and
   exact local-pointee result types at the shared FIR boundary before AArch64/RISC-V lowering.
 - Direct local stores preserve their exact declared local type at the shared FIR boundary before

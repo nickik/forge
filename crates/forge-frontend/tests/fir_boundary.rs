@@ -1903,6 +1903,58 @@ fn module_verifier_checks_direct_raw_dereference_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_pointer_offset_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_pointer_offset;
+        fn next(address: *u32) -> *u32 {
+            unsafe { return address + 1usize; }
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let function_owner = function.owner;
+    let (pointer, offset, block, instruction_index, span) = function
+        .blocks
+        .iter()
+        .find_map(|block| {
+            block.instructions.iter().enumerate().find_map(
+                |(index, instruction)| match &instruction.kind {
+                    FirInstructionKind::PointerOffset {
+                        pointer, offset, ..
+                    } => Some((*pointer, *offset, block.id, index, instruction.span)),
+                    _ => None,
+                },
+            )
+        })
+        .expect("pointer-offset producer");
+    function.value_types.insert(offset, Ty::Bool);
+
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-pointer-offset")
+        .expect("pointer-offset diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("pointer value {pointer:?}")));
+    assert!(diagnostic.message.contains("with type Some(Bool)"));
+    assert!(diagnostic.message.contains("concrete integer offset"));
+    assert!(diagnostic
+        .message
+        .contains("exact base-pointer result type"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"

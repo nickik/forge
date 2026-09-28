@@ -103,7 +103,7 @@ fn function(pointer_ty: Ty, offset_ty: Ty, result_ty: Ty) -> FirFunction {
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_invalid(function: FirFunction) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
     let definitions = TypeDefinitionTable::new();
@@ -115,8 +115,8 @@ fn assert_invalid(function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -124,29 +124,24 @@ fn assert_invalid(function: FirFunction, message: &str) {
 
 #[test]
 fn pointer_offset_requires_a_pointer_base() {
-    assert_invalid(
-        function(u(IntWidth::W32), u(IntWidth::Pointer), u(IntWidth::W32)),
-        "pointer offset base has non-pointer FIR type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(function(
+        u(IntWidth::W32),
+        u(IntWidth::Pointer),
+        u(IntWidth::W32),
+    ));
 }
 
 #[test]
 fn pointer_offset_result_must_match_its_base() {
-    assert_invalid(
-        function(
-            pointer(u(IntWidth::W32)),
-            u(IntWidth::Pointer),
-            pointer(Ty::Byte),
-        ),
-        "pointer offset result type Pointer { volatile: false, inner: Byte } differs from base type Pointer { volatile: false, inner: Int { signed: false, width: W32 } }",
-    );
+    assert_invalid(function(
+        pointer(u(IntWidth::W32)),
+        u(IntWidth::Pointer),
+        pointer(Ty::Byte),
+    ));
 }
 
 #[test]
 fn pointer_offset_requires_a_concrete_integer_offset() {
     let pointer_ty = pointer(u(IntWidth::W32));
-    assert_invalid(
-        function(pointer_ty.clone(), Ty::Bool, pointer_ty),
-        "pointer offset has non-integer FIR type Bool",
-    );
+    assert_invalid(function(pointer_ty.clone(), Ty::Bool, pointer_ty));
 }
