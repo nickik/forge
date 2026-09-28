@@ -478,7 +478,7 @@ fn invalid_subsequence_types_are_a_producer_contract_error() {
 }
 
 #[test]
-fn pointer_reference_and_callable_comparisons_are_invalid_producer_contracts() {
+fn undefined_comparison_domains_are_invalid_producer_contracts() {
     let comparison_types = [
         Ty::Pointer {
             volatile: false,
@@ -497,9 +497,23 @@ fn pointer_reference_and_callable_comparisons_are_invalid_producer_contracts() {
             params: vec![Ty::Byte],
             result: Box::new(Ty::Byte),
         },
+        Ty::Str,
+        Ty::Slice {
+            mutable: false,
+            element: Box::new(Ty::Byte),
+        },
+        Ty::Array {
+            element: Box::new(Ty::Byte),
+            length: Some(2),
+        },
     ];
 
     for comparison_type in comparison_types {
+        let op = if comparison_type == Ty::Str {
+            BinaryOp::Less
+        } else {
+            BinaryOp::Eq
+        };
         let owner = DefId(40);
         let left_local = FirLocalId(0);
         let right_local = FirLocalId(1);
@@ -561,7 +575,7 @@ fn pointer_reference_and_callable_comparisons_are_invalid_producer_contracts() {
                             span: Span::new(8, 10),
                             result: Some(result),
                             kind: FirInstructionKind::Binary {
-                                op: BinaryOp::Eq,
+                                op,
                                 overflow: None,
                                 left,
                                 right,

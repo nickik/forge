@@ -210,6 +210,40 @@ fn rejects_function_and_closure_comparisons_before_fir() {
 }
 
 #[test]
+fn rejects_string_ordering_and_slice_array_comparisons_before_fir() {
+    let output = check(
+        r#"
+        module test.sequence_comparisons;
+        fn compare_strings(left: str, right: str) -> bool {
+            return left < right;
+        }
+        fn compare_slices(left: u32[], right: u32[]) -> bool {
+            return left == right;
+        }
+        fn compare_arrays(left: [u32; 2], right: [u32; 2]) -> bool {
+            return left != right;
+        }
+        "#,
+    );
+    let diagnostics = output
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic.code == "type/mismatch"
+                && diagnostic
+                    .message
+                    .contains("string ordering and slice/array comparisons are not defined")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 3, "{:?}", output.diagnostics);
+    for domain in ["Str", "Slice", "Array"] {
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains(domain)));
+    }
+}
+
+#[test]
 fn rejects_bool_integer_arithmetic() {
     let output = check(
         r#"
