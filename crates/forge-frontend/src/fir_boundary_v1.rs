@@ -966,6 +966,56 @@ fn verify_direct_dereference_addresses(
     }
 }
 
+fn verify_direct_safe_dereferences(
+    function: &fir::FirFunction,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let (place, operation, write, actual_type, result_shape_ok) = match &instruction.kind {
+                FirInstructionKind::Load { place } => (
+                    place,
+                    "load",
+                    false,
+                    instruction
+                        .result
+                        .and_then(|result| function.value_types.get(&result)),
+                    instruction.result.is_some(),
+                ),
+                FirInstructionKind::Store { place, value } => (
+                    place,
+                    "store",
+                    true,
+                    function.value_types.get(value),
+                    instruction.result.is_none(),
+                ),
+                _ => continue,
+            };
+            let fir::FirPlace::Deref { address } = place else {
+                continue;
+            };
+            let address_type = function.value_types.get(address);
+            let pointee = match address_type {
+                Some(Ty::Reference { mutable, inner }) if !write || *mutable => {
+                    Some(inner.as_ref())
+                }
+                _ => None,
+            };
+            let valid = result_shape_ok && pointee.is_some() && actual_type == pointee;
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-safe-dereference",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} safe {operation} uses reference value {address:?} with type {address_type:?}, actual value type {actual_type:?}, and result {:?}; expected a reference source, mutable reference for a store, correct result shape, and the exact pointee type {pointee:?}",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1099,6 +1149,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_direct_local_stores(&initializer.function, &mut diagnostics);
         verify_direct_local_addresses(&initializer.function, &mut diagnostics);
         verify_direct_dereference_addresses(&initializer.function, &mut diagnostics);
+        verify_direct_safe_dereferences(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -1126,6 +1177,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_direct_local_stores(function, &mut diagnostics);
         verify_direct_local_addresses(function, &mut diagnostics);
         verify_direct_dereference_addresses(function, &mut diagnostics);
+        verify_direct_safe_dereferences(function, &mut diagnostics);
     }
 
     diagnostics
