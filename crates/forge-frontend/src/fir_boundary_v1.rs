@@ -1885,6 +1885,73 @@ fn verify_named_variants(
     }
 }
 
+fn verify_bitstruct_storage_conversions(
+    function: &fir::FirFunction,
+    definitions: &TypeDefinitionTable,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let result_ty = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let issue = match &instruction.kind {
+                FirInstructionKind::BitStructStorage { value, storage } => {
+                    let source_ty = function.value_types.get(value);
+                    match source_ty {
+                        Some(Ty::Nominal(owner)) => match definitions.get(owner) {
+                            Some(definition) => match &definition.kind {
+                                TypeDefinitionKind::BitStruct { storage: declared }
+                                    if declared == storage && result_ty == Some(storage) =>
+                                {
+                                    None
+                                }
+                                TypeDefinitionKind::BitStruct { storage: declared } => Some(
+                                    format!(
+                                        "declared storage is {declared:?}, instruction storage is {storage:?}, and result type is {result_ty:?}"
+                                    ),
+                                ),
+                                _ => Some(format!("source type {source_ty:?} is not a bitstruct")),
+                            },
+                            None => Some(format!("source type {owner:?} has no type definition")),
+                        },
+                        _ => Some(format!("source type {source_ty:?} is not nominal")),
+                    }
+                }
+                FirInstructionKind::BitStructFromStorage { value, bitstruct } => {
+                    let source_ty = function.value_types.get(value);
+                    match definitions.get(bitstruct) {
+                        Some(definition) => match &definition.kind {
+                            TypeDefinitionKind::BitStruct { storage }
+                                if source_ty == Some(storage)
+                                    && result_ty == Some(&Ty::Nominal(*bitstruct)) =>
+                            {
+                                None
+                            }
+                            TypeDefinitionKind::BitStruct { storage } => Some(format!(
+                                "source type is {source_ty:?}, declared storage is {storage:?}, and result type is {result_ty:?}"
+                            )),
+                            _ => Some(format!("target type {bitstruct:?} is not a bitstruct")),
+                        },
+                        None => Some(format!("target type {bitstruct:?} has no type definition")),
+                    }
+                }
+                _ => continue,
+            };
+            if let Some(issue) = issue {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-bitstruct-storage",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} bitstruct storage conversion violates its type-definition contract: {issue}",
+                        function.owner, block.id
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -2085,11 +2152,17 @@ pub fn verify_fir_module_with_types(
         verify_make_aggregates(&initializer.function, definitions, &mut diagnostics);
         verify_extract_fields(&initializer.function, definitions, &mut diagnostics);
         verify_named_variants(&initializer.function, definitions, &mut diagnostics);
+        verify_bitstruct_storage_conversions(
+            &initializer.function,
+            definitions,
+            &mut diagnostics,
+        );
     }
     for function in module.functions.values() {
         verify_make_aggregates(function, definitions, &mut diagnostics);
         verify_extract_fields(function, definitions, &mut diagnostics);
         verify_named_variants(function, definitions, &mut diagnostics);
+        verify_bitstruct_storage_conversions(function, definitions, &mut diagnostics);
     }
     diagnostics
 }

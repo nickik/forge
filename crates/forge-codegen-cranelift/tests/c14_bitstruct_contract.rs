@@ -80,25 +80,6 @@ fn function(
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
-    let mut module = FirModule::default();
-    module.functions.insert(function.owner, function);
-    let definitions = definitions();
-    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
-        let backend = CraneliftBackend::new(target).expect("backend");
-        let error = match backend.prepare_module_with_types(&module, &definitions) {
-            Ok(_) => panic!("malformed bitstruct FIR unexpectedly lowered"),
-            Err(error) => error,
-        };
-        assert_eq!(
-            error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
-            }
-        );
-    }
-}
-
 fn assert_invalid_fir(function: FirFunction) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
@@ -120,28 +101,28 @@ fn assert_invalid_fir(function: FirFunction) {
 
 #[test]
 fn bitstruct_storage_projection_requires_declared_storage() {
-    assert_invalid(
-        function(Ty::Nominal(DefId(100)), Some(u(IntWidth::W32)), |value| {
-            FirInstructionKind::BitStructStorage {
-                value,
-                storage: u(IntWidth::W32),
-            }
-        }),
-        "bitstruct storage projection uses the wrong storage type",
-    );
+    assert_invalid_fir(function(
+        Ty::Nominal(DefId(100)),
+        Some(u(IntWidth::W32)),
+        |value| FirInstructionKind::BitStructStorage {
+            value,
+            storage: u(IntWidth::W32),
+        },
+    ));
 }
 
 #[test]
 fn bitstruct_rebuild_requires_declared_storage() {
-    assert_invalid(
-        function(u(IntWidth::W32), Some(Ty::Nominal(DefId(100))), |value| {
+    assert_invalid_fir(function(
+        u(IntWidth::W32),
+        Some(Ty::Nominal(DefId(100))),
+        |value| {
             FirInstructionKind::BitStructFromStorage {
                 value,
                 bitstruct: DefId(100),
             }
-        }),
-        "bitstruct rebuild input differs from storage type",
-    );
+        },
+    ));
 }
 
 #[test]

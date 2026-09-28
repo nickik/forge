@@ -956,51 +956,6 @@ fn validate_c4_scalar_contract(
                         ));
                     }
                 }
-                FirInstructionKind::BitStructStorage { value, storage } => {
-                    let source = value_type(fir, *value, "bitstruct storage input")?;
-                    let Ty::Nominal(owner) = source else {
-                        return Err(shape(
-                            "bitstruct storage projection source is not nominal",
-                        ));
-                    };
-                    if result_ty != storage {
-                        return Err(shape(
-                            "bitstruct storage projection result type differs from storage",
-                        ));
-                    }
-                    let definition = definitions.get(owner).ok_or_else(|| {
-                        shape(format!(
-                            "bitstruct storage projection has unknown type {owner:?}"
-                        ))
-                    })?;
-                    let TypeDefinitionKind::BitStruct { storage: declared } = &definition.kind
-                    else {
-                        return Err(shape(
-                            "bitstruct storage projection source is not a bitstruct",
-                        ));
-                    };
-                    if declared != storage {
-                        return Err(shape(
-                            "bitstruct storage projection uses the wrong storage type",
-                        ));
-                    }
-                }
-                FirInstructionKind::BitStructFromStorage { value, bitstruct } => {
-                    if result_ty != &Ty::Nominal(*bitstruct) {
-                        return Err(shape(
-                            "bitstruct rebuild result has the wrong nominal type",
-                        ));
-                    }
-                    let definition = definitions.get(bitstruct).ok_or_else(|| {
-                        shape(format!("bitstruct rebuild has unknown type {bitstruct:?}"))
-                    })?;
-                    let TypeDefinitionKind::BitStruct { storage } = &definition.kind else {
-                        return Err(shape("bitstruct rebuild target is not a bitstruct"));
-                    };
-                    if value_type(fir, *value, "bitstruct rebuild input")? != storage {
-                        return Err(shape("bitstruct rebuild input differs from storage type"));
-                    }
-                }
                 FirInstructionKind::BitFieldExtract { value } => {
                     let source = value_type(fir, *value, "bitfield conversion input")?;
                     if !matches!(source, Ty::Byte | Ty::Int { signed: false, .. })
