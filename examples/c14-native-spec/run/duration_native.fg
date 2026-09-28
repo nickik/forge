@@ -14,9 +14,25 @@ fn read_holder(holder: Holder) -> duration {
     return holder.value;
 }
 
+fn compare(left: duration, right: duration, operation: u8) -> bool {
+    if (operation == 0u8) { return left == right; }
+    if (operation == 1u8) { return left != right; }
+    if (operation == 2u8) { return left < right; }
+    if (operation == 3u8) { return left <= right; }
+    if (operation == 4u8) { return left > right; }
+    return left >= right;
+}
+
 fn main() -> i32 {
     val original: duration = #duration "250ms";
     val holder: Holder = Holder{value: original};
     val returned: duration = round_trip(read_holder(holder));
+    val later: duration = #duration "500ms";
+    if (!compare(returned, original, 0u8)) { return 1; }
+    if (!compare(returned, later, 1u8)) { return 2; }
+    if (!compare(returned, later, 2u8)) { return 3; }
+    if (!compare(returned, later, 3u8)) { return 4; }
+    if (!compare(later, returned, 4u8)) { return 5; }
+    if (!compare(later, later, 5u8)) { return 6; }
     return 0i32;
 }
