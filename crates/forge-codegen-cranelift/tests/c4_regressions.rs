@@ -115,7 +115,9 @@ fn unary_rejects_signedness_change_hidden_by_same_clif_width() {
 
     assert!(matches!(
         lower_error(function),
-        BackendError::InvalidFirShape { .. }
+        BackendError::InvalidFir {
+            diagnostic_count: 1
+        }
     ));
 }
 
