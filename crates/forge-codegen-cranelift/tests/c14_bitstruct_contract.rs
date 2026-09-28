@@ -116,11 +116,9 @@ fn bitstruct_rebuild_requires_declared_storage() {
     assert_invalid_fir(function(
         u(IntWidth::W32),
         Some(Ty::Nominal(DefId(100))),
-        |value| {
-            FirInstructionKind::BitStructFromStorage {
-                value,
-                bitstruct: DefId(100),
-            }
+        |value| FirInstructionKind::BitStructFromStorage {
+            value,
+            bitstruct: DefId(100),
         },
     ));
 }

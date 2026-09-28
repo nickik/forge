@@ -2152,11 +2152,7 @@ pub fn verify_fir_module_with_types(
         verify_make_aggregates(&initializer.function, definitions, &mut diagnostics);
         verify_extract_fields(&initializer.function, definitions, &mut diagnostics);
         verify_named_variants(&initializer.function, definitions, &mut diagnostics);
-        verify_bitstruct_storage_conversions(
-            &initializer.function,
-            definitions,
-            &mut diagnostics,
-        );
+        verify_bitstruct_storage_conversions(&initializer.function, definitions, &mut diagnostics);
     }
     for function in module.functions.values() {
         verify_make_aggregates(function, definitions, &mut diagnostics);

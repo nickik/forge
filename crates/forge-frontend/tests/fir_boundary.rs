@@ -996,7 +996,10 @@ fn definition_aware_module_verifier_checks_bitstruct_storage_conversions() {
         .flat_map(|function| function.blocks.iter_mut())
         .flat_map(|block| block.instructions.iter_mut())
         .find(|instruction| {
-            matches!(instruction.kind, FirInstructionKind::BitStructStorage { .. })
+            matches!(
+                instruction.kind,
+                FirInstructionKind::BitStructStorage { .. }
+            )
         })
         .expect("bitstruct storage projection");
     let FirInstructionKind::BitStructStorage { storage, .. } = &mut instruction.kind else {
