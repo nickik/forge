@@ -172,6 +172,44 @@ fn rejects_pointer_and_reference_comparisons_before_fir() {
 }
 
 #[test]
+fn rejects_function_and_closure_comparisons_before_fir() {
+    let output = check(
+        r#"
+        module test.callable_comparisons;
+        fn compare_functions(
+            left: fn(u32) -> u32,
+            right: fn(u32) -> u32,
+        ) -> bool {
+            return left == right;
+        }
+        fn compare_closures(
+            left: closure(u32) -> u32,
+            right: closure(u32) -> u32,
+        ) -> bool {
+            return left != right;
+        }
+        "#,
+    );
+    let diagnostics = output
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic.code == "type/mismatch"
+                && diagnostic
+                    .message
+                    .contains("function/closure comparisons are not defined")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 2, "{:?}", output.diagnostics);
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("Function")));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("Closure")));
+}
+
+#[test]
 fn rejects_bool_integer_arithmetic() {
     let output = check(
         r#"
