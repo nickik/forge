@@ -629,12 +629,8 @@ fn float_constant_with_integer_result_type_is_an_invalid_producer_contract() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "float constant \"1.0f32\" has non-float FIR result type ",
-                    "Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -684,12 +680,8 @@ fn boolean_constant_with_integer_result_type_is_an_invalid_producer_contract() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "boolean constant true has non-bool FIR result type ",
-                    "Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -741,12 +733,8 @@ fn duration_constant_with_integer_result_type_is_an_invalid_producer_contract() 
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "duration constant \"1ms\" has non-duration FIR result type ",
-                    "Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -794,8 +782,8 @@ fn integer_constant_with_boolean_result_type_is_an_invalid_producer_contract() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: "integer constant has non-integer FIR type Bool".into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -845,8 +833,8 @@ fn character_constant_with_integer_result_type_is_an_invalid_producer_contract()
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: "char constant result is not char typed".into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
