@@ -44,7 +44,7 @@ Legend:
 | FIR terminators | 1 | Branch conditions are boolean; return presence and exact value types match the enclosing function or local closure before AArch64/RISC-V lowering. |
 | `defer` | 1 | Normal/direct return and `?` cleanup, break/continue exits, nested LIFO ordering, and cleanup-body control-flow rejection are covered. |
 | Globals | 1 | Static data, function/global pointer relocations, ordered parameterless runtime initialization, mutable scalar/whole-aggregate stores, shared/mutable addresses, direct global-rooted field reads/stores/addresses, and static aggregate pointers execute. Compile-time constants must match their declared scalar types and cannot coexist with runtime initializers; runtime initializer signatures are verified before lowering. AArch64 native and RISC-V/QEMU object tests cover the relocation paths. |
-| Overflow and traps | 1 | Checked/wrapping add/sub/mul, div/rem, shifts and divide-by-zero coverage exists. Shared FIR verification requires explicit checked or wrapping modes for integer add/sub/mul, checked modes for integer div/rem/shifts, and no overflow mode for comparisons, logical/bitwise or floating operations. Ordinary integer conversions use dedicated lossless FIR semantics; narrowing and signed-to-unsigned conversions remain rejected until a future operation defines their policy. |
+| Overflow and traps | 1 | Checked/wrapping add/sub/mul and integer negation, div/rem, shifts and divide-by-zero coverage exists. Shared FIR verification requires explicit checked or wrapping modes for integer add/sub/mul/negation, checked modes for integer div/rem/shifts, and no overflow mode for comparisons, logical/bitwise or floating operations. Ordinary integer conversions use dedicated lossless FIR semantics; narrowing and signed-to-unsigned conversions remain rejected until a future operation defines their policy. |
 | FDN readers and metadata | 4 | Parse/preservation and duration boundary tests exist; executable behavior is provider/tool-specific. |
 | Hosted providers/build system | 4 | Build/check/run/test, entries and hosted providers exist. Full current Cosmic/CKV acceptance remains. |
 | Freestanding `:kernel`, `:std false` | 4 | AArch64 object emission exports the manifest-selected entry under its exact platform symbol and verifies ELF sections, call relocations, and no undefined hosted/runtime imports. The representative Cosmic M27 SIA32 kernel image executes through LightingSimulation; explicit semantic library mappings and the checked-in M28.5 `r1` syscall/proof source reach production SIA32 user-image emission. The separate System Task kernel/user crossing still lacks Lighting execution. |
@@ -76,6 +76,8 @@ Legend:
 - Binary FIR requires operation-compatible overflow metadata at the shared boundary: integer
   add/subtract/multiply is checked or wrapping, integer division/remainder/shifts are checked,
   and comparisons, logical/bitwise and floating operations carry no overflow mode.
+- Integer-negation FIR carries checked or wrapping overflow semantics selected by the enclosing
+  function; both modes lower natively, while float negation carries no overflow mode.
 - Sequence patterns are restricted to arrays and slices during typechecking; incompatible
   `Subsequence` source/result FIR fails at the shared boundary unless slices preserve exact type or
   fixed arrays preserve element type and residual length.
