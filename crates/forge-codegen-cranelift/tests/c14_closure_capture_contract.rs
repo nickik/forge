@@ -135,7 +135,7 @@ fn capture_function(
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_invalid(function: FirFunction) {
     let module = FirModule {
         functions: BTreeMap::from([(function.owner, function)]),
         ..FirModule::default()
@@ -148,8 +148,8 @@ fn assert_invalid(function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -167,98 +167,77 @@ fn closure_capture_must_be_used_inside_a_closure_body() {
     );
     let access = function.blocks[1].instructions.pop().expect("capture load");
     function.blocks[0].instructions.push(access);
-    assert_invalid(
-        function,
-        "closure capture place used outside a closure body",
-    );
+    assert_invalid(function);
 }
 
 #[test]
 fn closure_capture_must_belong_to_the_active_body() {
-    assert_invalid(
-        capture_function(
-            ExprId(8),
-            0,
-            CaptureMode::Value,
-            CaptureOperation::Load {
-                result_ty: u32_ty(),
-            },
-        ),
-        "closure body ExprId(7) refers to capture owned by ExprId(8)",
-    );
+    assert_invalid(capture_function(
+        ExprId(8),
+        0,
+        CaptureMode::Value,
+        CaptureOperation::Load {
+            result_ty: u32_ty(),
+        },
+    ));
 }
 
 #[test]
 fn closure_capture_index_must_exist() {
-    assert_invalid(
-        capture_function(
-            ExprId(7),
-            1,
-            CaptureMode::Value,
-            CaptureOperation::Load {
-                result_ty: u32_ty(),
-            },
-        ),
-        "closure capture index 1 is out of range",
-    );
+    assert_invalid(capture_function(
+        ExprId(7),
+        1,
+        CaptureMode::Value,
+        CaptureOperation::Load {
+            result_ty: u32_ty(),
+        },
+    ));
 }
 
 #[test]
 fn closure_capture_load_must_preserve_the_field_type() {
-    assert_invalid(
-        capture_function(
-            ExprId(7),
-            0,
-            CaptureMode::Value,
-            CaptureOperation::Load {
-                result_ty: Ty::Byte,
-            },
-        ),
-        "closure capture load result type Byte differs from field type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(capture_function(
+        ExprId(7),
+        0,
+        CaptureMode::Value,
+        CaptureOperation::Load {
+            result_ty: Ty::Byte,
+        },
+    ));
 }
 
 #[test]
 fn closure_capture_store_must_preserve_the_field_type() {
-    assert_invalid(
-        capture_function(
-            ExprId(7),
-            0,
-            CaptureMode::Value,
-            CaptureOperation::Store { value_ty: Ty::Byte },
-        ),
-        "closure capture store value type Byte differs from field type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(capture_function(
+        ExprId(7),
+        0,
+        CaptureMode::Value,
+        CaptureOperation::Store { value_ty: Ty::Byte },
+    ));
 }
 
 #[test]
 fn shared_closure_capture_rejects_writes() {
-    assert_invalid(
-        capture_function(
-            ExprId(7),
-            0,
-            CaptureMode::SharedReference,
-            CaptureOperation::Store { value_ty: u32_ty() },
-        ),
-        "write through shared closure capture",
-    );
+    assert_invalid(capture_function(
+        ExprId(7),
+        0,
+        CaptureMode::SharedReference,
+        CaptureOperation::Store { value_ty: u32_ty() },
+    ));
 }
 
 #[test]
 fn closure_capture_address_must_preserve_mutability_and_field_type() {
-    assert_invalid(
-        capture_function(
-            ExprId(7),
-            0,
-            CaptureMode::MutableReference,
-            CaptureOperation::AddressOf {
-                mutable: true,
-                result_ty: Ty::Reference {
-                    mutable: false,
-                    inner: Box::new(u32_ty()),
-                },
+    assert_invalid(capture_function(
+        ExprId(7),
+        0,
+        CaptureMode::MutableReference,
+        CaptureOperation::AddressOf {
+            mutable: true,
+            result_ty: Ty::Reference {
+                mutable: false,
+                inner: Box::new(u32_ty()),
             },
-        ),
-        "address-of result type Reference { mutable: false, inner: Int { signed: false, width: W32 } } does not match expected reference type Reference { mutable: true, inner: Int { signed: false, width: W32 } }",
-    );
+        },
+    ));
 }

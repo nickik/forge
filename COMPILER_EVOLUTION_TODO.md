@@ -171,7 +171,8 @@ available on every backend merely because the frontend accepts it.
   - [x] Require handwritten closure-capture places to stay within their owning
         closure body, use valid environment indexes, preserve exact direct
         load/store/address types and reject writes through shared captures
-        before native lowering on AArch64 and RISC-V.
+        at the shared FIR boundary before native lowering on AArch64 and
+        RISC-V.
   - [x] Verify every closure body independently of construction sites: map keys
         must match metadata identities, parameters must name unique parameter
         locals, function-pointer closures remain capture-free and closure-owned
