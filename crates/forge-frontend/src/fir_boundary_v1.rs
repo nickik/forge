@@ -908,6 +908,64 @@ fn verify_direct_local_addresses(
     }
 }
 
+fn verify_direct_dereference_addresses(
+    function: &fir::FirFunction,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::AddressOf { place, mutable } = &instruction.kind else {
+                continue;
+            };
+            let (address, raw_volatile) = match place {
+                fir::FirPlace::Deref { address } => (*address, None),
+                fir::FirPlace::RawDeref {
+                    address, volatile, ..
+                } => (*address, Some(*volatile)),
+                _ => continue,
+            };
+            let address_type = function.value_types.get(&address);
+            let pointee = match (raw_volatile, address_type) {
+                (
+                    None,
+                    Some(Ty::Reference {
+                        mutable: source_mutable,
+                        inner,
+                    }),
+                ) if !*mutable || *source_mutable => Some(inner.as_ref()),
+                (
+                    Some(place_volatile),
+                    Some(Ty::Pointer {
+                        volatile: pointer_volatile,
+                        inner,
+                    }),
+                ) if place_volatile == *pointer_volatile => Some(inner.as_ref()),
+                _ => None,
+            };
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let expected_type = pointee.map(|pointee| Ty::Reference {
+                mutable: *mutable,
+                inner: Box::new(pointee.clone()),
+            });
+            let valid = instruction.result.is_some()
+                && pointee.is_some()
+                && result_type == expected_type.as_ref();
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-dereference-address",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} takes an address of dereference place {place:?} from value {address:?} with type {address_type:?}, requested mutable={mutable}, result {:?}, and result type {result_type:?}; expected a compatible reference/pointer source, matching raw volatility, mutable source reference for a mutable safe address, a result, and exact reference type {expected_type:?}",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1040,6 +1098,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_closure_capture_places(&initializer.function, &mut diagnostics);
         verify_direct_local_stores(&initializer.function, &mut diagnostics);
         verify_direct_local_addresses(&initializer.function, &mut diagnostics);
+        verify_direct_dereference_addresses(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -1066,6 +1125,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_closure_capture_places(function, &mut diagnostics);
         verify_direct_local_stores(function, &mut diagnostics);
         verify_direct_local_addresses(function, &mut diagnostics);
+        verify_direct_dereference_addresses(function, &mut diagnostics);
     }
 
     diagnostics

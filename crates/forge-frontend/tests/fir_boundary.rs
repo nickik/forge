@@ -1727,6 +1727,67 @@ fn module_verifier_checks_direct_local_address_types_and_mutability() {
 }
 
 #[test]
+fn module_verifier_checks_direct_dereference_address_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_dereference_address;
+        fn reborrow(address: &mut u32) -> u32 {
+            val rebound: &mut u32 = &mut *address;
+            return *rebound;
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let function_owner = function.owner;
+    let (address, block, instruction_index, span) = function
+        .blocks
+        .iter()
+        .find_map(|block| {
+            block.instructions.iter().enumerate().find_map(
+                |(index, instruction)| match &instruction.kind {
+                    FirInstructionKind::AddressOf {
+                        place: FirPlace::Deref { address },
+                        mutable: true,
+                    } => Some((*address, block.id, index, instruction.span)),
+                    _ => None,
+                },
+            )
+        })
+        .expect("direct mutable dereference address");
+    function.value_types.insert(
+        address,
+        Ty::Reference {
+            mutable: false,
+            inner: Box::new(Ty::Int {
+                signed: false,
+                width: IntWidth::W32,
+            }),
+        },
+    );
+
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-dereference-address")
+        .expect("dereference-address diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("from value {address:?}")));
+    assert!(diagnostic.message.contains("mutable: false"));
+    assert!(diagnostic.message.contains("mutable source reference"));
+    assert!(diagnostic.message.contains("exact reference type"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"
