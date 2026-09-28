@@ -478,7 +478,7 @@ fn invalid_subsequence_types_are_a_producer_contract_error() {
 }
 
 #[test]
-fn pointer_and_reference_comparisons_are_invalid_producer_contracts() {
+fn pointer_reference_and_callable_comparisons_are_invalid_producer_contracts() {
     let comparison_types = [
         Ty::Pointer {
             volatile: false,
@@ -487,6 +487,15 @@ fn pointer_and_reference_comparisons_are_invalid_producer_contracts() {
         Ty::Reference {
             mutable: false,
             inner: Box::new(Ty::Byte),
+        },
+        Ty::Function {
+            params: vec![Ty::Byte],
+            result: Box::new(Ty::Byte),
+            named_arguments: false,
+        },
+        Ty::Closure {
+            params: vec![Ty::Byte],
+            result: Box::new(Ty::Byte),
         },
     ];
 
@@ -574,7 +583,7 @@ fn pointer_and_reference_comparisons_are_invalid_producer_contracts() {
         for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
             let backend = CraneliftBackend::new(target).expect("backend");
             let error = match backend.prepare_module(&module) {
-                Ok(_) => panic!("pointer/reference comparison unexpectedly lowered"),
+                Ok(_) => panic!("unsupported comparison domain unexpectedly lowered"),
                 Err(error) => error,
             };
             assert_eq!(
