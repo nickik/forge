@@ -46,7 +46,10 @@ pub use fir::{
     FirInstructionKind, FirLocal, FirLocalId, FirModule, FirOutput, FirPlace, FirSelectCase,
     FirTerminator, FirUnaryOp, FirValueId, OverflowMode, Sia32PrivilegedOperation,
 };
-pub use fir_boundary::{dump_fir_module, lower_fir, verify_fir_boundary, verify_fir_module};
+pub use fir_boundary::{
+    dump_fir_module, lower_fir, verify_fir_boundary, verify_fir_module,
+    verify_fir_module_with_types,
+};
 
 pub use typecheck::{RuntimeOperationId, TypedSelectArm, TypedSelectPlan};
 

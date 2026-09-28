@@ -17,13 +17,14 @@ pub use abi::{
 };
 pub use forge_frontend::ast::{BinaryOp, Span};
 pub use forge_frontend::{
-    collect_type_definitions, dump_fir_module, verify_fir_function, verify_fir_module, CaptureMode,
-    ConstValue, ContextSlot, DefId, ExprId, FirBasicBlock, FirBlockId, FirClosure, FirClosureField,
-    FirConst, FirDiagnostic, FirFunction, FirGlobal, FirGlobalInitializer, FirInstruction,
-    FirInstructionKind, FirLocal, FirLocalId, FirModule, FirOutput, FirPlace, FirSelectCase,
-    FirTerminator, FirUnaryOp, FirValueId, IntWidth, LocalId, OverflowMode, RuntimeOperationId,
-    Sia32PrivilegedOperation, Ty, TypeDefinition, TypeDefinitionKind, TypeDefinitionTable,
-    TypeFieldDefinition, TypeVariantDefinition, UnsafeOperationKind, UnsafeProvenance,
+    collect_type_definitions, dump_fir_module, verify_fir_function, verify_fir_module,
+    verify_fir_module_with_types, CaptureMode, ConstValue, ContextSlot, DefId, ExprId,
+    FirBasicBlock, FirBlockId, FirClosure, FirClosureField, FirConst, FirDiagnostic, FirFunction,
+    FirGlobal, FirGlobalInitializer, FirInstruction, FirInstructionKind, FirLocal, FirLocalId,
+    FirModule, FirOutput, FirPlace, FirSelectCase, FirTerminator, FirUnaryOp, FirValueId, IntWidth,
+    LocalId, OverflowMode, RuntimeOperationId, Sia32PrivilegedOperation, Ty, TypeDefinition,
+    TypeDefinitionKind, TypeDefinitionTable, TypeFieldDefinition, TypeVariantDefinition,
+    UnsafeOperationKind, UnsafeProvenance,
 };
 pub use layout::{
     FieldLayout, Layout, LayoutEngine, LayoutError, LayoutKind, LayoutTarget, Niche, SumEncoding,

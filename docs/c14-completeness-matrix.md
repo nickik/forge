@@ -117,7 +117,8 @@ Legend:
   `VariantIs` inputs with boolean results; definition-aware fieldless/name validation remains
   before AArch64/RISC-V lowering.
 - Handwritten `MakeAggregate` instructions require matching declared/result types, unique supplied
-  fields, complete declared field sets, and exact supplied payload types on AArch64/RISC-V.
+  fields, complete declared field sets, and exact supplied payload types at the definition-aware
+  shared FIR boundary before AArch64/RISC-V lowering.
 - Handwritten `ExtractField` instructions require field-bearing bases and exact declared field
   result types on AArch64/RISC-V.
 - Omitted struct and tagged field defaults are materialized in body HIR before typechecking/FIR and

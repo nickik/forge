@@ -4,9 +4,9 @@ use cranelift_codegen::ir::{Function, Signature};
 use cranelift_codegen::isa::{CallConv, OwnedTargetIsa};
 use cranelift_codegen::Context;
 use forge_fir::{
-    verify_fir_module, BinaryOp, CaptureMode, DefId, FirBasicBlock, FirFunction,
+    verify_fir_module_with_types, BinaryOp, CaptureMode, DefId, FirBasicBlock, FirFunction,
     FirInstructionKind, FirModule, FirPlace, FirTerminator, FirValueId, IntWidth, Ty,
-    TypeDefinitionKind, TypeDefinitionTable, TypeFieldDefinition, UnsafeOperationKind,
+    TypeDefinitionKind, TypeDefinitionTable, UnsafeOperationKind,
 };
 use target_lexicon::Triple;
 
@@ -81,7 +81,7 @@ impl CraneliftBackend {
         module: &FirModule,
         definitions: &TypeDefinitionTable,
     ) -> Result<PreparedModule, BackendError> {
-        let diagnostics = verify_fir_module(module);
+        let diagnostics = verify_fir_module_with_types(module, definitions);
         if !diagnostics.is_empty() {
             return Err(BackendError::InvalidFir {
                 diagnostic_count: diagnostics.len(),
@@ -565,18 +565,6 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
-                FirInstructionKind::MakeAggregate {
-                    ty,
-                    variant,
-                    fields,
-                } => validate_make_aggregate_contract(
-                    fir,
-                    definitions,
-                    ty,
-                    result_ty,
-                    variant.as_deref(),
-                    fields,
-                )?,
                 FirInstructionKind::MakeArray { items } => {
                     let Ty::Array {
                         element,
@@ -1090,88 +1078,6 @@ fn validate_c4_scalar_contract(
                 }
                 _ => {}
             }
-        }
-    }
-    Ok(())
-}
-
-fn validate_make_aggregate_contract(
-    fir: &FirFunction,
-    definitions: &TypeDefinitionTable,
-    declared_ty: &Ty,
-    result_ty: &Ty,
-    variant_name: Option<&str>,
-    fields: &[(String, FirValueId)],
-) -> Result<(), BackendError> {
-    if declared_ty != result_ty {
-        return Err(shape(format!(
-            "make-aggregate instruction declares type {declared_ty:?}, result is {result_ty:?}"
-        )));
-    }
-    let Ty::Nominal(owner) = declared_ty else {
-        return Err(shape(format!(
-            "make-aggregate instruction has non-nominal FIR type {declared_ty:?}"
-        )));
-    };
-    let definition = definitions.get(owner).ok_or_else(|| {
-        shape(format!(
-            "make-aggregate instruction has unknown type {owner:?}"
-        ))
-    })?;
-    let declared_fields: &[TypeFieldDefinition] = match &definition.kind {
-        TypeDefinitionKind::Struct {
-            fields: declared_fields,
-        } => {
-            if let Some(name) = variant_name {
-                return Err(shape(format!(
-                    "struct aggregate instruction unexpectedly names variant `{name}`"
-                )));
-            }
-            declared_fields
-        }
-        TypeDefinitionKind::Tagged { variants } => {
-            let name = variant_name
-                .ok_or_else(|| shape("tagged aggregate instruction is missing its variant"))?;
-            &variants
-                .iter()
-                .find(|variant| variant.name == name)
-                .ok_or_else(|| {
-                    shape(format!(
-                        "unknown aggregate variant `{name}` for FIR type {declared_ty:?}"
-                    ))
-                })?
-                .fields
-        }
-        _ => {
-            return Err(shape(format!(
-                "make-aggregate instruction has non-aggregate FIR type {declared_ty:?}"
-            )))
-        }
-    };
-
-    let mut seen = BTreeSet::new();
-    for (name, value) in fields {
-        if !seen.insert(name.as_str()) {
-            return Err(shape(format!("duplicate aggregate field `{name}`")));
-        }
-        let declared = declared_fields
-            .iter()
-            .find(|field| field.name == *name)
-            .ok_or_else(|| shape(format!("unknown aggregate field `{name}`")))?;
-        let payload = value_type(fir, *value, "aggregate field payload")?;
-        if payload != &declared.ty {
-            return Err(shape(format!(
-                "make-aggregate field `{name}` has FIR payload type {payload:?}, declared field type is {:?}",
-                declared.ty
-            )));
-        }
-    }
-    for declared in declared_fields {
-        if !seen.contains(declared.name.as_str()) {
-            return Err(shape(format!(
-                "make-aggregate instruction is missing declared field `{}`",
-                declared.name
-            )));
         }
     }
     Ok(())
