@@ -582,7 +582,9 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
             let overflow_valid = match op {
                 crate::ast::BinaryOp::Add
                 | crate::ast::BinaryOp::Sub
-                | crate::ast::BinaryOp::Mul if integer_operands => {
+                | crate::ast::BinaryOp::Mul
+                    if integer_operands =>
+                {
                     matches!(
                         overflow,
                         Some(fir::OverflowMode::Checked | fir::OverflowMode::Wrapping)
@@ -591,7 +593,9 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
                 crate::ast::BinaryOp::Div
                 | crate::ast::BinaryOp::Rem
                 | crate::ast::BinaryOp::ShiftLeft
-                | crate::ast::BinaryOp::ShiftRight if integer_operands => {
+                | crate::ast::BinaryOp::ShiftRight
+                    if integer_operands =>
+                {
                     *overflow == Some(fir::OverflowMode::Checked)
                 }
                 _ => overflow.is_none(),
