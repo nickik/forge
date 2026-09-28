@@ -914,12 +914,8 @@ fn unit_instruction_with_integer_result_type_is_an_invalid_producer_contract() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "unit instruction has non-void FIR result type ",
-                    "Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -979,12 +975,8 @@ fn make_none_with_integer_result_type_is_an_invalid_producer_contract() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "make-none instruction has non-optional FIR result type ",
-                    "Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }

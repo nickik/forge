@@ -1359,6 +1359,46 @@ fn verify_string_constants(function: &fir::FirFunction, diagnostics: &mut Vec<Fi
     }
 }
 
+fn verify_zero_payload_producers(
+    function: &fir::FirFunction,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let (kind, valid_type) = match &instruction.kind {
+                FirInstructionKind::Unit => ("unit", Some(&Ty::Void)),
+                FirInstructionKind::MakeNone => ("make-none", None),
+                _ => continue,
+            };
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let valid = instruction.result.is_some()
+                && match valid_type {
+                    Some(expected) => result_type == Some(expected),
+                    None => matches!(result_type, Some(Ty::Optional { .. })),
+                };
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-zero-payload-producer",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} produces {kind} result {:?} with type {result_type:?}; expected {}",
+                        function.owner,
+                        block.id,
+                        instruction.result,
+                        if valid_type.is_some() {
+                            "an exact void result"
+                        } else {
+                            "an optional result"
+                        }
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1501,6 +1541,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_lengths(&initializer.function, &mut diagnostics);
         verify_indexing(&initializer.function, &mut diagnostics);
         verify_string_constants(&initializer.function, &mut diagnostics);
+        verify_zero_payload_producers(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -1537,6 +1578,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_lengths(function, &mut diagnostics);
         verify_indexing(function, &mut diagnostics);
         verify_string_constants(function, &mut diagnostics);
+        verify_zero_payload_producers(function, &mut diagnostics);
     }
 
     diagnostics
