@@ -199,6 +199,7 @@ pub enum FirInstructionKind {
     },
     Unary {
         op: FirUnaryOp,
+        overflow: Option<OverflowMode>,
         value: FirValueId,
     },
     Binary {
@@ -2673,6 +2674,7 @@ impl<'a> FunctionLowerer<'a> {
                 Ty::Bool,
                 FirInstructionKind::Unary {
                     op: FirUnaryOp::Not,
+                    overflow: None,
                     value,
                 },
             ),
@@ -2742,6 +2744,7 @@ impl<'a> FunctionLowerer<'a> {
                     Ty::Bool,
                     FirInstructionKind::Unary {
                         op: FirUnaryOp::Not,
+                        overflow: None,
                         value: is_some,
                     },
                 )
@@ -2756,6 +2759,7 @@ impl<'a> FunctionLowerer<'a> {
                     Ty::Bool,
                     FirInstructionKind::Unary {
                         op: FirUnaryOp::Not,
+                        overflow: None,
                         value: ok,
                     },
                 )
@@ -3387,7 +3391,19 @@ impl<'a> FunctionLowerer<'a> {
                     UnaryOp::BitNot => FirUnaryOp::BitNot,
                     _ => unreachable!(),
                 };
-                self.emit_value(span, ty, FirInstructionKind::Unary { op, value })
+                let overflow = match (&op, &ty) {
+                    (FirUnaryOp::Neg, Ty::Byte | Ty::Int { .. }) => Some(self.overflow),
+                    _ => None,
+                };
+                self.emit_value(
+                    span,
+                    ty,
+                    FirInstructionKind::Unary {
+                        op,
+                        overflow,
+                        value,
+                    },
+                )
             }
         }
     }
