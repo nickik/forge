@@ -1157,11 +1157,7 @@ fn module_verifier_checks_numeric_conversion_producer_contracts() {
         .filter(|diagnostic| diagnostic.code == "fir/verify-numeric-conversion")
         .collect::<Vec<_>>();
     assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
-    for operation in [
-        "LosslessIntegerConvert",
-        "IntegerToFloat",
-        "FloatConvert",
-    ] {
+    for operation in ["LosslessIntegerConvert", "IntegerToFloat", "FloatConvert"] {
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.message.contains(operation)));
