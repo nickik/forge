@@ -3374,12 +3374,7 @@ fn definition_aware_module_verifier_rejects_struct_and_tagged_comparisons() {
         .collect::<Vec<_>>();
     assert_eq!(comparison_types.len(), 2);
     let mut changed = 0;
-    for (function, comparison_type) in fir
-        .module
-        .functions
-        .values_mut()
-        .zip(comparison_types)
-    {
+    for (function, comparison_type) in fir.module.functions.values_mut().zip(comparison_types) {
         for instruction in function
             .blocks
             .iter()
