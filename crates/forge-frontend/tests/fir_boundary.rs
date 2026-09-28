@@ -1184,7 +1184,7 @@ fn module_verifier_checks_binary_operation_contracts() {
             for instruction in &block.instructions {
                 let FirInstructionKind::Binary {
                     op, right, ..
-                } = instruction.kind
+                } = &instruction.kind
                 else {
                     continue;
                 };
@@ -1200,7 +1200,7 @@ fn module_verifier_checks_binary_operation_contracts() {
                         );
                     }
                     BinaryOp::Sub => {
-                        function.value_types.insert(right, Ty::Char);
+                        function.value_types.insert(*right, Ty::Char);
                     }
                     BinaryOp::Eq => {
                         let result = instruction.result.expect("comparison result");
