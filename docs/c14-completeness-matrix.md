@@ -96,9 +96,10 @@ Legend:
   immutable NUL-terminated byte arrays; raw handwritten constants remain blocked rather than
   receiving unsafe function-stack storage.
 - Void expressions in integer contexts are rejected during typechecking; handwritten `Unit`
-  instructions with non-void FIR result types are invalid producer contracts on AArch64/RISC-V.
+  instructions require exact void results at the shared FIR boundary before AArch64/RISC-V
+  lowering.
 - `None` in integer contexts is rejected during typechecking; handwritten `MakeNone`
-  instructions with non-optional FIR result types are invalid producer contracts on AArch64/RISC-V.
+  instructions require optional results at the shared FIR boundary before AArch64/RISC-V lowering.
 - Option patterns require optional scrutinees; handwritten `OptionIsSome` instructions require
   optional inputs and boolean results on AArch64/RISC-V.
 - Handwritten `OptionUnwrap` instructions require optional inputs and their exact payload result

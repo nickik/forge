@@ -87,10 +87,12 @@ available on every backend merely because the frontend accepts it.
         the shared FIR boundary before native lowering on AArch64 and RISC-V.
   - [x] Reject void expressions in integer contexts during typechecking and
         treat handwritten `Unit` instructions with non-void FIR result types
-        as invalid producer contracts on AArch64 and RISC-V.
+        as invalid producer contracts at the shared FIR boundary before native
+        lowering on AArch64 and RISC-V.
   - [x] Reject `None` in integer contexts during typechecking and treat
         handwritten `MakeNone` instructions with non-optional FIR result types
-        as invalid producer contracts on AArch64 and RISC-V.
+        as invalid producer contracts at the shared FIR boundary before native
+        lowering on AArch64 and RISC-V.
   - [x] Keep Option patterns restricted to optional scrutinees and require
         handwritten `OptionIsSome` instructions to consume optional values and
         produce booleans on AArch64 and RISC-V.

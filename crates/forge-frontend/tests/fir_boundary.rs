@@ -2293,6 +2293,62 @@ fn module_verifier_checks_string_constant_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_zero_payload_producer_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_zero_payload;
+        fn done() -> Result[void, u8] { return Ok(); }
+        fn absent() -> u32? { return None; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let invalid_result_type = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    for function in fir.module.functions.values_mut() {
+        let (result, change_return_type) = function
+            .blocks
+            .iter()
+            .flat_map(|block| &block.instructions)
+            .find_map(|instruction| match &instruction.kind {
+                FirInstructionKind::Unit => instruction.result.map(|result| (result, false)),
+                FirInstructionKind::MakeNone => instruction.result.map(|result| (result, true)),
+                _ => None,
+            })
+            .expect("zero-payload producer");
+        function
+            .value_types
+            .insert(result, invalid_result_type.clone());
+        if change_return_type {
+            function.return_type = invalid_result_type.clone();
+        }
+    }
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-zero-payload-producer")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("unit result")));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("make-none result")));
+    assert!(diagnostics
+        .iter()
+        .all(|diagnostic| diagnostic.message.contains("width: W32")));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("exact void result")));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("optional result")));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"
