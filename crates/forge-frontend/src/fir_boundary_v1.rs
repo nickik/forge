@@ -1178,6 +1178,46 @@ fn verify_pointer_conversions(function: &fir::FirFunction, diagnostics: &mut Vec
     }
 }
 
+fn verify_array_construction(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::MakeArray { items } = &instruction.kind else {
+                continue;
+            };
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let (element_type, declared_length) = match result_type {
+                Some(Ty::Array {
+                    element,
+                    length: Some(length),
+                }) => (Some(element.as_ref()), Some(*length)),
+                _ => (None, None),
+            };
+            let item_types = items
+                .iter()
+                .map(|item| function.value_types.get(item))
+                .collect::<Vec<_>>();
+            let valid = instruction.result.is_some()
+                && declared_length == Some(items.len() as u64)
+                && element_type.is_some()
+                && item_types
+                    .iter()
+                    .all(|item_type| *item_type == element_type);
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-make-array",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} constructs array result {:?} with type {result_type:?} from items {items:?} with types {item_types:?}; expected a fixed-array result, declared length matching the item count, and every item to have the exact element type {element_type:?}",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1316,6 +1356,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_direct_raw_dereferences(&initializer.function, &mut diagnostics);
         verify_pointer_offsets(&initializer.function, &mut diagnostics);
         verify_pointer_conversions(&initializer.function, &mut diagnostics);
+        verify_array_construction(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -1348,6 +1389,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_direct_raw_dereferences(function, &mut diagnostics);
         verify_pointer_offsets(function, &mut diagnostics);
         verify_pointer_conversions(function, &mut diagnostics);
+        verify_array_construction(function, &mut diagnostics);
     }
 
     diagnostics

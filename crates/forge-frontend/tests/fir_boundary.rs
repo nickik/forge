@@ -2063,6 +2063,57 @@ fn module_verifier_checks_pointer_conversion_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_array_construction_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_make_array;
+        fn values() -> [u16; 2] { return [1u16, 2u16]; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let function_owner = function.owner;
+    let (item, block, instruction_index, span) = function
+        .blocks
+        .iter()
+        .find_map(|block| {
+            block.instructions.iter().enumerate().find_map(
+                |(index, instruction)| match &instruction.kind {
+                    FirInstructionKind::MakeArray { items } => {
+                        Some((items[0], block.id, index, instruction.span))
+                    }
+                    _ => None,
+                },
+            )
+        })
+        .expect("make-array producer");
+    function.value_types.insert(
+        item,
+        Ty::Int {
+            signed: false,
+            width: IntWidth::W32,
+        },
+    );
+
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-make-array")
+        .expect("make-array diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic.message.contains("width: W32"));
+    assert!(diagnostic.message.contains("width: W16"));
+    assert!(diagnostic.message.contains("exact element type"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"
