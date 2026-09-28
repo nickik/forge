@@ -244,6 +244,37 @@ fn rejects_string_ordering_and_slice_array_comparisons_before_fir() {
 }
 
 #[test]
+fn rejects_option_and_result_comparisons_before_fir() {
+    let output = check(
+        r#"
+        module test.sum_comparisons;
+        fn compare_options(left: u32?, right: u32?) -> bool {
+            return left == right;
+        }
+        fn compare_results(left: Result[u32, u8], right: Result[u32, u8]) -> bool {
+            return left != right;
+        }
+        "#,
+    );
+    let diagnostics = output
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic.code == "type/mismatch"
+                && diagnostic
+                    .message
+                    .contains("Option/Result comparisons are not defined")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 2, "{:?}", output.diagnostics);
+    for domain in ["Optional", "Result"] {
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains(domain)));
+    }
+}
+
+#[test]
 fn rejects_bool_integer_arithmetic() {
     let output = check(
         r#"

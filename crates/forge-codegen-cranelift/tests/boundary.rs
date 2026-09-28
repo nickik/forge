@@ -506,6 +506,13 @@ fn undefined_comparison_domains_are_invalid_producer_contracts() {
             element: Box::new(Ty::Byte),
             length: Some(2),
         },
+        Ty::Optional {
+            inner: Box::new(Ty::Byte),
+        },
+        Ty::Result {
+            ok: Box::new(Ty::Byte),
+            error: Box::new(Ty::Bool),
+        },
     ];
 
     for comparison_type in comparison_types {

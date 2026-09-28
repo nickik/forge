@@ -3085,6 +3085,16 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                             "string ordering and slice/array comparisons are not defined in Forge v1: {l:?}, {r:?}"
                         ),
                     );
+                } else if matches!(&l, Ty::Optional { .. } | Ty::Result { .. })
+                    || matches!(&r, Ty::Optional { .. } | Ty::Result { .. })
+                {
+                    self.diagnostic(
+                        span,
+                        "type/mismatch",
+                        format!(
+                            "Option/Result comparisons are not defined in Forge v1: {l:?}, {r:?}"
+                        ),
+                    );
                 } else if !self.compatible_binary(&l, &r) {
                     self.diagnostic(
                         span,

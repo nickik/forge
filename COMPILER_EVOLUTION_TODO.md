@@ -73,6 +73,9 @@ available on every backend merely because the frontend accepts it.
         typechecking and at the shared FIR boundary; string equality remains
         available to literal-pattern decisions, while Forge v1 defines no
         implicit view identity or aggregate ordering for these domains.
+  - [x] Reject `Option` and `Result` comparisons during typechecking and at the
+        shared FIR boundary; Forge v1 defines discriminant/payload matching,
+        not implicit equality or ordering for sum values.
   - [x] Require handwritten binary FIR to carry explicit checked or wrapping
         overflow semantics for integer add/subtract/multiply, checked semantics
         for integer division/remainder/shifts, and no overflow mode for
