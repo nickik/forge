@@ -1330,13 +1330,15 @@ fn module_verifier_rejects_pointer_reference_and_callable_comparisons() {
 }
 
 #[test]
-fn module_verifier_rejects_string_ordering_and_slice_array_comparisons() {
+fn module_verifier_rejects_sequence_and_sum_comparisons() {
     let (_, _, mut fir) = pipeline(
         r#"
         module test.boundary_sequence_comparisons;
         fn string_like(left: u32, right: u32) -> bool { return left < right; }
         fn slice_like(left: u32, right: u32) -> bool { return left == right; }
         fn array_like(left: u32, right: u32) -> bool { return left != right; }
+        fn option_like(left: u32, right: u32) -> bool { return left == right; }
+        fn result_like(left: u32, right: u32) -> bool { return left != right; }
         "#,
     );
     assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
@@ -1351,6 +1353,13 @@ fn module_verifier_rejects_string_ordering_and_slice_array_comparisons() {
         Ty::Array {
             element: Box::new(Ty::Byte),
             length: Some(2),
+        },
+        Ty::Optional {
+            inner: Box::new(Ty::Byte),
+        },
+        Ty::Result {
+            ok: Box::new(Ty::Byte),
+            error: Box::new(Ty::Bool),
         },
     ];
     let mut changed = 0;
@@ -1375,8 +1384,8 @@ fn module_verifier_rejects_string_ordering_and_slice_array_comparisons() {
     assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
     assert!(diagnostics.iter().all(|diagnostic| diagnostic
         .message
-        .contains("no string ordering and no slice/array comparison domain")));
-    for domain in ["Str", "Slice", "Array"] {
+        .contains("no Option/Result comparison domain")));
+    for domain in ["Str", "Slice", "Array", "Optional", "Result"] {
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.message.contains(domain)));
