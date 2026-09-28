@@ -55,7 +55,8 @@ available on every backend merely because the frontend accepts it.
         AArch64 and RISC-V, not an unimplemented backend capability.
   - [x] Reject sequence patterns on non-sequences during typechecking and treat
         incompatible `Subsequence` source/result FIR as an invalid producer
-        contract on AArch64 and RISC-V.
+        contract at the shared FIR boundary before AArch64/RISC-V lowering,
+        including exact slice identity and fixed-array residual length.
   - [x] Keep `%` integer-only during typechecking and treat handwritten
         floating-point `Rem` FIR as an invalid producer contract, without
         weakening AArch64 float support or SIA32 float rejection.
