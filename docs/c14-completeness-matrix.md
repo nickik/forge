@@ -164,8 +164,9 @@ Legend:
 - Closure-capture FIR places preserve body ownership, valid environment indexes, direct access
   types and shared-reference write protection at the shared FIR boundary before AArch64/RISC-V
   lowering.
-- `LosslessIntegerConvert` accepts only integer endpoints; malformed non-integer FIR endpoints are
-  producer errors, while narrowing and signedness-loss conversions remain explicitly unsupported.
+- Numeric conversion FIR validates operation-compatible endpoints and exact declared-target/result
+  agreement at the shared boundary. `LosslessIntegerConvert` retains target-aware narrowing and
+  signedness-loss rejection; AArch64/RISC-V/SIA32 float capability boundaries are unchanged.
 - Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not
   prove instruction lowering or ABI execution.
 - `LoadGlobal` has real object/relocation coverage; comments describing it as future work must be

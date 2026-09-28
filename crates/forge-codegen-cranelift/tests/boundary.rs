@@ -1807,12 +1807,8 @@ fn lossless_integer_conversion_with_boolean_source_is_an_invalid_producer_contra
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "lossless integer conversion has non-integer FIR endpoint: ",
-                    "Bool to Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }

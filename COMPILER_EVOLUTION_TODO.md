@@ -364,8 +364,10 @@ available on every backend merely because the frontend accepts it.
   - [x] Represent ordinary integer conversions as explicitly lossless FIR;
         target-aware narrowing and signedness loss stay rejected.
   - [x] Reject non-integer endpoints before lowering handwritten
-        `LosslessIntegerConvert` FIR, without weakening the explicit lossy
-        integer-conversion boundary.
+        `LosslessIntegerConvert` FIR at the shared boundary, and require exact
+        declared-target/result agreement for it, `IntegerToFloat` and
+        `FloatConvert`, without weakening the target-aware lossy integer or
+        backend float-capability boundaries.
 - [x] Add compiler debug dumps for typed HIR, FIR, ABI decomposition, CLIF and
       object plans behind stable, testable flags.
   - [x] `forgec --dump-fir` emits deterministic verified FIR JSON for the
