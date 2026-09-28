@@ -1166,6 +1166,56 @@ fn module_verifier_checks_numeric_conversion_producer_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_binary_operation_categories() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_binary_categories;
+        fn divide(left: f32, right: f32) -> f32 { return left / right; }
+        fn chars_equal(left: char, right: char) -> bool { return left == right; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module(&fir.module).is_empty());
+
+    let mut changed = 0;
+    for function in fir.module.functions.values_mut() {
+        for block in &mut function.blocks {
+            for instruction in &mut block.instructions {
+                let result = instruction.result;
+                let FirInstructionKind::Binary { op, .. } = &mut instruction.kind else {
+                    continue;
+                };
+                match op {
+                    BinaryOp::Div => {
+                        *op = BinaryOp::Rem;
+                    }
+                    BinaryOp::Eq => {
+                        *op = BinaryOp::Add;
+                        function
+                            .value_types
+                            .insert(result.expect("character operation result"), Ty::Char);
+                    }
+                    _ => continue,
+                }
+                changed += 1;
+            }
+        }
+    }
+    assert_eq!(changed, 2);
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-binary")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
+    for operation in ["Rem", "Add"] {
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains(operation)));
+    }
+}
+
+#[test]
 fn module_verifier_checks_binary_operation_contracts() {
     let (_, _, mut fir) = pipeline(
         r#"
