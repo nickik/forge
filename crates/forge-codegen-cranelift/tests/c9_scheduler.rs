@@ -176,6 +176,7 @@ fn cyclic_value_dependencies_remain_an_explicit_backend_boundary() {
                     result: Some(first),
                     kind: FirInstructionKind::Unary {
                         op: FirUnaryOp::BitNot,
+                        overflow: None,
                         value: second,
                     },
                 }],
@@ -191,6 +192,7 @@ fn cyclic_value_dependencies_remain_an_explicit_backend_boundary() {
                     result: Some(second),
                     kind: FirInstructionKind::Unary {
                         op: FirUnaryOp::BitNot,
+                        overflow: None,
                         value: first,
                     },
                 }],

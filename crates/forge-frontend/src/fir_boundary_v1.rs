@@ -636,7 +636,12 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
 fn verify_unary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
     for block in &function.blocks {
         for (instruction_index, instruction) in block.instructions.iter().enumerate() {
-            let FirInstructionKind::Unary { op, value } = &instruction.kind else {
+            let FirInstructionKind::Unary {
+                op,
+                overflow,
+                value,
+            } = &instruction.kind
+            else {
                 continue;
             };
             let operand_type = function.value_types.get(value);
@@ -645,20 +650,33 @@ fn verify_unary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<Fi
                 .and_then(|result| function.value_types.get(&result));
             let valid = match op {
                 fir::FirUnaryOp::Not => {
-                    operand_type == Some(&Ty::Bool) && result_type == Some(&Ty::Bool)
+                    overflow.is_none()
+                        && operand_type == Some(&Ty::Bool)
+                        && result_type == Some(&Ty::Bool)
                 }
                 fir::FirUnaryOp::BitNot => {
-                    operand_type.is_some_and(|ty| matches!(ty, Ty::Byte | Ty::Int { .. }))
+                    overflow.is_none()
+                        && operand_type.is_some_and(|ty| matches!(ty, Ty::Byte | Ty::Int { .. }))
                         && operand_type == result_type
                 }
-                fir::FirUnaryOp::Neg => operand_type.is_some() && operand_type == result_type,
+                fir::FirUnaryOp::Neg => {
+                    operand_type == result_type
+                        && match operand_type {
+                            Some(Ty::Byte | Ty::Int { .. }) => matches!(
+                                overflow,
+                                Some(fir::OverflowMode::Checked | fir::OverflowMode::Wrapping)
+                            ),
+                            Some(Ty::Float { .. }) => overflow.is_none(),
+                            _ => false,
+                        }
+                }
             };
             if !valid {
                 diagnostics.push(diagnostic(
                     instruction.span,
                     "fir/verify-unary",
                     format!(
-                        "FIR function {:?} block {:?} instruction {instruction_index} unary operation {op:?} uses value {value:?} with type {operand_type:?} and produces result {:?} with type {result_type:?}; expected logical-not to preserve bool, bitwise-not to preserve an integer type, or negation to preserve its operand type",
+                        "FIR function {:?} block {:?} instruction {instruction_index} unary operation {op:?} with overflow mode {overflow:?} uses value {value:?} with type {operand_type:?} and produces result {:?} with type {result_type:?}; expected logical-not to preserve bool without overflow semantics, bitwise-not to preserve an integer type without overflow semantics, integer negation to preserve its operand type with checked or wrapping overflow semantics, or float negation to preserve its operand type without overflow semantics",
                         function.owner, block.id, instruction.result
                     ),
                 ));

@@ -64,6 +64,9 @@ available on every backend merely because the frontend accepts it.
         for integer division/remainder/shifts, and no overflow mode for
         comparisons, logical/bitwise or floating operations at the shared
         boundary before native lowering.
+  - [x] Carry function overflow policy explicitly on integer-negation FIR,
+        require checked or wrapping semantics at the shared boundary and lower
+        both modes natively while keeping floating negation overflow-free.
   - [x] Reject sequence patterns on non-sequences during typechecking and treat
         incompatible `Subsequence` source/result FIR as an invalid producer
         contract at the shared FIR boundary before AArch64/RISC-V lowering,

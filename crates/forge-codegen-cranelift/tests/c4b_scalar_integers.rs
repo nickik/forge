@@ -103,7 +103,7 @@ fn binary(op: BinaryOp, ty: Ty, overflow: Option<OverflowMode>) -> FirFunction {
     }
 }
 
-fn unary(op: FirUnaryOp, ty: Ty) -> FirFunction {
+fn unary(op: FirUnaryOp, ty: Ty, overflow: Option<OverflowMode>) -> FirFunction {
     let p0 = FirLocalId(0);
     let v0 = FirValueId(0);
     let v1 = FirValueId(1);
@@ -139,7 +139,11 @@ fn unary(op: FirUnaryOp, ty: Ty) -> FirFunction {
                 FirInstruction {
                     span,
                     result: Some(v1),
-                    kind: FirInstructionKind::Unary { op, value: v0 },
+                    kind: FirInstructionKind::Unary {
+                        op,
+                        overflow,
+                        value: v0,
+                    },
                 },
             ],
             terminator: Some(FirTerminator::Return { value: Some(v1) }),
@@ -288,27 +292,56 @@ fn checked_add_sub_mul_emit_overflow_traps_for_signed_and_unsigned() {
 }
 
 #[test]
-fn bitnot_lowers_but_negation_waits_for_explicit_fir_overflow_semantics() {
+fn bitnot_and_explicit_negation_overflow_semantics_lower() {
     let ty = int_ty(true, IntWidth::W64);
     let not = lower(
-        unary(FirUnaryOp::BitNot, ty.clone()),
+        unary(FirUnaryOp::BitNot, ty.clone(), None),
         CraneliftBackend::aarch64().expect("AArch64"),
     );
     assert!(not.contains("bnot"), "{not}");
 
-    let error = match prepare(
-        unary(FirUnaryOp::Neg, ty),
+    let checked = lower(
+        unary(FirUnaryOp::Neg, ty.clone(), Some(OverflowMode::Checked)),
         CraneliftBackend::aarch64().expect("AArch64"),
-    ) {
-        Ok(_) => panic!("negation unexpectedly lowered without FIR overflow semantics"),
-        Err(error) => error,
-    };
-    assert_eq!(
-        error,
-        BackendError::UnsupportedInstruction {
-            kind: "integer negation requires explicit FIR overflow semantics"
-        }
     );
+    assert!(
+        checked.contains("ssub_overflow")
+            && checked.contains("trapnz")
+            && checked.contains("int_ovf"),
+        "{checked}"
+    );
+
+    let wrapping = lower(
+        unary(FirUnaryOp::Neg, ty, Some(OverflowMode::Wrapping)),
+        CraneliftBackend::aarch64().expect("AArch64"),
+    );
+    assert!(wrapping.contains("isub"), "{wrapping}");
+    assert!(!wrapping.contains("trapnz"), "{wrapping}");
+
+    for target in [
+        forge_codegen_cranelift::CraneliftTarget::Aarch64,
+        forge_codegen_cranelift::CraneliftTarget::Riscv64,
+    ] {
+        let error = match prepare(
+            unary(FirUnaryOp::Neg, int_ty(true, IntWidth::W32), None),
+            CraneliftBackend::new(target).expect("backend"),
+        ) {
+            Ok(_) => panic!("integer negation without overflow semantics unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
+            }
+        );
+    }
+
+    let float = lower(
+        unary(FirUnaryOp::Neg, Ty::Float { bits: 32 }, None),
+        CraneliftBackend::aarch64().expect("AArch64"),
+    );
+    assert!(float.contains("fneg"), "{float}");
 }
 
 #[test]

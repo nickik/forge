@@ -589,6 +589,7 @@ fn logical_not_on_non_bool_fir_is_an_invalid_producer_contract() {
                         result: Some(result),
                         kind: FirInstructionKind::Unary {
                             op: FirUnaryOp::Not,
+                            overflow: None,
                             value: input,
                         },
                     },
@@ -647,6 +648,7 @@ fn bitwise_not_on_non_integer_fir_is_an_invalid_producer_contract() {
                         result: Some(result),
                         kind: FirInstructionKind::Unary {
                             op: FirUnaryOp::BitNot,
+                            overflow: None,
                             value: input,
                         },
                     },
@@ -708,6 +710,7 @@ fn bitwise_not_on_float_fir_is_an_invalid_producer_contract() {
                         result: Some(result),
                         kind: FirInstructionKind::Unary {
                             op: FirUnaryOp::BitNot,
+                            overflow: None,
                             value: input,
                         },
                     },

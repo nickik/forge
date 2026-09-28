@@ -87,6 +87,7 @@ fn load_rejects_equal_width_but_different_fir_type() {
         i8_ty,
         FirInstructionKind::Unary {
             op: FirUnaryOp::BitNot,
+            overflow: None,
             value: FirValueId(0),
         },
     );
@@ -109,6 +110,7 @@ fn unary_rejects_signedness_change_hidden_by_same_clif_width() {
         i8_ty,
         FirInstructionKind::Unary {
             op: FirUnaryOp::BitNot,
+            overflow: None,
             value: FirValueId(0),
         },
     );

@@ -1410,6 +1410,55 @@ fn module_verifier_checks_unary_operation_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_unary_overflow_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_unary_overflow;
+        fn checked(value: i32) -> i32 { return -value; }
+        @overflow(wrap)
+        fn wrapping(value: i32) -> i32 { return -value; }
+        fn floating(value: f32) -> f32 { return -value; }
+        fn logical(value: bool) -> bool { return !value; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module(&fir.module).is_empty());
+
+    let mut changed = 0;
+    for function in fir.module.functions.values_mut() {
+        for block in &mut function.blocks {
+            for instruction in &mut block.instructions {
+                let FirInstructionKind::Unary {
+                    op,
+                    overflow,
+                    value,
+                } = &mut instruction.kind
+                else {
+                    continue;
+                };
+                let operand_type = function.value_types.get(value);
+                *overflow = match (*op, operand_type) {
+                    (forge_frontend::FirUnaryOp::Neg, Some(Ty::Int { .. })) => None,
+                    (forge_frontend::FirUnaryOp::Neg, Some(Ty::Float { .. }))
+                    | (forge_frontend::FirUnaryOp::Not, Some(Ty::Bool)) => {
+                        Some(OverflowMode::Checked)
+                    }
+                    _ => continue,
+                };
+                changed += 1;
+            }
+        }
+    }
+    assert_eq!(changed, 4);
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-unary")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
+}
+
+#[test]
 fn module_verifier_checks_subsequence_contracts() {
     let (_, _, mut fir) = pipeline(
         r#"

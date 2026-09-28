@@ -377,10 +377,15 @@ fn lower_instruction(
         )?,
         FirInstructionKind::Unary {
             op: FirUnaryOp::Not,
+            overflow: _,
             value,
         } => lower_boolean_not(fir, *value, values, cursor)?,
-        FirInstructionKind::Unary { op, value } => {
-            lower_scalar_unary(fir, *op, *value, values, cursor)?
+        FirInstructionKind::Unary {
+            op,
+            overflow,
+            value,
+        } => {
+            lower_scalar_unary(fir, *op, *overflow, *value, values, cursor)?
         }
         FirInstructionKind::Binary {
             op,
@@ -1003,6 +1008,7 @@ fn lower_boolean_not(
 fn lower_integer_unary(
     fir: &FirFunction,
     op: FirUnaryOp,
+    overflow: Option<OverflowMode>,
     input: FirValueId,
     values: &BTreeMap<FirValueId, Value>,
     cursor: &mut FuncCursor<'_>,
@@ -1018,8 +1024,17 @@ fn lower_integer_unary(
     }
     let value = lookup_value(values, input)?;
     Ok(match op {
-        FirUnaryOp::Neg => cursor.ins().ineg(value),
-        FirUnaryOp::BitNot => cursor.ins().bnot(value),
+        FirUnaryOp::Neg => {
+            let value_type = cursor.func.dfg.value_type(value);
+            let zero = cursor.ins().iconst(value_type, 0);
+            lower_add_sub_mul(BinaryOp::Sub, ty, overflow, zero, value, cursor)?
+        }
+        FirUnaryOp::BitNot => {
+            if overflow.is_some() {
+                return Err(shape("bitwise-not unexpectedly carries overflow semantics"));
+            }
+            cursor.ins().bnot(value)
+        }
         FirUnaryOp::Not => {
             return Err(BackendError::UnsupportedInstruction {
                 kind: "logical not is not an integer unary operation",
@@ -1029,7 +1044,7 @@ fn lower_integer_unary(
 }
 
 fn lower_scalar_unary(
-    fir: &FirFunction, op: FirUnaryOp, input: FirValueId,
+    fir: &FirFunction, op: FirUnaryOp, overflow: Option<OverflowMode>, input: FirValueId,
     values: &BTreeMap<FirValueId, Value>, cursor: &mut FuncCursor<'_>,
 ) -> Result<Value, BackendError> {
     let ty = fir.value_types.get(&input).ok_or_else(|| shape("missing unary operand"))?;
@@ -1037,9 +1052,12 @@ fn lower_scalar_unary(
         if op != FirUnaryOp::Neg {
             return Err(shape(format!("invalid float unary FIR operation {op:?}")));
         }
+        if overflow.is_some() {
+            return Err(shape("float negation unexpectedly carries overflow semantics"));
+        }
         return Ok(cursor.ins().fneg(lookup_value(values, input)?));
     }
-    lower_integer_unary(fir, op, input, values, cursor)
+    lower_integer_unary(fir, op, overflow, input, values, cursor)
 }
 
 fn lower_boolean_binary(
