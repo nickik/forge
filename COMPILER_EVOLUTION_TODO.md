@@ -138,8 +138,8 @@ available on every backend merely because the frontend accepts it.
         volatility and exact pointee load/store types before native lowering on
         AArch64 and RISC-V.
   - [x] Require direct handwritten safe-dereference places to preserve exact
-        reference-pointee load/store types before native lowering on AArch64
-        and RISC-V.
+        reference-pointee load/store types at the shared FIR boundary before
+        native lowering on AArch64 and RISC-V.
   - [x] Require direct handwritten local `AddressOf` instructions to preserve
         requested mutability and exact local-pointee result types at the shared
         FIR boundary before native lowering on AArch64 and RISC-V.

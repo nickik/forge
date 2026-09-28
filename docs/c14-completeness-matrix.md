@@ -122,6 +122,8 @@ Legend:
   remains lossless-only.
 - Direct safe/raw dereference `AddressOf` FIR preserves requested mutability and exact pointee
   result types at the shared FIR boundary before AArch64/RISC-V lowering.
+- Direct safe-reference loads and stores preserve exact pointee types and reject writes through
+  shared references at the shared FIR boundary before AArch64/RISC-V lowering.
 - Direct local `AddressOf` FIR preserves requested mutability, mutable-storage requirements and
   exact local-pointee result types at the shared FIR boundary before AArch64/RISC-V lowering.
 - Direct local stores preserve their exact declared local type at the shared FIR boundary before

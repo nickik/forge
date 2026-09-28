@@ -130,7 +130,7 @@ fn safe_store(reference_ty: Ty, value_ty: Ty) -> FirFunction {
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_invalid(function: FirFunction) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
     let definitions = TypeDefinitionTable::new();
@@ -142,8 +142,8 @@ fn assert_invalid(function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -151,16 +151,15 @@ fn assert_invalid(function: FirFunction, message: &str) {
 
 #[test]
 fn safe_load_result_must_match_its_pointee() {
-    assert_invalid(
-        safe_load(reference(u32_ty(), false), Ty::Byte),
-        "safe FIR load result type Byte differs from pointee type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(safe_load(reference(u32_ty(), false), Ty::Byte));
 }
 
 #[test]
 fn safe_store_value_must_match_its_pointee() {
-    assert_invalid(
-        safe_store(reference(u32_ty(), true), Ty::Byte),
-        "safe FIR store value type Byte differs from pointee type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(safe_store(reference(u32_ty(), true), Ty::Byte));
+}
+
+#[test]
+fn safe_store_requires_a_mutable_reference() {
+    assert_invalid(safe_store(reference(u32_ty(), false), u32_ty()));
 }
