@@ -134,6 +134,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Validate dedicated distinct wrap/unwrap FIR against the declared
         underlying and nominal types at the definition-aware shared FIR
         boundary before AArch64/RISC-V lowering.
+  - [x] Require `SliceFromArrayRef` to consume fixed-array references, preserve
+        exact element types and prevent mutability strengthening at the shared
+        FIR boundary before AArch64/RISC-V lowering.
   - [x] Require handwritten `MakeArray` instructions to produce fixed arrays
         whose declared length and exact element type match their items at the
         shared FIR boundary before native lowering on AArch64 and RISC-V.
