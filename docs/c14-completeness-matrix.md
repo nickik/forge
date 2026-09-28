@@ -88,8 +88,10 @@ Legend:
   constants with non-integer FIR result types are invalid producer contracts on AArch64/RISC-V.
 - Character literals in integer contexts are rejected during typechecking; handwritten character
   constants with non-character FIR result types are invalid producer contracts on AArch64/RISC-V.
-- Handwritten string constants require `str` result values on AArch64/RISC-V.
-- Handwritten C-string constants require non-volatile byte-pointer results on AArch64/RISC-V.
+- Handwritten string constants require `str` result values at the shared FIR boundary before
+  AArch64/RISC-V lowering.
+- Handwritten C-string constants require non-volatile byte-pointer results at the shared FIR
+  boundary before AArch64/RISC-V lowering.
   The compiler rewrites valid source literals to dedicated static-data-address FIR backed by
   immutable NUL-terminated byte arrays; raw handwritten constants remain blocked rather than
   receiving unsafe function-stack storage.

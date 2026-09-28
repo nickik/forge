@@ -1323,6 +1323,42 @@ fn verify_indexing(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnos
     }
 }
 
+fn verify_string_constants(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let (kind, expected_type) = match &instruction.kind {
+                FirInstructionKind::Const {
+                    value: fir::FirConst::String { .. },
+                } => ("string", Ty::Str),
+                FirInstructionKind::Const {
+                    value: fir::FirConst::CString { .. },
+                } => (
+                    "C-string",
+                    Ty::Pointer {
+                        volatile: false,
+                        inner: Box::new(Ty::Byte),
+                    },
+                ),
+                _ => continue,
+            };
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let valid = instruction.result.is_some() && result_type == Some(&expected_type);
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-string-constant",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} produces {kind} constant result {:?} with type {result_type:?}; expected exact result type {expected_type:?}",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1464,6 +1500,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_array_construction(&initializer.function, &mut diagnostics);
         verify_lengths(&initializer.function, &mut diagnostics);
         verify_indexing(&initializer.function, &mut diagnostics);
+        verify_string_constants(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -1499,6 +1536,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_array_construction(function, &mut diagnostics);
         verify_lengths(function, &mut diagnostics);
         verify_indexing(function, &mut diagnostics);
+        verify_string_constants(function, &mut diagnostics);
     }
 
     diagnostics

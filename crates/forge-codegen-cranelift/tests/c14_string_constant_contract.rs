@@ -71,7 +71,7 @@ fn c_string_function(result_ty: Option<Ty>) -> FirFunction {
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_invalid(function: FirFunction) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
     let definitions = TypeDefinitionTable::new();
@@ -83,8 +83,8 @@ fn assert_invalid(function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -92,34 +92,28 @@ fn assert_invalid(function: FirFunction, message: &str) {
 
 #[test]
 fn string_constant_requires_a_result() {
-    assert_invalid(function(None), "string constant has no result");
+    assert_invalid(function(None));
 }
 
 #[test]
 fn string_constant_requires_a_str_result() {
-    assert_invalid(
-        function(Some(Ty::Int {
-            signed: false,
-            width: IntWidth::W32,
-        })),
-        "string constant has non-str FIR result type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(function(Some(Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    })));
 }
 
 #[test]
 fn c_string_constant_requires_a_result() {
-    assert_invalid(c_string_function(None), "C string constant has no result");
+    assert_invalid(c_string_function(None));
 }
 
 #[test]
 fn c_string_constant_requires_a_byte_pointer_result() {
-    assert_invalid(
-        c_string_function(Some(Ty::Int {
-            signed: false,
-            width: IntWidth::W32,
-        })),
-        "C string constant has non-byte-pointer FIR result type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(c_string_function(Some(Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    })));
 }
 
 #[test]
