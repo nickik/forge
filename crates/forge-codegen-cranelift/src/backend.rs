@@ -108,7 +108,7 @@ impl CraneliftBackend {
         let mut functions = BTreeMap::new();
         for (owner, fir) in &module.functions {
             // Preserve all scalar semantic barriers established before C9.
-            validate_c4_scalar_contract(fir, &self.layout)?;
+            validate_c4_scalar_contract(fir, &self.layout, definitions)?;
             validate_function_ref_contracts(fir, &module.functions)?;
             validate_direct_call_contracts(fir, &module.functions)?;
             validate_indirect_call_contracts(fir)?;
@@ -428,6 +428,7 @@ fn validate_make_closure_contracts(fir: &FirFunction) -> Result<(), BackendError
 fn validate_c4_scalar_contract(
     fir: &FirFunction,
     layout: &TargetLayout,
+    _definitions: &TypeDefinitionTable,
 ) -> Result<(), BackendError> {
     for block in &fir.blocks {
         for instruction in &block.instructions {
