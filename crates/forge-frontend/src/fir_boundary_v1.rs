@@ -1636,7 +1636,9 @@ fn make_aggregate_contract_issue(
     let declared_fields = match &definition.kind {
         TypeDefinitionKind::Struct { fields } => {
             if let Some(name) = variant_name {
-                return Some(format!("struct construction unexpectedly names variant `{name}`"));
+                return Some(format!(
+                    "struct construction unexpectedly names variant `{name}`"
+                ));
             }
             fields
         }

@@ -38,7 +38,9 @@ fn pipeline(
     (bodies, typed, fir)
 }
 
-fn pipeline_with_type_definitions(source: &str) -> (forge_frontend::FirOutput, TypeDefinitionTable) {
+fn pipeline_with_type_definitions(
+    source: &str,
+) -> (forge_frontend::FirOutput, TypeDefinitionTable) {
     let parsed = parse_source(source);
     assert!(
         parsed.diagnostics.is_empty(),
