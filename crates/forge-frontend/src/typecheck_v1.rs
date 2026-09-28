@@ -3058,6 +3058,16 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                             "pointer/reference comparisons are not defined in Forge v1: {l:?}, {r:?}"
                         ),
                     );
+                } else if matches!(&l, Ty::Function { .. } | Ty::Closure { .. })
+                    || matches!(&r, Ty::Function { .. } | Ty::Closure { .. })
+                {
+                    self.diagnostic(
+                        span,
+                        "type/mismatch",
+                        format!(
+                            "function/closure comparisons are not defined in Forge v1: {l:?}, {r:?}"
+                        ),
+                    );
                 } else if !self.compatible_binary(&l, &r) {
                     self.diagnostic(
                         span,
