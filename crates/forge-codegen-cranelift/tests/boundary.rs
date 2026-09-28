@@ -478,7 +478,7 @@ fn invalid_subsequence_types_are_a_producer_contract_error() {
 }
 
 #[test]
-fn pointer_reference_and_callable_comparisons_are_invalid_producer_contracts() {
+fn undefined_comparison_domains_are_invalid_producer_contracts() {
     let comparison_types = [
         Ty::Pointer {
             volatile: false,
@@ -496,6 +496,15 @@ fn pointer_reference_and_callable_comparisons_are_invalid_producer_contracts() {
         Ty::Closure {
             params: vec![Ty::Byte],
             result: Box::new(Ty::Byte),
+        },
+        Ty::Str,
+        Ty::Slice {
+            mutable: false,
+            element: Box::new(Ty::Byte),
+        },
+        Ty::Array {
+            element: Box::new(Ty::Byte),
+            length: Some(2),
         },
     ];
 
