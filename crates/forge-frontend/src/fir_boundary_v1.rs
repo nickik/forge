@@ -568,8 +568,9 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
                     | crate::ast::BinaryOp::NotEq
             );
             let category_valid = match op {
-                crate::ast::BinaryOp::Rem => left_type
-                    .is_some_and(|ty| matches!(ty, Ty::Byte | Ty::Int { .. })),
+                crate::ast::BinaryOp::Rem => {
+                    left_type.is_some_and(|ty| matches!(ty, Ty::Byte | Ty::Int { .. }))
+                }
                 _ if left_type == Some(&Ty::Char) => comparison,
                 _ => true,
             };
