@@ -656,8 +656,7 @@ fn verify_unary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<Fi
                 }
                 fir::FirUnaryOp::BitNot => {
                     overflow.is_none()
-                        && operand_type
-                            .is_some_and(|ty| matches!(ty, Ty::Byte | Ty::Int { .. }))
+                        && operand_type.is_some_and(|ty| matches!(ty, Ty::Byte | Ty::Int { .. }))
                         && operand_type == result_type
                 }
                 fir::FirUnaryOp::Neg => {
