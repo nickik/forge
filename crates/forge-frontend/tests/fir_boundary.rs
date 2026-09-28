@@ -978,6 +978,49 @@ fn module_verifier_checks_dedicated_bitfield_width_contracts() {
 }
 
 #[test]
+fn definition_aware_module_verifier_checks_bitstruct_storage_conversions() {
+    let (mut fir, definitions) = pipeline_with_type_definitions(
+        r#"
+        module test.boundary_bitstruct_storage;
+        bitstruct Status: u16 { ready: 1; mode: 3; reserved: 12; }
+        fn mode(status: Status) -> u8 { return status.mode; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module_with_types(&fir.module, &definitions).is_empty());
+
+    let instruction = fir
+        .module
+        .functions
+        .values_mut()
+        .flat_map(|function| function.blocks.iter_mut())
+        .flat_map(|block| block.instructions.iter_mut())
+        .find(|instruction| {
+            matches!(
+                instruction.kind,
+                FirInstructionKind::BitStructStorage { .. }
+            )
+        })
+        .expect("bitstruct storage projection");
+    let FirInstructionKind::BitStructStorage { storage, .. } = &mut instruction.kind else {
+        unreachable!();
+    };
+    *storage = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+
+    let diagnostics = verify_fir_module_with_types(&fir.module, &definitions)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-bitstruct-storage")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(diagnostics[0]
+        .message
+        .contains("instruction storage is Int { signed: false, width: W32 }"));
+}
+
+#[test]
 fn module_verifier_checks_function_reference_targets_and_signatures() {
     let source = r#"
         module test.boundary_function_ref;

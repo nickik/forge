@@ -124,8 +124,8 @@ Legend:
 - Omitted struct and tagged field defaults are materialized in body HIR before typechecking/FIR and
   execute through the hosted native specification.
 - Dedicated bitstruct storage/rebuild/check/extract/extend FIR validates nominal storage and
-  direction-sensitive width contracts before AArch64/RISC-V lowering; generic numeric conversion
-  remains lossless-only.
+  direction-sensitive width contracts at the definition-aware shared FIR boundary before
+  AArch64/RISC-V lowering; generic numeric conversion remains lossless-only.
 - Array-construction FIR requires fixed result arrays whose declared length and exact element type
   match every item at the shared FIR boundary before AArch64/RISC-V lowering.
 - Length FIR accepts only fixed arrays, slices or strings and produces `usize` at the shared FIR
