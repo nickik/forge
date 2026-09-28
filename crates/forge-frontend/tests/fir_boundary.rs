@@ -1293,12 +1293,8 @@ fn module_verifier_rejects_pointer_and_reference_comparisons() {
                 let FirInstructionKind::Binary { left, right, .. } = &instruction.kind else {
                     continue;
                 };
-                function
-                    .value_types
-                    .insert(*left, comparison_type.clone());
-                function
-                    .value_types
-                    .insert(*right, comparison_type.clone());
+                function.value_types.insert(*left, comparison_type.clone());
+                function.value_types.insert(*right, comparison_type.clone());
                 changed += 1;
             }
         }
@@ -1310,9 +1306,9 @@ fn module_verifier_rejects_pointer_and_reference_comparisons() {
         .filter(|diagnostic| diagnostic.code == "fir/verify-binary")
         .collect::<Vec<_>>();
     assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
-    assert!(diagnostics
-        .iter()
-        .all(|diagnostic| diagnostic.message.contains("no pointer/reference comparison domain")));
+    assert!(diagnostics.iter().all(|diagnostic| diagnostic
+        .message
+        .contains("no pointer/reference comparison domain")));
     assert!(diagnostics
         .iter()
         .any(|diagnostic| diagnostic.message.contains("Pointer")));
