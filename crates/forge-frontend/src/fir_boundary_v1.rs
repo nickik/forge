@@ -1578,8 +1578,7 @@ fn verify_scalar_constants(function: &fir::FirFunction, diagnostics: &mut Vec<Fi
                     value: fir::FirConst::Integer { .. },
                 } => (
                     "integer",
-                    result_type
-                        .is_some_and(|ty| matches!(ty, Ty::Byte | Ty::Int { .. })),
+                    result_type.is_some_and(|ty| matches!(ty, Ty::Byte | Ty::Int { .. })),
                     "byte or integer",
                 ),
                 FirInstructionKind::Const {
@@ -1597,11 +1596,7 @@ fn verify_scalar_constants(function: &fir::FirFunction, diagnostics: &mut Vec<Fi
                 } => ("character", result_type == Some(&Ty::Char), "char"),
                 FirInstructionKind::Const {
                     value: fir::FirConst::Duration { .. },
-                } => (
-                    "duration",
-                    result_type == Some(&Ty::Duration),
-                    "duration",
-                ),
+                } => ("duration", result_type == Some(&Ty::Duration), "duration"),
                 _ => continue,
             };
             if !valid {
