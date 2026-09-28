@@ -256,6 +256,87 @@ fn non_comparison_char_fir_is_an_invalid_producer_contract() {
 }
 
 #[test]
+fn invalid_binary_overflow_metadata_is_a_producer_contract_error() {
+    let owner = DefId(4);
+    let left = FirValueId(0);
+    let right = FirValueId(1);
+    let result = FirValueId(2);
+    let integer = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let span = Span::new(0, 3);
+    let mut module = FirModule::default();
+    module.functions.insert(
+        owner,
+        FirFunction {
+            owner,
+            params: Vec::new(),
+            return_type: integer.clone(),
+            locals: BTreeMap::new(),
+            closures: BTreeMap::new(),
+            entry: FirBlockId(0),
+            blocks: vec![FirBasicBlock {
+                id: FirBlockId(0),
+                closure: None,
+                instructions: vec![
+                    FirInstruction {
+                        span,
+                        result: Some(left),
+                        kind: FirInstructionKind::Const {
+                            value: FirConst::Integer {
+                                text: "1u32".into(),
+                            },
+                        },
+                    },
+                    FirInstruction {
+                        span,
+                        result: Some(right),
+                        kind: FirInstructionKind::Const {
+                            value: FirConst::Integer {
+                                text: "2u32".into(),
+                            },
+                        },
+                    },
+                    FirInstruction {
+                        span,
+                        result: Some(result),
+                        kind: FirInstructionKind::Binary {
+                            op: BinaryOp::BitAnd,
+                            overflow: Some(OverflowMode::Checked),
+                            left,
+                            right,
+                        },
+                    },
+                ],
+                terminator: Some(FirTerminator::Return {
+                    value: Some(result),
+                }),
+            }],
+            value_types: BTreeMap::from([
+                (left, integer.clone()),
+                (right, integer.clone()),
+                (result, integer),
+            ]),
+        },
+    );
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("invalid binary overflow metadata unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
+            }
+        );
+    }
+}
+
+#[test]
 fn invalid_subsequence_types_are_a_producer_contract_error() {
     let owner = DefId(4);
     let local = FirLocalId(0);
