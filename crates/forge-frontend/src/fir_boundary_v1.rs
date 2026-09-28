@@ -544,6 +544,40 @@ fn verify_slice_from_array_references(
     }
 }
 
+fn verify_unary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::Unary { op, value } = &instruction.kind else {
+                continue;
+            };
+            let operand_type = function.value_types.get(value);
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let valid = match op {
+                fir::FirUnaryOp::Not => {
+                    operand_type == Some(&Ty::Bool) && result_type == Some(&Ty::Bool)
+                }
+                fir::FirUnaryOp::BitNot => {
+                    operand_type.is_some_and(|ty| matches!(ty, Ty::Byte | Ty::Int { .. }))
+                        && operand_type == result_type
+                }
+                fir::FirUnaryOp::Neg => operand_type.is_some() && operand_type == result_type,
+            };
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-unary",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} unary operation {op:?} uses value {value:?} with type {operand_type:?} and produces result {:?} with type {result_type:?}; expected logical-not to preserve bool, bitwise-not to preserve an integer type, or negation to preserve its operand type",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 fn verify_subsequences(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
     for block in &function.blocks {
         for (instruction_index, instruction) in block.instructions.iter().enumerate() {
@@ -2299,6 +2333,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_bitfield_width_operations(&initializer.function, &mut diagnostics);
         verify_slice_from_array_references(&initializer.function, &mut diagnostics);
         verify_subsequences(&initializer.function, &mut diagnostics);
+        verify_unary_operations(&initializer.function, &mut diagnostics);
         verify_function_references(&initializer.function, module, &mut diagnostics);
         verify_direct_calls(&initializer.function, module, &mut diagnostics);
         verify_indirect_calls(&initializer.function, &mut diagnostics);
@@ -2342,6 +2377,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_bitfield_width_operations(function, &mut diagnostics);
         verify_slice_from_array_references(function, &mut diagnostics);
         verify_subsequences(function, &mut diagnostics);
+        verify_unary_operations(function, &mut diagnostics);
         verify_function_references(function, module, &mut diagnostics);
         verify_direct_calls(function, module, &mut diagnostics);
         verify_indirect_calls(function, &mut diagnostics);

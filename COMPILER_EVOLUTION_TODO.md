@@ -60,15 +60,14 @@ available on every backend merely because the frontend accepts it.
   - [x] Keep `%` integer-only during typechecking and treat handwritten
         floating-point `Rem` FIR as an invalid producer contract, without
         weakening AArch64 float support or SIA32 float rejection.
-  - [x] Restrict logical-not to booleans during typechecking and treat
-        handwritten non-boolean logical-not FIR as an invalid producer contract
-        on AArch64 and RISC-V.
-  - [x] Restrict bitwise-not to integers during typechecking and treat
-        handwritten non-integer bitwise-not FIR as an invalid producer contract
-        on AArch64 and RISC-V.
-  - [x] Diagnose handwritten floating-point bitwise-not FIR as an invalid
-        producer contract on AArch64 while preserving supported float negation
-        and the existing RISC-V/SIA32 float boundaries.
+  - [x] Restrict logical-not to booleans during typechecking and require exact
+        boolean input/results at the shared FIR boundary before native lowering.
+  - [x] Restrict bitwise-not to integers during typechecking and require exact
+        integer input/result identity at the shared FIR boundary before native
+        lowering.
+  - [x] Diagnose handwritten floating-point bitwise-not FIR at the shared FIR
+        boundary while preserving supported AArch64 float negation and the
+        existing RISC-V/SIA32 float boundaries.
   - [x] Reject float literals in integer contexts during typechecking and treat
         handwritten float constants with integer FIR result types as invalid
         producer contracts on AArch64 and RISC-V.

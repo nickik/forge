@@ -73,12 +73,12 @@ Legend:
   fixed arrays preserve element type and residual length.
 - `%` is integer-only during typechecking; handwritten floating-point `Rem` FIR is an invalid
   producer contract rather than an unimplemented AArch64 operation.
-- Logical-not is boolean-only during typechecking; handwritten non-boolean logical-not FIR is an
-  invalid producer contract rather than deferred AArch64/RISC-V support.
-- Bitwise-not is integer-only during typechecking; handwritten non-integer bitwise-not FIR is an
-  invalid producer contract rather than deferred AArch64/RISC-V support.
-- AArch64 float negation remains supported, while handwritten float bitwise-not FIR is diagnosed
-  as an invalid producer contract; RISC-V/SIA32 float boundaries are unchanged.
+- Logical-not is boolean-only during typechecking and requires exact boolean input/results at the
+  shared FIR boundary before native lowering.
+- Bitwise-not is integer-only during typechecking and requires exact integer input/result identity
+  at the shared FIR boundary before native lowering.
+- AArch64 float negation remains supported, while handwritten float bitwise-not FIR fails at the
+  shared FIR boundary; RISC-V/SIA32 float boundaries are unchanged.
 - Float literals in integer contexts are rejected during typechecking; handwritten float constants
   with integer FIR result types are invalid producer contracts on AArch64/RISC-V.
 - Boolean literals in integer contexts are rejected during typechecking; handwritten boolean
