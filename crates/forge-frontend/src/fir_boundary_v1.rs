@@ -599,6 +599,9 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
                             | Ty::Reference { .. }
                             | Ty::Function { .. }
                             | Ty::Closure { .. }
+                            | Ty::Str
+                            | Ty::Slice { .. }
+                            | Ty::Array { .. }
                     )
                 ),
             };
@@ -637,7 +640,7 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
                     instruction.span,
                     "fir/verify-binary",
                     format!(
-                        "FIR function {:?} block {:?} instruction {instruction_index} binary operation {op:?} with overflow mode {overflow:?} uses left {left:?} with type {left_type:?}, right {right:?} with type {right_type:?}, and produces result {:?} with type {result_type:?}; expected exact operand type identity, a boolean comparison result, no pointer/reference comparison domain and no function/closure comparison domain, an exact operand-typed non-comparison result, booleans for logical operations, integers for bitwise/shift/remainder operations, numeric operands for arithmetic, explicit checked/wrapping integer add/subtract/multiply semantics, checked integer division/remainder/shift semantics, and no overflow mode on other operations",
+                        "FIR function {:?} block {:?} instruction {instruction_index} binary operation {op:?} with overflow mode {overflow:?} uses left {left:?} with type {left_type:?}, right {right:?} with type {right_type:?}, and produces result {:?} with type {result_type:?}; expected exact operand type identity, a boolean comparison result, no pointer/reference comparison domain, no function/closure comparison domain and no string/slice/array comparison domain, an exact operand-typed non-comparison result, booleans for logical operations, integers for bitwise/shift/remainder operations, numeric operands for arithmetic, explicit checked/wrapping integer add/subtract/multiply semantics, checked integer division/remainder/shift semantics, and no overflow mode on other operations",
                         function.owner, block.id, instruction.result
                     ),
                 ));
