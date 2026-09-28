@@ -79,9 +79,10 @@ fn assert_invalid_fir(function: FirFunction) {
     module.functions.insert(function.owner, function);
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let backend = CraneliftBackend::new(target).expect("backend");
-        let error = backend
-            .prepare_module_with_types(&module, &definitions())
-            .expect_err("malformed distinct conversion unexpectedly verified");
+        let error = match backend.prepare_module_with_types(&module, &definitions()) {
+            Ok(_) => panic!("malformed distinct conversion unexpectedly verified"),
+            Err(error) => error,
+        };
         assert_eq!(
             error,
             BackendError::InvalidFir {
