@@ -1429,6 +1429,17 @@ impl ModuleTypeEnv {
             _ => None,
         }
     }
+
+    fn is_distinct(&self, ty: &Ty) -> bool {
+        matches!(
+            ty,
+            Ty::Nominal(id)
+                if matches!(
+                    self.types.get(id).map(|info| &info.kind),
+                    Some(TypeInfoKind::Distinct(_))
+                )
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -3093,6 +3104,14 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         "type/mismatch",
                         format!(
                             "Option/Result comparisons are not defined in Forge v1: {l:?}, {r:?}"
+                        ),
+                    );
+                } else if self.env.is_distinct(&l) || self.env.is_distinct(&r) {
+                    self.diagnostic(
+                        span,
+                        "type/distinct-comparison",
+                        format!(
+                            "distinct values require explicit underlying conversion before comparison: {l:?}, {r:?}"
                         ),
                     );
                 } else if !self.compatible_binary(&l, &r) {

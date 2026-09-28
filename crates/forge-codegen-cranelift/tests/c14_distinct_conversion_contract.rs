@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use forge_codegen_cranelift::{BackendError, CraneliftBackend, CraneliftTarget};
 use forge_fir::{
-    DefId, FirBasicBlock, FirBlockId, FirFunction, FirInstruction, FirInstructionKind, FirLocal,
-    FirLocalId, FirModule, FirPlace, FirTerminator, FirValueId, IntWidth, Span, Ty, TypeDefinition,
-    TypeDefinitionKind, TypeDefinitionTable,
+    BinaryOp, DefId, FirBasicBlock, FirBlockId, FirFunction, FirInstruction, FirInstructionKind,
+    FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator, FirValueId, IntWidth, Span, Ty,
+    TypeDefinition, TypeDefinitionKind, TypeDefinitionTable,
 };
 
 fn u(width: IntWidth) -> Ty {
@@ -92,6 +92,81 @@ fn assert_invalid_fir(function: FirFunction) {
     }
 }
 
+fn comparison_function() -> FirFunction {
+    let ty = Ty::Nominal(DefId(100));
+    let left_local = FirLocalId(0);
+    let right_local = FirLocalId(1);
+    let left = FirValueId(0);
+    let right = FirValueId(1);
+    let result = FirValueId(2);
+    let span = Span::new(0, 0);
+    FirFunction {
+        owner: DefId(1),
+        params: vec![left_local, right_local],
+        return_type: Ty::Bool,
+        locals: BTreeMap::from([
+            (
+                left_local,
+                FirLocal {
+                    id: left_local,
+                    source: None,
+                    ty: ty.clone(),
+                    mutable: false,
+                    parameter: true,
+                    synthetic: false,
+                },
+            ),
+            (
+                right_local,
+                FirLocal {
+                    id: right_local,
+                    source: None,
+                    ty: ty.clone(),
+                    mutable: false,
+                    parameter: true,
+                    synthetic: false,
+                },
+            ),
+        ]),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![
+                FirInstruction {
+                    span,
+                    result: Some(left),
+                    kind: FirInstructionKind::Load {
+                        place: FirPlace::Local { local: left_local },
+                    },
+                },
+                FirInstruction {
+                    span,
+                    result: Some(right),
+                    kind: FirInstructionKind::Load {
+                        place: FirPlace::Local { local: right_local },
+                    },
+                },
+                FirInstruction {
+                    span,
+                    result: Some(result),
+                    kind: FirInstructionKind::Binary {
+                        op: BinaryOp::Eq,
+                        overflow: None,
+                        left,
+                        right,
+                    },
+                },
+            ],
+            terminator: Some(FirTerminator::Return {
+                value: Some(result),
+            }),
+        }],
+        value_types: BTreeMap::from([(left, ty.clone()), (right, ty), (result, Ty::Bool)]),
+    }
+}
+
 #[test]
 fn distinct_wrap_requires_the_declared_underlying_type() {
     assert_invalid_fir(function(
@@ -114,4 +189,9 @@ fn distinct_unwrap_requires_the_declared_underlying_result() {
             distinct: DefId(100),
         },
     ));
+}
+
+#[test]
+fn distinct_comparison_requires_explicit_underlying_conversion() {
+    assert_invalid_fir(comparison_function());
 }

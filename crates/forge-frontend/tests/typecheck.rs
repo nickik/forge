@@ -619,6 +619,31 @@ fn distinct_types_do_not_implicitly_mix() {
 }
 
 #[test]
+fn distinct_values_require_explicit_conversion_before_comparison() {
+    let output = check(
+        r#"
+        module test.distinct_comparison;
+        distinct UserId: u32;
+        fn invalid(left: UserId, right: UserId) -> bool {
+            return left == right;
+        }
+        fn valid(left: UserId, right: UserId) -> bool {
+            return u32(left) == u32(right);
+        }
+        "#,
+    );
+    let diagnostics = output
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code == "type/distinct-comparison")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 1, "{:?}", output.diagnostics);
+    assert!(diagnostics[0]
+        .message
+        .contains("explicit underlying conversion"));
+}
+
+#[test]
 fn reports_duplicate_named_argument() {
     let output = check(
         r#"
