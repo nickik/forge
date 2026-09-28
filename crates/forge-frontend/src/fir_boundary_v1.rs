@@ -572,8 +572,7 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
             );
             let integer_operands =
                 left_type.is_some_and(|ty| matches!(ty, Ty::Byte | Ty::Int { .. }));
-            let numeric_operands =
-                integer_operands || matches!(left_type, Some(Ty::Float { .. }));
+            let numeric_operands = integer_operands || matches!(left_type, Some(Ty::Float { .. }));
             let category_valid = match op {
                 crate::ast::BinaryOp::LogicalAnd
                 | crate::ast::BinaryOp::LogicalXor
