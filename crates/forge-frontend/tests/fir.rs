@@ -1372,6 +1372,38 @@ fn scalar_char_range_match_lowers_both_bounds() {
 }
 
 #[test]
+fn boolean_comparisons_lower_to_binary_fir() {
+    let output = lower(
+        r#"
+        module test.fir_boolean_comparisons;
+        fn compare(left: bool, right: bool) -> bool {
+            return left < right || left <= right || left == right
+                || left != right || left > right || left >= right;
+        }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+
+    for expected in [
+        forge_frontend::ast::BinaryOp::Less,
+        forge_frontend::ast::BinaryOp::LessEq,
+        forge_frontend::ast::BinaryOp::Eq,
+        forge_frontend::ast::BinaryOp::NotEq,
+        forge_frontend::ast::BinaryOp::Greater,
+        forge_frontend::ast::BinaryOp::GreaterEq,
+    ] {
+        assert!(instructions(&output).any(|op| matches!(
+            op,
+            FirInstructionKind::Binary {
+                op,
+                overflow: None,
+                ..
+            } if *op == expected
+        )));
+    }
+}
+
+#[test]
 fn scalar_string_literal_match_is_resolved_before_fir() {
     let output = lower(
         r#"

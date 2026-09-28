@@ -1,0 +1,20 @@
+module examples.c14.bool_comparison_native;
+
+fn compare(left: bool, right: bool, operation: u8) -> bool {
+    if (operation == 0u8) { return left == right; }
+    if (operation == 1u8) { return left != right; }
+    if (operation == 2u8) { return left < right; }
+    if (operation == 3u8) { return left <= right; }
+    if (operation == 4u8) { return left > right; }
+    return left >= right;
+}
+
+fn main() -> i32 {
+    if (!compare(false, false, 0u8)) { return 1; }
+    if (!compare(false, true, 1u8)) { return 2; }
+    if (!compare(false, true, 2u8)) { return 3; }
+    if (!compare(false, true, 3u8)) { return 4; }
+    if (!compare(true, false, 4u8)) { return 5; }
+    if (!compare(true, true, 5u8)) { return 6; }
+    return 0;
+}

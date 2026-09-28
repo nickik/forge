@@ -59,6 +59,8 @@ available on every backend merely because the frontend accepts it.
   - [x] Require handwritten binary FIR to keep logical operations boolean,
         bitwise/shift/remainder operations integer-only and ordinary arithmetic
         numeric at the shared boundary before native lowering.
+  - [x] Lower all six frontend-supported boolean comparisons through the
+        hosted native scalar path and execute them in the C14 specification.
   - [x] Require handwritten binary FIR to carry explicit checked or wrapping
         overflow semantics for integer add/subtract/multiply, checked semantics
         for integer division/remainder/shifts, and no overflow mode for

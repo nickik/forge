@@ -444,6 +444,43 @@ fn lower_c14_scalar_instruction(
             left,
             right,
             ..
+        } if value_type(fir, *left)? == &Ty::Bool
+            && value_type(fir, *right)? == &Ty::Bool
+            && matches!(
+                op,
+                forge_fir::BinaryOp::Eq
+                    | forge_fir::BinaryOp::NotEq
+                    | forge_fir::BinaryOp::Less
+                    | forge_fir::BinaryOp::LessEq
+                    | forge_fir::BinaryOp::Greater
+                    | forge_fir::BinaryOp::GreaterEq
+            ) =>
+        {
+            let cc = match op {
+                forge_fir::BinaryOp::Eq => IntCC::Equal,
+                forge_fir::BinaryOp::NotEq => IntCC::NotEqual,
+                forge_fir::BinaryOp::Less => IntCC::UnsignedLessThan,
+                forge_fir::BinaryOp::LessEq => IntCC::UnsignedLessThanOrEqual,
+                forge_fir::BinaryOp::Greater => IntCC::UnsignedGreaterThan,
+                forge_fir::BinaryOp::GreaterEq => IntCC::UnsignedGreaterThanOrEqual,
+                _ => unreachable!(),
+            };
+            let result = instruction
+                .result
+                .ok_or_else(|| shape("bool comparison has no result"))?;
+            let value = cursor.ins().icmp(
+                cc,
+                scalar(scalars, *left)?,
+                scalar(scalars, *right)?,
+            );
+            scalars.insert(result, value);
+            return Ok(());
+        }
+        FirInstructionKind::Binary {
+            op,
+            left,
+            right,
+            ..
         } if value_type(fir, *left)? == &Ty::Char && value_type(fir, *right)? == &Ty::Char => {
             let cc = match op {
                 forge_fir::BinaryOp::Eq => IntCC::Equal,
