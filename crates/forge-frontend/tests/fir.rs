@@ -368,7 +368,7 @@ fn overflow_metadata_selects_wrapping_fir_operation() {
         r#"
         module test.fir_wrap;
         @overflow(wrap)
-        fn add(a: u32, b: u32) -> u32 { return a + b; }
+        fn add(a: u32, b: u32) -> u32 { return -a + b; }
         "#,
     );
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
@@ -377,6 +377,42 @@ fn overflow_metadata_selects_wrapping_fir_operation() {
         FirInstructionKind::Binary {
             op: forge_frontend::ast::BinaryOp::Add,
             overflow: Some(OverflowMode::Wrapping),
+            ..
+        }
+    )));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Unary {
+            op: forge_frontend::FirUnaryOp::Neg,
+            overflow: Some(OverflowMode::Wrapping),
+            ..
+        }
+    )));
+}
+
+#[test]
+fn unary_negation_records_checked_integer_but_not_float_overflow_semantics() {
+    let output = lower(
+        r#"
+        module test.fir_checked_negation;
+        fn integer(value: i32) -> i32 { return -value; }
+        fn floating(value: f32) -> f32 { return -value; }
+        "#,
+    );
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Unary {
+            op: forge_frontend::FirUnaryOp::Neg,
+            overflow: Some(OverflowMode::Checked),
+            ..
+        }
+    )));
+    assert!(instructions(&output).any(|op| matches!(
+        op,
+        FirInstructionKind::Unary {
+            op: forge_frontend::FirUnaryOp::Neg,
+            overflow: None,
             ..
         }
     )));
