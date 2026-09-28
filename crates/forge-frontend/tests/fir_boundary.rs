@@ -2,7 +2,7 @@ use forge_frontend::{
     dump_fir_module, lower_fir, lower_module, lower_resolved_bodies, parse_source,
     type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module, ConstValue,
     DefId, ExprId, FirBlockId, FirGlobal, FirInstructionKind, FirLocal, FirLocalId, FirModule,
-    FirPlace, FirTerminator, IntWidth, Ty,
+    FirPlace, FirTerminator, IntWidth, Ty, UnsafeOperationKind,
 };
 
 fn pipeline(
@@ -1952,6 +1952,57 @@ fn module_verifier_checks_pointer_offset_contracts() {
     assert!(diagnostic
         .message
         .contains("exact base-pointer result type"));
+}
+
+#[test]
+fn module_verifier_checks_pointer_conversion_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_pointer_convert;
+        fn address(value: *u32) -> usize {
+            unsafe { return usize(value); }
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let function_owner = function.owner;
+    let (value, block, instruction_index, span) = function
+        .blocks
+        .iter_mut()
+        .find_map(|block| {
+            block.instructions.iter_mut().enumerate().find_map(
+                |(index, instruction)| match &mut instruction.kind {
+                    FirInstructionKind::PointerConvert {
+                        value, operation, ..
+                    } => {
+                        *operation = UnsafeOperationKind::PointerOffset { subtract: false };
+                        Some((*value, block.id, index, instruction.span))
+                    }
+                    _ => None,
+                },
+            )
+        })
+        .expect("pointer-convert producer");
+
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-pointer-convert")
+        .expect("pointer-convert diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("converts value {value:?}")));
+    assert!(diagnostic.message.contains("PointerOffset"));
+    assert!(diagnostic.message.contains("operation tag"));
 }
 
 #[test]

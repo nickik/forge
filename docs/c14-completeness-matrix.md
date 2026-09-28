@@ -128,6 +128,8 @@ Legend:
   shared FIR boundary before AArch64/RISC-V lowering.
 - Pointer-offset FIR requires pointer bases, concrete integer offsets, result values and exact
   base-pointer result types at the shared FIR boundary before AArch64/RISC-V lowering.
+- Pointer-conversion FIR requires result/target agreement and exact pointer-to-integer,
+  integer-to-pointer or distinct-pointer endpoint types at the shared FIR boundary.
 - Direct local `AddressOf` FIR preserves requested mutability, mutable-storage requirements and
   exact local-pointee result types at the shared FIR boundary before AArch64/RISC-V lowering.
 - Direct local stores preserve their exact declared local type at the shared FIR boundary before
