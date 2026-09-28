@@ -210,15 +210,15 @@ fn rejects_function_and_closure_comparisons_before_fir() {
 }
 
 #[test]
-fn rejects_string_slice_and_array_comparisons_before_fir() {
+fn rejects_string_ordering_and_slice_array_comparisons_before_fir() {
     let output = check(
         r#"
         module test.sequence_comparisons;
         fn compare_strings(left: str, right: str) -> bool {
-            return left == right;
+            return left < right;
         }
         fn compare_slices(left: u32[], right: u32[]) -> bool {
-            return left < right;
+            return left == right;
         }
         fn compare_arrays(left: [u32; 2], right: [u32; 2]) -> bool {
             return left != right;
@@ -232,7 +232,7 @@ fn rejects_string_slice_and_array_comparisons_before_fir() {
             diagnostic.code == "type/mismatch"
                 && diagnostic
                     .message
-                    .contains("string/slice/array comparisons are not defined")
+                    .contains("string ordering and slice/array comparisons are not defined")
         })
         .collect::<Vec<_>>();
     assert_eq!(diagnostics.len(), 3, "{:?}", output.diagnostics);

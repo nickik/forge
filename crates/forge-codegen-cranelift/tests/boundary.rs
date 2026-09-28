@@ -509,6 +509,11 @@ fn undefined_comparison_domains_are_invalid_producer_contracts() {
     ];
 
     for comparison_type in comparison_types {
+        let op = if comparison_type == Ty::Str {
+            BinaryOp::Less
+        } else {
+            BinaryOp::Eq
+        };
         let owner = DefId(40);
         let left_local = FirLocalId(0);
         let right_local = FirLocalId(1);
@@ -570,7 +575,7 @@ fn undefined_comparison_domains_are_invalid_producer_contracts() {
                             span: Span::new(8, 10),
                             result: Some(result),
                             kind: FirInstructionKind::Binary {
-                                op: BinaryOp::Eq,
+                                op,
                                 overflow: None,
                                 left,
                                 right,

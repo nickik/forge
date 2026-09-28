@@ -1330,12 +1330,12 @@ fn module_verifier_rejects_pointer_reference_and_callable_comparisons() {
 }
 
 #[test]
-fn module_verifier_rejects_string_slice_and_array_comparisons() {
+fn module_verifier_rejects_string_ordering_and_slice_array_comparisons() {
     let (_, _, mut fir) = pipeline(
         r#"
         module test.boundary_sequence_comparisons;
-        fn string_like(left: u32, right: u32) -> bool { return left == right; }
-        fn slice_like(left: u32, right: u32) -> bool { return left < right; }
+        fn string_like(left: u32, right: u32) -> bool { return left < right; }
+        fn slice_like(left: u32, right: u32) -> bool { return left == right; }
         fn array_like(left: u32, right: u32) -> bool { return left != right; }
         "#,
     );
@@ -1375,7 +1375,7 @@ fn module_verifier_rejects_string_slice_and_array_comparisons() {
     assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
     assert!(diagnostics.iter().all(|diagnostic| diagnostic
         .message
-        .contains("no string/slice/array comparison domain")));
+        .contains("no string ordering and no slice/array comparison domain")));
     for domain in ["Str", "Slice", "Array"] {
         assert!(diagnostics
             .iter()

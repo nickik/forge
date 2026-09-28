@@ -3068,14 +3068,21 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                             "function/closure comparisons are not defined in Forge v1: {l:?}, {r:?}"
                         ),
                     );
-                } else if matches!(&l, Ty::Str | Ty::Slice { .. } | Ty::Array { .. })
-                    || matches!(&r, Ty::Str | Ty::Slice { .. } | Ty::Array { .. })
+                } else if matches!(&l, Ty::Slice { .. } | Ty::Array { .. })
+                    || matches!(&r, Ty::Slice { .. } | Ty::Array { .. })
+                    || (matches!(
+                        op,
+                        BinaryOp::Less
+                            | BinaryOp::LessEq
+                            | BinaryOp::Greater
+                            | BinaryOp::GreaterEq
+                    ) && (matches!(&l, Ty::Str) || matches!(&r, Ty::Str)))
                 {
                     self.diagnostic(
                         span,
                         "type/mismatch",
                         format!(
-                            "string/slice/array comparisons are not defined in Forge v1: {l:?}, {r:?}"
+                            "string ordering and slice/array comparisons are not defined in Forge v1: {l:?}, {r:?}"
                         ),
                     );
                 } else if !self.compatible_binary(&l, &r) {
