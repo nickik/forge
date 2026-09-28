@@ -1497,6 +1497,115 @@ fn module_verifier_checks_make_closure_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_closure_capture_places() {
+    let source = r#"
+        module test.boundary_closure_capture;
+        fn main() -> u32 {
+            val factor: u32 = 4u32;
+            val read = [factor]() -> u32 { return factor; };
+            return read();
+        }
+    "#;
+
+    let (_, _, mut fir) = pipeline(source);
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(
+                        &instruction.kind,
+                        FirInstructionKind::Load {
+                            place: FirPlace::ClosureCapture { .. }
+                        }
+                    )
+                })
+            })
+        })
+        .expect("closure-capture producer");
+    let function_owner = function.owner;
+    let (closure, result, block, instruction_index, span) = function
+        .blocks
+        .iter()
+        .find_map(|block| {
+            block.instructions.iter().enumerate().find_map(
+                |(index, instruction)| match &instruction.kind {
+                    FirInstructionKind::Load {
+                        place: FirPlace::ClosureCapture { closure, .. },
+                    } => Some((
+                        *closure,
+                        instruction.result.expect("capture-load result"),
+                        block.id,
+                        index,
+                        instruction.span,
+                    )),
+                    _ => None,
+                },
+            )
+        })
+        .expect("closure-capture load");
+    function.value_types.insert(result, Ty::Byte);
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-closure-capture")
+        .expect("capture type diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("active closure is Some({closure:?})")));
+    assert!(diagnostic.message.contains("actual type=Some(Byte)"));
+    assert!(diagnostic.message.contains("exact direct access types"));
+
+    let (_, _, mut fir) = pipeline(source);
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(
+                        &instruction.kind,
+                        FirInstructionKind::Load {
+                            place: FirPlace::ClosureCapture { .. }
+                        }
+                    )
+                })
+            })
+        })
+        .expect("closure-capture producer");
+    let index = function
+        .blocks
+        .iter_mut()
+        .flat_map(|block| block.instructions.iter_mut())
+        .find_map(|instruction| match &mut instruction.kind {
+            FirInstructionKind::Load {
+                place: FirPlace::ClosureCapture { index, .. },
+            } => Some(index),
+            _ => None,
+        })
+        .expect("closure-capture index");
+    *index = 99;
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-closure-capture")
+        .expect("capture index diagnostic");
+    assert!(diagnostic.message.contains("index: 99"));
+    assert!(diagnostic.message.contains("field=None"));
+    assert!(diagnostic.message.contains("in-range capture"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"

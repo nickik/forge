@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::{
     ast::{FdnValue, Span},
-    body_hir::{BodyHirOutput, HirExpr, HirExprKind},
+    body_hir::{BodyHirOutput, ExprId, HirExpr, HirExprKind},
     fir::{self, FirDiagnostic, FirInstructionKind, FirModule, FirOutput},
     hir::DefId,
     typecheck::{
@@ -760,6 +760,88 @@ fn verify_make_closures(function: &fir::FirFunction, diagnostics: &mut Vec<FirDi
     }
 }
 
+fn closure_capture_root(place: &fir::FirPlace) -> Option<(ExprId, u32, bool)> {
+    match place {
+        fir::FirPlace::ClosureCapture { closure, index } => Some((*closure, *index, true)),
+        fir::FirPlace::Field { base, .. } | fir::FirPlace::Index { base, .. } => {
+            closure_capture_root(base).map(|(closure, index, _)| (closure, index, false))
+        }
+        _ => None,
+    }
+}
+
+fn verify_closure_capture_places(
+    function: &fir::FirFunction,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let (place, operation, write, actual_type, result_shape_ok, address_mutable) =
+                match &instruction.kind {
+                    FirInstructionKind::Load { place } => (
+                        place,
+                        "load",
+                        false,
+                        instruction
+                            .result
+                            .and_then(|result| function.value_types.get(&result)),
+                        instruction.result.is_some(),
+                        None,
+                    ),
+                    FirInstructionKind::Store { place, value } => (
+                        place,
+                        "store",
+                        true,
+                        function.value_types.get(value),
+                        instruction.result.is_none(),
+                        None,
+                    ),
+                    FirInstructionKind::AddressOf { place, mutable } => (
+                        place,
+                        "address",
+                        *mutable,
+                        instruction
+                            .result
+                            .and_then(|result| function.value_types.get(&result)),
+                        instruction.result.is_some(),
+                        Some(*mutable),
+                    ),
+                    _ => continue,
+                };
+            let Some((closure, index, direct)) = closure_capture_root(place) else {
+                continue;
+            };
+            let metadata = function.closures.get(&closure);
+            let field = metadata.and_then(|metadata| metadata.captures.get(index as usize));
+            let expected_type = field.map(|field| match address_mutable {
+                Some(mutable) => Ty::Reference {
+                    mutable,
+                    inner: Box::new(field.ty.clone()),
+                },
+                None => field.ty.clone(),
+            });
+            let valid = block.closure == Some(closure)
+                && field.is_some()
+                && (!write
+                    || !matches!(
+                        field.map(|field| field.mode),
+                        Some(CaptureMode::SharedReference)
+                    ))
+                && (!direct || (result_shape_ok && actual_type == expected_type.as_ref()));
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-closure-capture",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} {operation} uses closure-capture place {place:?} while active closure is {:?}; metadata={metadata:?}, field={field:?}, direct={direct}, write={write}, actual type={actual_type:?}, expected direct type={expected_type:?}; expected an in-range capture owned by the active function-local closure, exact direct access types, and no write through a shared capture",
+                        function.owner, block.id, block.closure
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -889,6 +971,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_indirect_calls(&initializer.function, &mut diagnostics);
         verify_closure_calls(&initializer.function, &mut diagnostics);
         verify_make_closures(&initializer.function, &mut diagnostics);
+        verify_closure_capture_places(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -912,6 +995,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_indirect_calls(function, &mut diagnostics);
         verify_closure_calls(function, &mut diagnostics);
         verify_make_closures(function, &mut diagnostics);
+        verify_closure_capture_places(function, &mut diagnostics);
     }
 
     diagnostics

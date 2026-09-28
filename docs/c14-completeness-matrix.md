@@ -132,7 +132,8 @@ Legend:
   value/shared-reference/mutable-reference environment storage types at the shared FIR boundary
   before AArch64/RISC-V lowering.
 - Closure-capture FIR places preserve body ownership, valid environment indexes, direct access
-  types and shared-reference write protection before AArch64/RISC-V lowering.
+  types and shared-reference write protection at the shared FIR boundary before AArch64/RISC-V
+  lowering.
 - `LosslessIntegerConvert` accepts only integer endpoints; malformed non-integer FIR endpoints are
   producer errors, while narrowing and signedness-loss conversions remain explicitly unsupported.
 - Scalar `TypeLowering` now maps `f32`, `f64`, `char`, and `duration`, but that alone does not
