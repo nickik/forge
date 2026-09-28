@@ -1762,9 +1762,7 @@ fn declared_field_type(
                 .filter(|field| field.name == field_name)
             {
                 if result.as_ref().is_some_and(|ty| ty != &field.ty) {
-                    return Err(format!(
-                        "field `{field_name}` has variant-dependent types"
-                    ));
+                    return Err(format!("field `{field_name}` has variant-dependent types"));
                 }
                 result = Some(field.ty.clone());
             }
