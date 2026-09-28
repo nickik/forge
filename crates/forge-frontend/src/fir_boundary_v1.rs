@@ -1812,6 +1812,79 @@ fn verify_extract_fields(
     }
 }
 
+fn named_variant_contract_issue(
+    definitions: &TypeDefinitionTable,
+    ty: &Ty,
+    name: &str,
+    require_fieldless: bool,
+) -> Option<String> {
+    let Ty::Nominal(owner) = ty else {
+        return Some(format!("type {ty:?} is not nominal"));
+    };
+    let Some(definition) = definitions.get(owner) else {
+        return Some(format!("type {owner:?} has no type definition"));
+    };
+    let variants = match &definition.kind {
+        TypeDefinitionKind::Enum { variants } | TypeDefinitionKind::Tagged { variants } => variants,
+        _ => return Some(format!("type {ty:?} is not an enum or tagged type")),
+    };
+    let Some(variant) = variants.iter().find(|variant| variant.name == name) else {
+        return Some(format!("variant `{name}` is not declared for type {ty:?}"));
+    };
+    if require_fieldless && !variant.fields.is_empty() {
+        return Some(format!(
+            "variant `{name}` has payload fields and requires MakeAggregate"
+        ));
+    }
+    None
+}
+
+fn verify_named_variants(
+    function: &fir::FirFunction,
+    definitions: &TypeDefinitionTable,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let issue = match &instruction.kind {
+                FirInstructionKind::Variant { ty, name }
+                    if instruction
+                        .result
+                        .and_then(|result| function.value_types.get(&result))
+                        == Some(ty)
+                        && matches!(ty, Ty::Nominal(_)) =>
+                {
+                    named_variant_contract_issue(definitions, ty, name, true)
+                }
+                FirInstructionKind::VariantIs { value, name }
+                    if instruction
+                        .result
+                        .and_then(|result| function.value_types.get(&result))
+                        == Some(&Ty::Bool) =>
+                {
+                    match function.value_types.get(value) {
+                        Some(ty @ Ty::Nominal(_)) => {
+                            named_variant_contract_issue(definitions, ty, name, false)
+                        }
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+            if let Some(issue) = issue {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-variant-definition",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} named variant violates its type-definition contract: {issue}",
+                        function.owner, block.id
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -2011,10 +2084,12 @@ pub fn verify_fir_module_with_types(
     for initializer in module.global_initializers.values() {
         verify_make_aggregates(&initializer.function, definitions, &mut diagnostics);
         verify_extract_fields(&initializer.function, definitions, &mut diagnostics);
+        verify_named_variants(&initializer.function, definitions, &mut diagnostics);
     }
     for function in module.functions.values() {
         verify_make_aggregates(function, definitions, &mut diagnostics);
         verify_extract_fields(function, definitions, &mut diagnostics);
+        verify_named_variants(function, definitions, &mut diagnostics);
     }
     diagnostics
 }
