@@ -2236,6 +2236,63 @@ fn module_verifier_checks_unchecked_index_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_string_constant_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_string_constants;
+        fn name() -> str { return "name"; }
+        fn c_name() -> *byte { return c"name"; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let invalid_result_type = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    for function in fir.module.functions.values_mut() {
+        let result = function
+            .blocks
+            .iter()
+            .flat_map(|block| &block.instructions)
+            .find_map(|instruction| match &instruction.kind {
+                FirInstructionKind::Const {
+                    value:
+                        forge_frontend::FirConst::String { .. }
+                        | forge_frontend::FirConst::CString { .. },
+                } => instruction.result,
+                _ => None,
+            })
+            .expect("string-constant producer");
+        function
+            .value_types
+            .insert(result, invalid_result_type.clone());
+        function.return_type = invalid_result_type.clone();
+    }
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-string-constant")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("string constant")));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("C-string constant")));
+    assert!(diagnostics
+        .iter()
+        .all(|diagnostic| diagnostic.message.contains("width: W32")));
+    assert!(diagnostics.iter().any(|diagnostic| diagnostic
+        .message
+        .contains("expected exact result type Str")));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("Pointer")));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"

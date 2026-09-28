@@ -84,7 +84,7 @@ available on every backend merely because the frontend accepts it.
         treat handwritten character constants with non-character FIR result
         types as invalid producer contracts on AArch64 and RISC-V.
   - [x] Require handwritten string constants to produce `str` values on
-        AArch64 and RISC-V.
+        the shared FIR boundary before native lowering on AArch64 and RISC-V.
   - [x] Reject void expressions in integer contexts during typechecking and
         treat handwritten `Unit` instructions with non-void FIR result types
         as invalid producer contracts on AArch64 and RISC-V.
@@ -204,8 +204,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Require branch conditions to be boolean and return values to match the
         enclosing function or local-closure result type before native lowering.
   - [x] Require handwritten C-string constants to produce non-volatile byte
-        pointers and pin their required static-data lowering as an explicit
-        AArch64/RISC-V milestone rather than materializing escaping stack data.
+        pointers at the shared FIR boundary and pin their required static-data
+        lowering as an explicit AArch64/RISC-V milestone rather than
+        materializing escaping stack data.
   - [x] Materialize valid C-string literals as deduplicated immutable
         NUL-terminated byte arrays and lower their dedicated FIR static-data
         addresses through AArch64/RISC-V object relocations.
