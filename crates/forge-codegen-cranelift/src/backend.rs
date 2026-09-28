@@ -4,8 +4,8 @@ use cranelift_codegen::ir::{Function, Signature};
 use cranelift_codegen::isa::{CallConv, OwnedTargetIsa};
 use cranelift_codegen::Context;
 use forge_fir::{
-    verify_fir_module_with_types, BinaryOp, CaptureMode, DefId, FirBasicBlock, FirFunction,
-    FirInstructionKind, FirModule, FirPlace, FirTerminator, FirValueId, IntWidth, Ty,
+    verify_fir_module, verify_fir_module_with_types, BinaryOp, CaptureMode, DefId, FirBasicBlock,
+    FirFunction, FirInstructionKind, FirModule, FirPlace, FirTerminator, FirValueId, IntWidth, Ty,
     TypeDefinitionKind, TypeDefinitionTable, UnsafeOperationKind,
 };
 use target_lexicon::Triple;
