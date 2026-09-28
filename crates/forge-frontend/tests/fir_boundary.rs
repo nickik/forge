@@ -2552,6 +2552,41 @@ fn module_verifier_checks_variant_operation_contracts() {
 }
 
 #[test]
+fn definition_aware_module_verifier_checks_named_variants() {
+    let (mut fir, definitions) = pipeline_with_type_definitions(
+        r#"
+        module test.boundary_named_variant;
+        enum Color { Red, Green }
+        fn red() -> Color { return Color::Red; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module_with_types(&fir.module, &definitions).is_empty());
+
+    let instruction = fir
+        .module
+        .functions
+        .values_mut()
+        .flat_map(|function| function.blocks.iter_mut())
+        .flat_map(|block| block.instructions.iter_mut())
+        .find(|instruction| matches!(instruction.kind, FirInstructionKind::Variant { .. }))
+        .expect("named variant construction");
+    let FirInstructionKind::Variant { name, .. } = &mut instruction.kind else {
+        unreachable!();
+    };
+    *name = "Undeclared".into();
+
+    let diagnostics = verify_fir_module_with_types(&fir.module, &definitions)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-variant-definition")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(diagnostics[0]
+        .message
+        .contains("variant `Undeclared` is not declared"));
+}
+
+#[test]
 fn definition_aware_module_verifier_checks_aggregate_construction() {
     let (mut fir, definitions) = pipeline_with_type_definitions(
         r#"

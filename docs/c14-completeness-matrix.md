@@ -114,8 +114,8 @@ Legend:
   the shared FIR boundary before AArch64/RISC-V lowering.
 - Fieldless enum/tagged variants use `Variant`; payload-bearing tagged variants require
   `MakeAggregate`. Shared FIR validation requires `Variant` declared/result identity and nominal
-  `VariantIs` inputs with boolean results; definition-aware fieldless/name validation remains
-  before AArch64/RISC-V lowering.
+  `VariantIs` inputs with boolean results, including definition-aware name and fieldless/payload
+  validation before AArch64/RISC-V lowering.
 - Handwritten `MakeAggregate` instructions require matching declared/result types, unique supplied
   fields, complete declared field sets, and exact supplied payload types at the definition-aware
   shared FIR boundary before AArch64/RISC-V lowering.

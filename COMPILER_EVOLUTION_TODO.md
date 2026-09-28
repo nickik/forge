@@ -115,8 +115,8 @@ available on every backend merely because the frontend accepts it.
   - [x] Keep fieldless enum/tagged construction distinct from payload-bearing
         tagged construction; require `Variant` declared/result identity and
         nominal `VariantIs` inputs with boolean results at the shared FIR
-        boundary, while retaining definition-aware fieldless/name validation
-        before AArch64 and RISC-V lowering.
+        boundary, including definition-aware variant-name and fieldless/payload
+        validation before AArch64 and RISC-V lowering.
   - [x] Require handwritten `MakeAggregate` instructions to declare the result
         type once, name each supplied field once, and supply its exact declared
         payload type at the definition-aware shared FIR boundary before native

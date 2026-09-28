@@ -73,27 +73,6 @@ fn assert_prepares(module: &FirModule, defs: &TypeDefinitionTable) {
     }
 }
 
-fn assert_invalid_on_host_targets(
-    function: FirFunction,
-    defs: &TypeDefinitionTable,
-    message: &str,
-) {
-    let module = module_with(function);
-    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
-        let backend = CraneliftBackend::new(target).expect("backend");
-        let error = match backend.prepare_module_with_types(&module, defs) {
-            Ok(_) => panic!("malformed variant FIR unexpectedly lowered"),
-            Err(error) => error,
-        };
-        assert_eq!(
-            error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
-            }
-        );
-    }
-}
-
 fn assert_invalid_fir_on_host_targets(function: FirFunction, defs: &TypeDefinitionTable) {
     let module = module_with(function);
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
@@ -225,11 +204,7 @@ fn variant_cannot_construct_a_payload_bearing_tagged_variant() {
         value_types: BTreeMap::from([(value, tagged_ty)]),
     };
     let defs = BTreeMap::from([tagged_def()]);
-    assert_invalid_on_host_targets(
-        function,
-        &defs,
-        "variant instruction cannot construct payload-bearing variant `Number`",
-    );
+    assert_invalid_fir_on_host_targets(function, &defs);
 }
 
 #[test]
