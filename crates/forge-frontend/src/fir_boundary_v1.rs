@@ -842,6 +842,37 @@ fn verify_closure_capture_places(
     }
 }
 
+fn verify_direct_local_stores(
+    function: &fir::FirFunction,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::Store {
+                place: fir::FirPlace::Local { local },
+                value,
+            } = &instruction.kind
+            else {
+                continue;
+            };
+            let local_data = function.locals.get(local);
+            let value_type = function.value_types.get(value);
+            let valid = instruction.result.is_none()
+                && local_data.is_some_and(|local_data| value_type == Some(&local_data.ty));
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-local-store",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} stores value {value:?} with type {value_type:?} into local {local:?} with metadata {local_data:?} and result {:?}; expected no result, an existing local, and the exact declared local type",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -972,6 +1003,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_closure_calls(&initializer.function, &mut diagnostics);
         verify_make_closures(&initializer.function, &mut diagnostics);
         verify_closure_capture_places(&initializer.function, &mut diagnostics);
+        verify_direct_local_stores(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -996,6 +1028,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_closure_calls(function, &mut diagnostics);
         verify_make_closures(function, &mut diagnostics);
         verify_closure_capture_places(function, &mut diagnostics);
+        verify_direct_local_stores(function, &mut diagnostics);
     }
 
     diagnostics
