@@ -69,6 +69,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Reject function-pointer and closure comparisons during typechecking and
         at the shared FIR boundary; Forge v1 defines no callable identity or
         ordering semantics.
+  - [x] Reject string, slice and fixed-array comparisons during typechecking
+        and at the shared FIR boundary; Forge v1 defines no implicit content,
+        view-identity or aggregate-ordering semantics for these domains.
   - [x] Require handwritten binary FIR to carry explicit checked or wrapping
         overflow semantics for integer add/subtract/multiply, checked semantics
         for integer division/remainder/shifts, and no overflow mode for
