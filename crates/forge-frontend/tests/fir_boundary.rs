@@ -1165,6 +1165,45 @@ fn module_verifier_checks_numeric_conversion_producer_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_unary_operation_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_unary;
+        fn logical(value: bool) -> bool { return !value; }
+        fn bitwise(value: u32) -> u32 { return ~value; }
+        fn negate(value: f32) -> f32 { return -value; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module(&fir.module).is_empty());
+
+    let mut changed = 0;
+    for function in fir.module.functions.values_mut() {
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                if let FirInstructionKind::Unary { .. } = instruction.kind {
+                    let result = instruction.result.expect("unary result");
+                    function.value_types.insert(result, Ty::Char);
+                    changed += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(changed, 3);
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-unary")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
+    for operation in ["Not", "BitNot", "Neg"] {
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains(operation)));
+    }
+}
+
+#[test]
 fn module_verifier_checks_subsequence_contracts() {
     let (_, _, mut fir) = pipeline(
         r#"
