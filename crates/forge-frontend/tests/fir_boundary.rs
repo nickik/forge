@@ -1949,7 +1949,9 @@ fn module_verifier_checks_pointer_offset_contracts() {
         .contains(&format!("pointer value {pointer:?}")));
     assert!(diagnostic.message.contains("with type Some(Bool)"));
     assert!(diagnostic.message.contains("concrete integer offset"));
-    assert!(diagnostic.message.contains("exact base-pointer result type"));
+    assert!(diagnostic
+        .message
+        .contains("exact base-pointer result type"));
 }
 
 #[test]
