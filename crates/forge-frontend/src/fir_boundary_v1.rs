@@ -1952,6 +1952,70 @@ fn verify_bitstruct_storage_conversions(
     }
 }
 
+fn verify_distinct_conversions(
+    function: &fir::FirFunction,
+    definitions: &TypeDefinitionTable,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let result_ty = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let issue = match &instruction.kind {
+                FirInstructionKind::DistinctFromUnderlying { value, distinct } => {
+                    let source_ty = function.value_types.get(value);
+                    match definitions.get(distinct) {
+                        Some(definition) => match &definition.kind {
+                            TypeDefinitionKind::Distinct { underlying }
+                                if source_ty == Some(underlying)
+                                    && result_ty == Some(&Ty::Nominal(*distinct)) =>
+                            {
+                                None
+                            }
+                            TypeDefinitionKind::Distinct { underlying } => Some(format!(
+                                "source type is {source_ty:?}, declared underlying type is {underlying:?}, and result type is {result_ty:?}"
+                            )),
+                            _ => Some(format!("target type {distinct:?} is not distinct")),
+                        },
+                        None => Some(format!("target type {distinct:?} has no type definition")),
+                    }
+                }
+                FirInstructionKind::DistinctToUnderlying { value, distinct } => {
+                    let source_ty = function.value_types.get(value);
+                    match definitions.get(distinct) {
+                        Some(definition) => match &definition.kind {
+                            TypeDefinitionKind::Distinct { underlying }
+                                if source_ty == Some(&Ty::Nominal(*distinct))
+                                    && result_ty == Some(underlying) =>
+                            {
+                                None
+                            }
+                            TypeDefinitionKind::Distinct { underlying } => Some(format!(
+                                "source type is {source_ty:?}, declared distinct type is {:?}, declared underlying type is {underlying:?}, and result type is {result_ty:?}",
+                                Ty::Nominal(*distinct)
+                            )),
+                            _ => Some(format!("source type {distinct:?} is not distinct")),
+                        },
+                        None => Some(format!("source type {distinct:?} has no type definition")),
+                    }
+                }
+                _ => continue,
+            };
+            if let Some(issue) = issue {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-distinct-conversion",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} distinct conversion violates its type-definition contract: {issue}",
+                        function.owner, block.id
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -2153,12 +2217,14 @@ pub fn verify_fir_module_with_types(
         verify_extract_fields(&initializer.function, definitions, &mut diagnostics);
         verify_named_variants(&initializer.function, definitions, &mut diagnostics);
         verify_bitstruct_storage_conversions(&initializer.function, definitions, &mut diagnostics);
+        verify_distinct_conversions(&initializer.function, definitions, &mut diagnostics);
     }
     for function in module.functions.values() {
         verify_make_aggregates(function, definitions, &mut diagnostics);
         verify_extract_fields(function, definitions, &mut diagnostics);
         verify_named_variants(function, definitions, &mut diagnostics);
         verify_bitstruct_storage_conversions(function, definitions, &mut diagnostics);
+        verify_distinct_conversions(function, definitions, &mut diagnostics);
     }
     diagnostics
 }

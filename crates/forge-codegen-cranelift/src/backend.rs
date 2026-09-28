@@ -6,7 +6,7 @@ use cranelift_codegen::Context;
 use forge_fir::{
     verify_fir_module_with_types, BinaryOp, CaptureMode, DefId, FirBasicBlock, FirFunction,
     FirInstructionKind, FirModule, FirPlace, FirTerminator, FirValueId, IntWidth, Ty,
-    TypeDefinitionKind, TypeDefinitionTable, UnsafeOperationKind,
+    TypeDefinitionTable, UnsafeOperationKind,
 };
 use target_lexicon::Triple;
 
@@ -428,7 +428,7 @@ fn validate_make_closure_contracts(fir: &FirFunction) -> Result<(), BackendError
 fn validate_c4_scalar_contract(
     fir: &FirFunction,
     layout: &TargetLayout,
-    definitions: &TypeDefinitionTable,
+    _definitions: &TypeDefinitionTable,
 ) -> Result<(), BackendError> {
     for block in &fir.blocks {
         for instruction in &block.instructions {
@@ -888,48 +888,6 @@ fn validate_c4_scalar_contract(
                         return Err(shape(format!(
                             "pointer offset has non-integer FIR type {offset_ty:?}"
                         )));
-                    }
-                }
-                FirInstructionKind::DistinctFromUnderlying { value, distinct } => {
-                    if result_ty != &Ty::Nominal(*distinct) {
-                        return Err(shape(
-                            "distinct construction result has the wrong nominal type",
-                        ));
-                    }
-                    let Some(definition) = definitions.get(distinct) else {
-                        return Err(shape(format!(
-                            "distinct construction has unknown type {distinct:?}"
-                        )));
-                    };
-                    let TypeDefinitionKind::Distinct { underlying } = &definition.kind else {
-                        return Err(shape("distinct construction target is not a distinct type"));
-                    };
-                    if value_type(fir, *value, "distinct construction input")? != underlying {
-                        return Err(shape(
-                            "distinct construction input differs from its underlying type",
-                        ));
-                    }
-                }
-                FirInstructionKind::DistinctToUnderlying { value, distinct } => {
-                    if value_type(fir, *value, "distinct extraction input")?
-                        != &Ty::Nominal(*distinct)
-                    {
-                        return Err(shape(
-                            "distinct extraction input has the wrong nominal type",
-                        ));
-                    }
-                    let Some(definition) = definitions.get(distinct) else {
-                        return Err(shape(format!(
-                            "distinct extraction has unknown type {distinct:?}"
-                        )));
-                    };
-                    let TypeDefinitionKind::Distinct { underlying } = &definition.kind else {
-                        return Err(shape("distinct extraction source is not a distinct type"));
-                    };
-                    if result_ty != underlying {
-                        return Err(shape(
-                            "distinct extraction result differs from its underlying type",
-                        ));
                     }
                 }
                 FirInstructionKind::SliceFromArrayRef { value } => {
