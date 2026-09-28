@@ -2172,6 +2172,70 @@ fn module_verifier_checks_length_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_unchecked_index_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_index;
+        fn first(values: u16[]) -> u16 { return values[0]; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let function_owner = function.owner;
+    let (base, index, result, block, instruction_index, span) =
+        function
+            .blocks
+            .iter()
+            .find_map(|block| {
+                block.instructions.iter().enumerate().find_map(
+                    |(instruction_index, instruction)| match &instruction.kind {
+                        FirInstructionKind::IndexUnchecked { base, index } => Some((
+                            *base,
+                            *index,
+                            instruction.result.expect("indexed result"),
+                            block.id,
+                            instruction_index,
+                            instruction.span,
+                        )),
+                        _ => None,
+                    },
+                )
+            })
+            .expect("unchecked-index producer");
+    let invalid_result_type = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    function
+        .value_types
+        .insert(result, invalid_result_type.clone());
+    function.return_type = invalid_result_type;
+
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-index-unchecked")
+        .expect("unchecked-index diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("indexes base {base:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("using index {index:?}")));
+    assert!(diagnostic.message.contains("width: W32"));
+    assert!(diagnostic.message.contains("width: W16"));
+    assert!(diagnostic.message.contains("exact element result type"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"

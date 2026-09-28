@@ -149,7 +149,7 @@ fn index_unchecked(base_ty: Ty, index_ty: Ty, result_ty: Ty) -> FirFunction {
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_invalid(function: FirFunction) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
     let definitions = TypeDefinitionTable::new();
@@ -161,8 +161,8 @@ fn assert_invalid(function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -170,54 +170,43 @@ fn assert_invalid(function: FirFunction, message: &str) {
 
 #[test]
 fn bounds_check_requires_a_usize_index() {
-    assert_invalid(
-        bounds_check(u(IntWidth::W32), u(IntWidth::Pointer)),
-        "bounds-check index has non-usize FIR type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(bounds_check(u(IntWidth::W32), u(IntWidth::Pointer)));
 }
 
 #[test]
 fn bounds_check_requires_a_usize_length() {
-    assert_invalid(
-        bounds_check(u(IntWidth::Pointer), u(IntWidth::W32)),
-        "bounds-check length has non-usize FIR type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(bounds_check(u(IntWidth::Pointer), u(IntWidth::W32)));
 }
 
 #[test]
 fn unchecked_index_requires_a_sequence_base() {
-    assert_invalid(
-        index_unchecked(u(IntWidth::W32), u(IntWidth::Pointer), u(IntWidth::W16)),
-        "index-unchecked instruction has unsupported FIR base type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(index_unchecked(
+        u(IntWidth::W32),
+        u(IntWidth::Pointer),
+        u(IntWidth::W16),
+    ));
 }
 
 #[test]
 fn unchecked_index_requires_a_usize_index() {
-    assert_invalid(
-        index_unchecked(
-            Ty::Slice {
-                mutable: false,
-                element: Box::new(u(IntWidth::W16)),
-            },
-            u(IntWidth::W32),
-            u(IntWidth::W16),
-        ),
-        "index-unchecked instruction has non-usize FIR index type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(index_unchecked(
+        Ty::Slice {
+            mutable: false,
+            element: Box::new(u(IntWidth::W16)),
+        },
+        u(IntWidth::W32),
+        u(IntWidth::W16),
+    ));
 }
 
 #[test]
 fn unchecked_index_requires_the_exact_element_result() {
-    assert_invalid(
-        index_unchecked(
-            Ty::Slice {
-                mutable: false,
-                element: Box::new(u(IntWidth::W16)),
-            },
-            u(IntWidth::Pointer),
-            u(IntWidth::W32),
-        ),
-        "index-unchecked instruction has FIR result type Int { signed: false, width: W32 }, indexed element type is Int { signed: false, width: W16 }",
-    );
+    assert_invalid(index_unchecked(
+        Ty::Slice {
+            mutable: false,
+            element: Box::new(u(IntWidth::W16)),
+        },
+        u(IntWidth::Pointer),
+        u(IntWidth::W32),
+    ));
 }
