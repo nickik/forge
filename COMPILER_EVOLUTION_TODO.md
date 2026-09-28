@@ -130,7 +130,8 @@ available on every backend merely because the frontend accepts it.
         element results before native lowering on AArch64 and RISC-V.
   - [x] Require handwritten `PointerConvert` operation tags to match exact
         pointer-to-integer, integer-to-pointer or distinct-pointer endpoint
-        types before native lowering on AArch64 and RISC-V.
+        types at the shared FIR boundary before native lowering on AArch64 and
+        RISC-V.
   - [x] Require handwritten `PointerOffset` instructions to use pointer bases,
         concrete integer offsets and exact base-pointer results at the shared
         FIR boundary before native lowering on AArch64 and RISC-V.

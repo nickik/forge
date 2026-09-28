@@ -78,7 +78,7 @@ fn function(
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_invalid(function: FirFunction) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
     let definitions = TypeDefinitionTable::new();
@@ -90,8 +90,8 @@ fn assert_invalid(function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -99,67 +99,52 @@ fn assert_invalid(function: FirFunction, message: &str) {
 
 #[test]
 fn pointer_convert_target_must_match_its_result() {
-    assert_invalid(
-        function(
-            pointer(u(IntWidth::W32)),
-            u(IntWidth::Pointer),
-            UnsafeOperationKind::PointerToInteger,
-            u(IntWidth::W32),
-        ),
-        "pointer-convert target Int { signed: false, width: Pointer } does not match FIR result type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(function(
+        pointer(u(IntWidth::W32)),
+        u(IntWidth::Pointer),
+        UnsafeOperationKind::PointerToInteger,
+        u(IntWidth::W32),
+    ));
 }
 
 #[test]
 fn pointer_to_integer_tag_requires_pointer_and_integer_endpoints() {
-    assert_invalid(
-        function(
-            u(IntWidth::W32),
-            u(IntWidth::Pointer),
-            UnsafeOperationKind::PointerToInteger,
-            u(IntWidth::Pointer),
-        ),
-        "pointer-convert operation PointerToInteger is incompatible with FIR types Int { signed: false, width: W32 } -> Int { signed: false, width: Pointer }",
-    );
+    assert_invalid(function(
+        u(IntWidth::W32),
+        u(IntWidth::Pointer),
+        UnsafeOperationKind::PointerToInteger,
+        u(IntWidth::Pointer),
+    ));
 }
 
 #[test]
 fn integer_to_pointer_tag_requires_integer_and_pointer_endpoints() {
     let pointer_ty = pointer(u(IntWidth::W32));
-    assert_invalid(
-        function(
-            pointer_ty.clone(),
-            pointer_ty.clone(),
-            UnsafeOperationKind::IntegerToPointer,
-            pointer_ty,
-        ),
-        "pointer-convert operation IntegerToPointer is incompatible with FIR types Pointer { volatile: false, inner: Int { signed: false, width: W32 } } -> Pointer { volatile: false, inner: Int { signed: false, width: W32 } }",
-    );
+    assert_invalid(function(
+        pointer_ty.clone(),
+        pointer_ty.clone(),
+        UnsafeOperationKind::IntegerToPointer,
+        pointer_ty,
+    ));
 }
 
 #[test]
 fn pointer_reinterpret_tag_requires_distinct_pointer_types() {
     let pointer_ty = pointer(u(IntWidth::W32));
-    assert_invalid(
-        function(
-            pointer_ty.clone(),
-            pointer_ty.clone(),
-            UnsafeOperationKind::PointerReinterpret,
-            pointer_ty,
-        ),
-        "pointer-convert operation PointerReinterpret is incompatible with FIR types Pointer { volatile: false, inner: Int { signed: false, width: W32 } } -> Pointer { volatile: false, inner: Int { signed: false, width: W32 } }",
-    );
+    assert_invalid(function(
+        pointer_ty.clone(),
+        pointer_ty.clone(),
+        UnsafeOperationKind::PointerReinterpret,
+        pointer_ty,
+    ));
 }
 
 #[test]
 fn pointer_convert_rejects_non_conversion_operation_tags() {
-    assert_invalid(
-        function(
-            pointer(u(IntWidth::W32)),
-            u(IntWidth::Pointer),
-            UnsafeOperationKind::PointerOffset { subtract: false },
-            u(IntWidth::Pointer),
-        ),
-        "pointer-convert instruction uses non-conversion operation PointerOffset { subtract: false }",
-    );
+    assert_invalid(function(
+        pointer(u(IntWidth::W32)),
+        u(IntWidth::Pointer),
+        UnsafeOperationKind::PointerOffset { subtract: false },
+        u(IntWidth::Pointer),
+    ));
 }

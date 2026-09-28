@@ -1100,6 +1100,55 @@ fn verify_pointer_offsets(function: &fir::FirFunction, diagnostics: &mut Vec<Fir
     }
 }
 
+fn verify_pointer_conversions(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::PointerConvert {
+                value,
+                target,
+                operation,
+                ..
+            } = &instruction.kind
+            else {
+                continue;
+            };
+            let source_type = function.value_types.get(value);
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let operation_matches = match operation {
+                crate::typecheck::UnsafeOperationKind::PointerToInteger => {
+                    matches!(source_type, Some(Ty::Pointer { .. }))
+                        && matches!(target, Ty::Byte | Ty::Int { .. })
+                }
+                crate::typecheck::UnsafeOperationKind::IntegerToPointer => {
+                    matches!(source_type, Some(Ty::Byte | Ty::Int { .. }))
+                        && matches!(target, Ty::Pointer { .. })
+                }
+                crate::typecheck::UnsafeOperationKind::PointerReinterpret => {
+                    matches!(source_type, Some(Ty::Pointer { .. }))
+                        && matches!(target, Ty::Pointer { .. })
+                        && source_type != Some(target)
+                }
+                crate::typecheck::UnsafeOperationKind::RawDereference { .. }
+                | crate::typecheck::UnsafeOperationKind::PointerOffset { .. } => false,
+            };
+            let valid =
+                instruction.result.is_some() && result_type == Some(target) && operation_matches;
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-pointer-convert",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} converts value {value:?} with type {source_type:?} using operation {operation:?} to target {target:?}, producing result {:?} with type {result_type:?}; expected a result matching the target and exact pointer-to-integer, integer-to-pointer, or distinct-pointer endpoint types for the operation tag",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1236,6 +1285,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_direct_safe_dereferences(&initializer.function, &mut diagnostics);
         verify_direct_raw_dereferences(&initializer.function, &mut diagnostics);
         verify_pointer_offsets(&initializer.function, &mut diagnostics);
+        verify_pointer_conversions(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -1266,6 +1316,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_direct_safe_dereferences(function, &mut diagnostics);
         verify_direct_raw_dereferences(function, &mut diagnostics);
         verify_pointer_offsets(function, &mut diagnostics);
+        verify_pointer_conversions(function, &mut diagnostics);
     }
 
     diagnostics
