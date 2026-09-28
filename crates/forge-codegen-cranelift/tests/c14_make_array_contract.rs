@@ -61,7 +61,7 @@ fn function(source_ty: Ty, result_ty: Ty, items: Vec<FirValueId>) -> FirFunction
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_invalid(function: FirFunction) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
     let definitions = TypeDefinitionTable::new();
@@ -73,8 +73,8 @@ fn assert_invalid(function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -82,38 +82,33 @@ fn assert_invalid(function: FirFunction, message: &str) {
 
 #[test]
 fn make_array_requires_a_fixed_array_result() {
-    assert_invalid(
-        function(u(IntWidth::W16), u(IntWidth::W16), vec![FirValueId(0)]),
-        "make-array instruction has non-fixed-array FIR result type Int { signed: false, width: W16 }",
-    );
+    assert_invalid(function(
+        u(IntWidth::W16),
+        u(IntWidth::W16),
+        vec![FirValueId(0)],
+    ));
 }
 
 #[test]
 fn make_array_requires_the_declared_length() {
-    assert_invalid(
-        function(
-            u(IntWidth::W16),
-            Ty::Array {
-                element: Box::new(u(IntWidth::W16)),
-                length: Some(2),
-            },
-            vec![FirValueId(0)],
-        ),
-        "make-array instruction declares length 2, but has 1 item(s)",
-    );
+    assert_invalid(function(
+        u(IntWidth::W16),
+        Ty::Array {
+            element: Box::new(u(IntWidth::W16)),
+            length: Some(2),
+        },
+        vec![FirValueId(0)],
+    ));
 }
 
 #[test]
 fn make_array_requires_exact_element_types() {
-    assert_invalid(
-        function(
-            u(IntWidth::W32),
-            Ty::Array {
-                element: Box::new(u(IntWidth::W16)),
-                length: Some(1),
-            },
-            vec![FirValueId(0)],
-        ),
-        "make-array item has FIR type Int { signed: false, width: W32 }, array element type is Int { signed: false, width: W16 }",
-    );
+    assert_invalid(function(
+        u(IntWidth::W32),
+        Ty::Array {
+            element: Box::new(u(IntWidth::W16)),
+            length: Some(1),
+        },
+        vec![FirValueId(0)],
+    ));
 }

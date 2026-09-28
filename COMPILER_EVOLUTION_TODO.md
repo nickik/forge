@@ -121,8 +121,8 @@ available on every backend merely because the frontend accepts it.
         contracts before AArch64/RISC-V lowering, including direction-sensitive
         narrowing and extension, without relaxing generic integer conversion.
   - [x] Require handwritten `MakeArray` instructions to produce fixed arrays
-        whose declared length and exact element type match their items on
-        AArch64 and RISC-V.
+        whose declared length and exact element type match their items at the
+        shared FIR boundary before native lowering on AArch64 and RISC-V.
   - [x] Require handwritten `Len` instructions to consume fixed arrays, slices
         or strings and produce `usize` on AArch64 and RISC-V.
   - [x] Require handwritten `BoundsCheck` operands to be `usize` and
