@@ -2284,9 +2284,9 @@ fn module_verifier_checks_string_constant_contracts() {
     assert!(diagnostics
         .iter()
         .all(|diagnostic| diagnostic.message.contains("width: W32")));
-    assert!(diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.message.contains("expected exact result type Str")));
+    assert!(diagnostics.iter().any(|diagnostic| diagnostic
+        .message
+        .contains("expected exact result type Str")));
     assert!(diagnostics
         .iter()
         .any(|diagnostic| diagnostic.message.contains("Pointer")));
