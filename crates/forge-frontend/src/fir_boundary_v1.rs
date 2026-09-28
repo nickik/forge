@@ -567,8 +567,15 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
                     | crate::ast::BinaryOp::Eq
                     | crate::ast::BinaryOp::NotEq
             );
+            let category_valid = match op {
+                crate::ast::BinaryOp::Rem => left_type
+                    .is_some_and(|ty| matches!(ty, Ty::Byte | Ty::Int { .. })),
+                _ if left_type == Some(&Ty::Char) => comparison,
+                _ => true,
+            };
             let valid = left_type.is_some()
                 && left_type == right_type
+                && category_valid
                 && if comparison {
                     result_type == Some(&Ty::Bool)
                 } else {
@@ -579,7 +586,7 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
                     instruction.span,
                     "fir/verify-binary",
                     format!(
-                        "FIR function {:?} block {:?} instruction {instruction_index} binary operation {op:?} uses left {left:?} with type {left_type:?}, right {right:?} with type {right_type:?}, and produces result {:?} with type {result_type:?}; expected exact operand type identity, a boolean comparison result, or an exact operand-typed non-comparison result",
+                        "FIR function {:?} block {:?} instruction {instruction_index} binary operation {op:?} uses left {left:?} with type {left_type:?}, right {right:?} with type {right_type:?}, and produces result {:?} with type {result_type:?}; expected exact operand type identity, a boolean comparison result, an exact operand-typed non-comparison result, comparison-only character operations, and integer-only remainder",
                         function.owner, block.id, instruction.result
                     ),
                 ));
