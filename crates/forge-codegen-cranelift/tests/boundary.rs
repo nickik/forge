@@ -386,11 +386,7 @@ fn invalid_binary_operator_domain_is_a_producer_contract_error() {
                     value: Some(result),
                 }),
             }],
-            value_types: BTreeMap::from([
-                (left, Ty::Bool),
-                (right, Ty::Bool),
-                (result, Ty::Bool),
-            ]),
+            value_types: BTreeMap::from([(left, Ty::Bool), (right, Ty::Bool), (result, Ty::Bool)]),
         },
     );
 
