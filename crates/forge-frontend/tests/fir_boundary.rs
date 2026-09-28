@@ -1282,12 +1282,7 @@ fn module_verifier_rejects_pointer_and_reference_comparisons() {
         },
     ];
     let mut changed = 0;
-    for (function, comparison_type) in fir
-        .module
-        .functions
-        .values_mut()
-        .zip(comparison_types)
-    {
+    for (function, comparison_type) in fir.module.functions.values_mut().zip(comparison_types) {
         for block in &mut function.blocks {
             for instruction in &mut block.instructions {
                 let FirInstructionKind::Binary { left, right, .. } = &instruction.kind else {
