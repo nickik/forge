@@ -827,8 +827,7 @@ fn verify_closure_capture_places(
                         field.map(|field| field.mode),
                         Some(CaptureMode::SharedReference)
                     ))
-                && (!direct
-                    || (result_shape_ok && actual_type == expected_type.as_ref()));
+                && (!direct || (result_shape_ok && actual_type == expected_type.as_ref()));
             if !valid {
                 diagnostics.push(diagnostic(
                     instruction.span,
