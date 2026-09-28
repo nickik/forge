@@ -4,7 +4,7 @@ use forge_codegen_cranelift::{BackendError, CraneliftBackend, CraneliftTarget};
 use forge_fir::{
     BinaryOp, DefId, FirBasicBlock, FirBlockId, FirFunction, FirInstruction, FirInstructionKind,
     FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator, FirValueId, IntWidth, Span, Ty,
-    TypeDefinition, TypeDefinitionKind, TypeDefinitionTable,
+    TypeDefinition, TypeDefinitionKind, TypeDefinitionTable, TypeVariantDefinition,
 };
 
 fn u(width: IntWidth) -> Ty {
@@ -15,16 +15,37 @@ fn u(width: IntWidth) -> Ty {
 }
 
 fn definitions() -> TypeDefinitionTable {
-    let owner = DefId(100);
-    BTreeMap::from([(
-        owner,
-        TypeDefinition {
-            owner,
-            kind: TypeDefinitionKind::Distinct {
-                underlying: u(IntWidth::W32),
+    BTreeMap::from([
+        (
+            DefId(100),
+            TypeDefinition {
+                owner: DefId(100),
+                kind: TypeDefinitionKind::Distinct {
+                    underlying: u(IntWidth::W32),
+                },
             },
-        },
-    )])
+        ),
+        (
+            DefId(101),
+            TypeDefinition {
+                owner: DefId(101),
+                kind: TypeDefinitionKind::Struct { fields: Vec::new() },
+            },
+        ),
+        (
+            DefId(102),
+            TypeDefinition {
+                owner: DefId(102),
+                kind: TypeDefinitionKind::Tagged {
+                    variants: vec![TypeVariantDefinition {
+                        name: "Empty".into(),
+                        declaration_index: 0,
+                        fields: Vec::new(),
+                    }],
+                },
+            },
+        ),
+    ])
 }
 
 fn function(source_ty: Ty, result_ty: Ty, instruction: FirInstructionKind) -> FirFunction {
@@ -92,8 +113,8 @@ fn assert_invalid_fir(function: FirFunction) {
     }
 }
 
-fn comparison_function() -> FirFunction {
-    let ty = Ty::Nominal(DefId(100));
+fn comparison_function(owner: DefId) -> FirFunction {
+    let ty = Ty::Nominal(owner);
     let left_local = FirLocalId(0);
     let right_local = FirLocalId(1);
     let left = FirValueId(0);
@@ -193,5 +214,12 @@ fn distinct_unwrap_requires_the_declared_underlying_result() {
 
 #[test]
 fn distinct_comparison_requires_explicit_underlying_conversion() {
-    assert_invalid_fir(comparison_function());
+    assert_invalid_fir(comparison_function(DefId(100)));
+}
+
+#[test]
+fn aggregate_comparisons_are_invalid_producer_contracts() {
+    for owner in [DefId(101), DefId(102)] {
+        assert_invalid_fir(comparison_function(owner));
+    }
 }

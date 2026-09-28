@@ -79,6 +79,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Require distinct values to be converted explicitly to their underlying
         type before comparison, enforced during typechecking and at the
         definition-aware shared FIR boundary.
+  - [x] Reject struct and tagged-union comparisons during typechecking and at
+        the definition-aware shared FIR boundary; Forge v1 defines field and
+        variant operations rather than implicit structural equality/order.
   - [x] Require handwritten binary FIR to carry explicit checked or wrapping
         overflow semantics for integer add/subtract/multiply, checked semantics
         for integer division/remainder/shifts, and no overflow mode for
