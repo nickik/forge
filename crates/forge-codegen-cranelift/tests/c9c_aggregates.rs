@@ -94,10 +94,7 @@ fn assert_invalid_on_host_targets(
     }
 }
 
-fn assert_invalid_fir_on_host_targets(
-    function: FirFunction,
-    defs: &TypeDefinitionTable,
-) {
+fn assert_invalid_fir_on_host_targets(function: FirFunction, defs: &TypeDefinitionTable) {
     let module = module_with(function);
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let backend = CraneliftBackend::new(target).expect("backend");
