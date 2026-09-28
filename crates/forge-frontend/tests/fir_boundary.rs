@@ -1375,7 +1375,7 @@ fn module_verifier_rejects_sequence_and_sum_comparisons() {
             }
         }
     }
-    assert_eq!(changed, 3);
+    assert_eq!(changed, 5);
 
     let diagnostics = verify_fir_module(&fir.module)
         .into_iter()
