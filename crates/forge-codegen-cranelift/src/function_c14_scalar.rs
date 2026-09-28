@@ -481,6 +481,38 @@ fn lower_c14_scalar_instruction(
             left,
             right,
             ..
+        } if value_type(fir, *left)? == &Ty::Duration
+            && value_type(fir, *right)? == &Ty::Duration =>
+        {
+            let cc = match op {
+                forge_fir::BinaryOp::Eq => IntCC::Equal,
+                forge_fir::BinaryOp::NotEq => IntCC::NotEqual,
+                forge_fir::BinaryOp::Less => IntCC::SignedLessThan,
+                forge_fir::BinaryOp::LessEq => IntCC::SignedLessThanOrEqual,
+                forge_fir::BinaryOp::Greater => IntCC::SignedGreaterThan,
+                forge_fir::BinaryOp::GreaterEq => IntCC::SignedGreaterThanOrEqual,
+                _ => {
+                    return Err(shape(format!(
+                        "duration FIR permits comparison operations only; got {op:?}"
+                    )))
+                }
+            };
+            let result = instruction
+                .result
+                .ok_or_else(|| shape("duration comparison has no result"))?;
+            let value = cursor.ins().icmp(
+                cc,
+                scalar(scalars, *left)?,
+                scalar(scalars, *right)?,
+            );
+            scalars.insert(result, value);
+            return Ok(());
+        }
+        FirInstructionKind::Binary {
+            op,
+            left,
+            right,
+            ..
         } if value_type(fir, *left)? == &Ty::Char && value_type(fir, *right)? == &Ty::Char => {
             let cc = match op {
                 forge_fir::BinaryOp::Eq => IntCC::Equal,
