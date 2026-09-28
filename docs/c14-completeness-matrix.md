@@ -128,6 +128,8 @@ Legend:
   AArch64/RISC-V lowering; generic numeric conversion remains lossless-only.
 - Dedicated distinct wrap/unwrap FIR validates the declared underlying and nominal types at the
   definition-aware shared FIR boundary before AArch64/RISC-V lowering.
+- Array-reference-to-slice FIR requires fixed arrays, exact element identity and no mutability
+  strengthening at the shared FIR boundary before AArch64/RISC-V lowering.
 - Array-construction FIR requires fixed result arrays whose declared length and exact element type
   match every item at the shared FIR boundary before AArch64/RISC-V lowering.
 - Length FIR accepts only fixed arrays, slices or strings and produces `usize` at the shared FIR

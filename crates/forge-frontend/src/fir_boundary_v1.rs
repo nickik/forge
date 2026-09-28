@@ -498,6 +498,55 @@ fn verify_bitfield_width_operations(
     }
 }
 
+fn verify_slice_from_array_references(
+    function: &fir::FirFunction,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::SliceFromArrayRef { value } = &instruction.kind else {
+                continue;
+            };
+            let source_ty = function.value_types.get(value);
+            let result_ty = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let valid = match (source_ty, result_ty) {
+                (
+                    Some(Ty::Reference {
+                        mutable: source_mutable,
+                        inner,
+                    }),
+                    Some(Ty::Slice {
+                        mutable: result_mutable,
+                        element: result_element,
+                    }),
+                ) => match inner.as_ref() {
+                    Ty::Array {
+                        element: source_element,
+                        length: Some(_),
+                    } => {
+                        source_element == result_element
+                            && (!*result_mutable || *source_mutable)
+                    }
+                    _ => false,
+                },
+                _ => false,
+            };
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-slice-from-array-ref",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} SliceFromArrayRef uses value {value:?} with type {source_ty:?} and produces result {:?} with type {result_ty:?}; expected a fixed-array reference converted to a slice with the exact element type and no mutability strengthening",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 fn module_function_signature(module: &FirModule, target: DefId) -> Option<(Vec<Ty>, Ty)> {
     module.functions.get(&target).and_then(|callee| {
         callee
@@ -2140,6 +2189,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_static_data_addresses(&initializer.function, module, &mut diagnostics);
         verify_global_accesses(&initializer.function, module, &mut diagnostics);
         verify_bitfield_width_operations(&initializer.function, &mut diagnostics);
+        verify_slice_from_array_references(&initializer.function, &mut diagnostics);
         verify_function_references(&initializer.function, module, &mut diagnostics);
         verify_direct_calls(&initializer.function, module, &mut diagnostics);
         verify_indirect_calls(&initializer.function, &mut diagnostics);
@@ -2180,6 +2230,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_static_data_addresses(function, module, &mut diagnostics);
         verify_global_accesses(function, module, &mut diagnostics);
         verify_bitfield_width_operations(function, &mut diagnostics);
+        verify_slice_from_array_references(function, &mut diagnostics);
         verify_function_references(function, module, &mut diagnostics);
         verify_direct_calls(function, module, &mut diagnostics);
         verify_indirect_calls(function, &mut diagnostics);

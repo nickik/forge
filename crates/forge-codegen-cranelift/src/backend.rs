@@ -890,30 +890,6 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                 }
-                FirInstructionKind::SliceFromArrayRef { value } => {
-                    let source = value_type(fir, *value, "slice conversion input")?;
-                    let (source_mutable, source_element) =
-                        match source {
-                            Ty::Reference { mutable, inner } => match inner.as_ref() {
-                                Ty::Array {
-                                    element,
-                                    length: Some(_),
-                                } => (*mutable, element.as_ref()),
-                                _ => return Err(shape(
-                                    "slice conversion source is not a reference to a fixed array",
-                                )),
-                            },
-                            _ => return Err(shape("slice conversion source is not a reference")),
-                        };
-                    let Ty::Slice { mutable, element } = result_ty else {
-                        return Err(shape("slice conversion result is not a slice"));
-                    };
-                    if source_element != element.as_ref() || (*mutable && !source_mutable) {
-                        return Err(shape(
-                            "slice conversion source and result types are incompatible",
-                        ));
-                    }
-                }
                 FirInstructionKind::BitFieldExtract { value } => {
                     let source = value_type(fir, *value, "bitfield conversion input")?;
                     if !matches!(source, Ty::Byte | Ty::Int { signed: false, .. })

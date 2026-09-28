@@ -1062,6 +1062,67 @@ fn definition_aware_module_verifier_checks_distinct_conversions() {
 }
 
 #[test]
+fn module_verifier_checks_slice_from_array_reference_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_slice_from_array_ref;
+        type ReadSlice = u32[];
+        fn main() -> i32 {
+            var values: [u32; 2] = [4u32, 9u32];
+            val view: ReadSlice = ReadSlice(&values);
+            return i32(view[0]);
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module(&fir.module).is_empty());
+
+    let function = fir
+        .module
+        .functions
+        .values_mut()
+        .find(|function| {
+            function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(
+                        instruction.kind,
+                        FirInstructionKind::SliceFromArrayRef { .. }
+                    )
+                })
+            })
+        })
+        .expect("slice-converting function");
+    let result = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .find_map(|instruction| match instruction.kind {
+            FirInstructionKind::SliceFromArrayRef { .. } => instruction.result,
+            _ => None,
+        })
+        .expect("slice conversion result");
+    function.value_types.insert(
+        result,
+        Ty::Slice {
+            mutable: true,
+            element: Box::new(Ty::Int {
+                signed: false,
+                width: IntWidth::W32,
+            }),
+        },
+    );
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-slice-from-array-ref")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(diagnostics[0]
+        .message
+        .contains("no mutability strengthening"));
+}
+
+#[test]
 fn module_verifier_checks_function_reference_targets_and_signatures() {
     let source = r#"
         module test.boundary_function_ref;
