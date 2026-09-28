@@ -1,8 +1,9 @@
 use forge_frontend::{
-    dump_fir_module, lower_fir, lower_module, lower_resolved_bodies, parse_source,
-    type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module, ConstValue,
-    DefId, ExprId, FirBlockId, FirGlobal, FirInstructionKind, FirLocal, FirLocalId, FirModule,
-    FirPlace, FirTerminator, IntWidth, Ty, UnsafeOperationKind,
+    collect_type_definitions, dump_fir_module, lower_fir, lower_module, lower_resolved_bodies,
+    parse_source, type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module,
+    verify_fir_module_with_types, ConstValue, DefId, ExprId, FirBlockId, FirGlobal,
+    FirInstructionKind, FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator, IntWidth, Ty,
+    TypeDefinitionTable, UnsafeOperationKind,
 };
 
 fn pipeline(
@@ -35,6 +36,33 @@ fn pipeline(
     );
     let fir = lower_fir(&bodies, &typed);
     (bodies, typed, fir)
+}
+
+fn pipeline_with_type_definitions(source: &str) -> (forge_frontend::FirOutput, TypeDefinitionTable) {
+    let parsed = parse_source(source);
+    assert!(
+        parsed.diagnostics.is_empty(),
+        "parse: {:?}",
+        parsed.diagnostics
+    );
+    let ast = parsed.ast.expect("AST");
+    let hir = lower_module(&ast);
+    assert!(hir.diagnostics.is_empty(), "hir: {:?}", hir.diagnostics);
+    let bodies = lower_resolved_bodies(&ast, &hir.module);
+    assert!(
+        bodies.diagnostics.is_empty(),
+        "body HIR: {:?}",
+        bodies.diagnostics
+    );
+    let typed = type_check_module(&ast, &hir.module, &bodies);
+    assert!(
+        typed.diagnostics.is_empty(),
+        "typed: {:?}",
+        typed.diagnostics
+    );
+    let definitions = collect_type_definitions(&ast, &hir.module, &bodies, &typed);
+    let fir = lower_fir(&bodies, &typed);
+    (fir, definitions)
 }
 
 #[test]
@@ -2519,6 +2547,42 @@ fn module_verifier_checks_variant_operation_contracts() {
     assert!(diagnostics
         .iter()
         .all(|diagnostic| diagnostic.message.contains("width: W32")));
+}
+
+#[test]
+fn definition_aware_module_verifier_checks_aggregate_construction() {
+    let (mut fir, definitions) = pipeline_with_type_definitions(
+        r#"
+        module test.boundary_make_aggregate;
+        struct Packet { kind: u8; count: u32; }
+        fn packet() -> Packet { return Packet{kind: 7u8, count: 9u32}; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module_with_types(&fir.module, &definitions).is_empty());
+
+    let instruction = fir
+        .module
+        .functions
+        .values_mut()
+        .flat_map(|function| function.blocks.iter_mut())
+        .flat_map(|block| block.instructions.iter_mut())
+        .find(|instruction| matches!(instruction.kind, FirInstructionKind::MakeAggregate { .. }))
+        .expect("aggregate construction");
+    let FirInstructionKind::MakeAggregate { fields, .. } = &mut instruction.kind else {
+        unreachable!();
+    };
+    fields[0].0 = "undeclared".into();
+
+    let diagnostics = verify_fir_module_with_types(&fir.module, &definitions)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-make-aggregate")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(diagnostics[0].message.contains("MakeAggregate"));
+    assert!(diagnostics[0]
+        .message
+        .contains("field `undeclared` is not declared"));
 }
 
 #[test]

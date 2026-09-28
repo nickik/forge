@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
     ast::{FdnValue, Span},
@@ -6,7 +6,8 @@ use crate::{
     fir::{self, FirDiagnostic, FirInstructionKind, FirModule, FirOutput},
     hir::DefId,
     typecheck::{
-        CaptureMode, ConstValue, IntWidth, Ty, TypeCheckOutput, TypedBody, TypedExpr, TypedExprKind,
+        CaptureMode, ConstValue, IntWidth, Ty, TypeCheckOutput, TypeDefinitionKind,
+        TypeDefinitionTable, TypedBody, TypedExpr, TypedExprKind,
     },
 };
 
@@ -1612,6 +1613,103 @@ fn verify_variant_operations(function: &fir::FirFunction, diagnostics: &mut Vec<
     }
 }
 
+fn make_aggregate_contract_issue(
+    function: &fir::FirFunction,
+    definitions: &TypeDefinitionTable,
+    result: Option<fir::FirValueId>,
+    declared_ty: &Ty,
+    variant_name: Option<&str>,
+    fields: &[(String, fir::FirValueId)],
+) -> Option<String> {
+    let result_ty = result.and_then(|value| function.value_types.get(&value));
+    if result_ty != Some(declared_ty) {
+        return Some(format!(
+            "declared type {declared_ty:?} does not match result type {result_ty:?}"
+        ));
+    }
+    let Ty::Nominal(owner) = declared_ty else {
+        return Some(format!("declared type {declared_ty:?} is not nominal"));
+    };
+    let Some(definition) = definitions.get(owner) else {
+        return Some(format!("declared type {owner:?} has no type definition"));
+    };
+    let declared_fields = match &definition.kind {
+        TypeDefinitionKind::Struct { fields } => {
+            if let Some(name) = variant_name {
+                return Some(format!("struct construction unexpectedly names variant `{name}`"));
+            }
+            fields
+        }
+        TypeDefinitionKind::Tagged { variants } => {
+            let Some(name) = variant_name else {
+                return Some("tagged construction is missing its variant".into());
+            };
+            let Some(variant) = variants.iter().find(|variant| variant.name == name) else {
+                return Some(format!("unknown variant `{name}` for type {declared_ty:?}"));
+            };
+            &variant.fields
+        }
+        _ => return Some(format!("declared type {declared_ty:?} is not an aggregate")),
+    };
+
+    let mut seen = BTreeSet::new();
+    for (name, value) in fields {
+        if !seen.insert(name.as_str()) {
+            return Some(format!("field `{name}` is supplied more than once"));
+        }
+        let Some(declared) = declared_fields.iter().find(|field| field.name == *name) else {
+            return Some(format!("field `{name}` is not declared"));
+        };
+        let payload_ty = function.value_types.get(value);
+        if payload_ty != Some(&declared.ty) {
+            return Some(format!(
+                "field `{name}` has payload type {payload_ty:?}, expected {:?}",
+                declared.ty
+            ));
+        }
+    }
+    declared_fields
+        .iter()
+        .find(|field| !seen.contains(field.name.as_str()))
+        .map(|field| format!("declared field `{}` is missing", field.name))
+}
+
+fn verify_make_aggregates(
+    function: &fir::FirFunction,
+    definitions: &TypeDefinitionTable,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::MakeAggregate {
+                ty,
+                variant,
+                fields,
+            } = &instruction.kind
+            else {
+                continue;
+            };
+            if let Some(issue) = make_aggregate_contract_issue(
+                function,
+                definitions,
+                instruction.result,
+                ty,
+                variant.as_deref(),
+                fields,
+            ) {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-make-aggregate",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} MakeAggregate violates its type-definition contract: {issue}",
+                        function.owner, block.id
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1800,6 +1898,20 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_variant_operations(function, &mut diagnostics);
     }
 
+    diagnostics
+}
+
+pub fn verify_fir_module_with_types(
+    module: &FirModule,
+    definitions: &TypeDefinitionTable,
+) -> Vec<FirDiagnostic> {
+    let mut diagnostics = verify_fir_module(module);
+    for initializer in module.global_initializers.values() {
+        verify_make_aggregates(&initializer.function, definitions, &mut diagnostics);
+    }
+    for function in module.functions.values() {
+        verify_make_aggregates(function, definitions, &mut diagnostics);
+    }
     diagnostics
 }
 

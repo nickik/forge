@@ -178,7 +178,7 @@ fn aggregate_constructor_rejects_duplicate_supplied_fields() {
         u(IntWidth::W8),
     );
     let defs = BTreeMap::from([record_def()]);
-    assert_invalid_on_host_targets(function, &defs, "duplicate aggregate field `a`");
+    assert_invalid_fir_on_host_targets(function, &defs);
 }
 
 #[test]
@@ -186,11 +186,7 @@ fn aggregate_constructor_requires_exact_supplied_field_types() {
     let value = FirValueId(0);
     let function = aggregate_constructor(vec![("a".into(), value)], u(IntWidth::W32));
     let defs = BTreeMap::from([record_def()]);
-    assert_invalid_on_host_targets(
-        function,
-        &defs,
-        "make-aggregate field `a` has FIR payload type Int { signed: false, width: W32 }, declared field type is Int { signed: false, width: W8 }",
-    );
+    assert_invalid_fir_on_host_targets(function, &defs);
 }
 
 #[test]
@@ -198,11 +194,7 @@ fn aggregate_constructor_requires_every_declared_field() {
     let value = FirValueId(0);
     let function = aggregate_constructor(vec![("a".into(), value)], u(IntWidth::W8));
     let defs = BTreeMap::from([record_def()]);
-    assert_invalid_on_host_targets(
-        function,
-        &defs,
-        "make-aggregate instruction is missing declared field `b`",
-    );
+    assert_invalid_fir_on_host_targets(function, &defs);
 }
 
 #[test]

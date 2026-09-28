@@ -119,7 +119,8 @@ available on every backend merely because the frontend accepts it.
         before AArch64 and RISC-V lowering.
   - [x] Require handwritten `MakeAggregate` instructions to declare the result
         type once, name each supplied field once, and supply its exact declared
-        payload type on AArch64 and RISC-V.
+        payload type at the definition-aware shared FIR boundary before native
+        lowering on AArch64 and RISC-V.
   - [x] Require handwritten `ExtractField` instructions to use field-bearing
         bases and produce the exact declared field type on AArch64 and RISC-V.
   - [x] Materialize omitted struct/tagged field defaults in body HIR before
