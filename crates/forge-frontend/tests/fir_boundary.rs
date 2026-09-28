@@ -2402,6 +2402,71 @@ fn module_verifier_checks_option_operation_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_result_operation_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_result_operations;
+        fn ok() -> Result[u32, u8] { return Ok(1u32); }
+        fn err() -> Result[u32, u8] { return Err(2u8); }
+        fn inspect(value: Result[u32, u8]) -> u32 {
+            return match (value) {
+                Ok(payload) => payload,
+                Err(error) => u32(error),
+            };
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let invalid_result_type = Ty::Int {
+        signed: false,
+        width: IntWidth::W64,
+    };
+    let mut changed = 0;
+    for function in fir.module.functions.values_mut() {
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                if matches!(
+                    instruction.kind,
+                    FirInstructionKind::MakeResultOk { .. }
+                        | FirInstructionKind::MakeResultErr { .. }
+                        | FirInstructionKind::ResultIsOk { .. }
+                        | FirInstructionKind::ResultUnwrapOk { .. }
+                        | FirInstructionKind::ResultUnwrapErr { .. }
+                ) {
+                    let result = instruction.result.expect("result-operation result");
+                    function
+                        .value_types
+                        .insert(result, invalid_result_type.clone());
+                    changed += 1;
+                }
+            }
+        }
+    }
+    assert!(changed >= 5);
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-result-operation")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
+    for operation in [
+        "MakeResultOk",
+        "MakeResultErr",
+        "ResultIsOk",
+        "ResultUnwrapOk",
+        "ResultUnwrapErr",
+    ] {
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains(operation)));
+    }
+    assert!(diagnostics
+        .iter()
+        .all(|diagnostic| diagnostic.message.contains("width: W64")));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"

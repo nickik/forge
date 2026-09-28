@@ -1465,6 +1465,113 @@ fn verify_option_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
     }
 }
 
+fn verify_result_operations(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let (operation, input, input_type, expected_result, valid) = match &instruction.kind {
+                FirInstructionKind::MakeResultOk { value } => {
+                    let input_type = function.value_types.get(value);
+                    let expected_result = match result_type {
+                        Some(Ty::Result { ok, .. }) if Some(ok.as_ref()) == input_type => {
+                            result_type.cloned()
+                        }
+                        _ => None,
+                    };
+                    (
+                        "MakeResultOk",
+                        *value,
+                        input_type,
+                        expected_result,
+                        instruction.result.is_some()
+                            && matches!(
+                                result_type,
+                                Some(Ty::Result { ok, .. })
+                                    if Some(ok.as_ref()) == input_type
+                            ),
+                    )
+                }
+                FirInstructionKind::MakeResultErr { error } => {
+                    let input_type = function.value_types.get(error);
+                    let expected_result = match result_type {
+                        Some(Ty::Result { error, .. }) if Some(error.as_ref()) == input_type => {
+                            result_type.cloned()
+                        }
+                        _ => None,
+                    };
+                    (
+                        "MakeResultErr",
+                        *error,
+                        input_type,
+                        expected_result,
+                        instruction.result.is_some()
+                            && matches!(
+                                result_type,
+                                Some(Ty::Result { error, .. })
+                                    if Some(error.as_ref()) == input_type
+                            ),
+                    )
+                }
+                FirInstructionKind::ResultIsOk { value } => {
+                    let input_type = function.value_types.get(value);
+                    (
+                        "ResultIsOk",
+                        *value,
+                        input_type,
+                        Some(Ty::Bool),
+                        instruction.result.is_some()
+                            && matches!(input_type, Some(Ty::Result { .. }))
+                            && result_type == Some(&Ty::Bool),
+                    )
+                }
+                FirInstructionKind::ResultUnwrapOk { value }
+                | FirInstructionKind::ResultUnwrapErr { value } => {
+                    let input_type = function.value_types.get(value);
+                    let (operation, expected_result) = match (&instruction.kind, input_type) {
+                        (
+                            FirInstructionKind::ResultUnwrapOk { .. },
+                            Some(Ty::Result { ok, .. }),
+                        ) => ("ResultUnwrapOk", Some(ok.as_ref().clone())),
+                        (
+                            FirInstructionKind::ResultUnwrapErr { .. },
+                            Some(Ty::Result { error, .. }),
+                        ) => ("ResultUnwrapErr", Some(error.as_ref().clone())),
+                        (FirInstructionKind::ResultUnwrapOk { .. }, _) => {
+                            ("ResultUnwrapOk", None)
+                        }
+                        (FirInstructionKind::ResultUnwrapErr { .. }, _) => {
+                            ("ResultUnwrapErr", None)
+                        }
+                        _ => unreachable!(),
+                    };
+                    (
+                        operation,
+                        *value,
+                        input_type,
+                        expected_result.clone(),
+                        instruction.result.is_some()
+                            && expected_result.is_some()
+                            && result_type == expected_result.as_ref(),
+                    )
+                }
+                _ => continue,
+            };
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-result-operation",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} {operation} uses value {input:?} with type {input_type:?} and produces result {:?} with type {result_type:?}; expected a result operation with exact result type {expected_result:?}",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1609,6 +1716,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_string_constants(&initializer.function, &mut diagnostics);
         verify_zero_payload_producers(&initializer.function, &mut diagnostics);
         verify_option_operations(&initializer.function, &mut diagnostics);
+        verify_result_operations(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -1647,6 +1755,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_string_constants(function, &mut diagnostics);
         verify_zero_payload_producers(function, &mut diagnostics);
         verify_option_operations(function, &mut diagnostics);
+        verify_result_operations(function, &mut diagnostics);
     }
 
     diagnostics

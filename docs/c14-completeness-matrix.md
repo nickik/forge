@@ -105,11 +105,11 @@ Legend:
 - Handwritten `OptionUnwrap` instructions require optional inputs and their exact payload result
   type at the shared FIR boundary before AArch64/RISC-V lowering.
 - Handwritten `ResultIsOk` instructions require result inputs and boolean results on
-  AArch64/RISC-V.
+  the shared FIR boundary before AArch64/RISC-V lowering.
 - Handwritten `ResultUnwrapOk` and `ResultUnwrapErr` instructions require result inputs and their
-  exact variant payload result types on AArch64/RISC-V.
+  exact variant payload result types at the shared FIR boundary before AArch64/RISC-V lowering.
 - Handwritten `MakeResultOk` and `MakeResultErr` instructions require result outputs and their exact
-  variant payload input types on AArch64/RISC-V.
+  variant payload input types at the shared FIR boundary before AArch64/RISC-V lowering.
 - Handwritten `MakeSome` instructions require optional outputs and their exact payload input type on
   the shared FIR boundary before AArch64/RISC-V lowering.
 - Fieldless enum/tagged variants use `Variant`; payload-bearing tagged variants require

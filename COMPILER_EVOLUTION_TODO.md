@@ -101,13 +101,14 @@ available on every backend merely because the frontend accepts it.
         values and produce their exact payload type at the shared FIR boundary
         before native lowering on AArch64 and RISC-V.
   - [x] Require handwritten `ResultIsOk` instructions to consume result values
-        and produce booleans on AArch64 and RISC-V.
+        and produce booleans at the shared FIR boundary before native lowering
+        on AArch64 and RISC-V.
   - [x] Require handwritten `ResultUnwrapOk` and `ResultUnwrapErr` instructions
         to consume result values and produce their exact variant payload types
-        on AArch64 and RISC-V.
+        at the shared FIR boundary before native lowering on AArch64 and RISC-V.
   - [x] Require handwritten `MakeResultOk` and `MakeResultErr` instructions to
         produce result values from their exact variant payload types on AArch64
-        and RISC-V.
+        and RISC-V after validation at the shared FIR boundary.
   - [x] Require handwritten `MakeSome` instructions to produce optional values
         from their exact payload type at the shared FIR boundary before native
         lowering on AArch64 and RISC-V.
