@@ -16,7 +16,7 @@ impl CraneliftBackend {
         module: &FirModule,
         definitions: &TypeDefinitionTable,
     ) -> Result<C11dPreparedFunctions, BackendError> {
-        let diagnostics = verify_fir_module(module);
+        let diagnostics = verify_fir_module_with_types(module, definitions);
         if !diagnostics.is_empty() {
             return Err(BackendError::InvalidFir {
                 diagnostic_count: diagnostics.len(),
