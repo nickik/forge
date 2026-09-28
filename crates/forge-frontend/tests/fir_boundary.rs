@@ -1123,6 +1123,48 @@ fn module_verifier_checks_slice_from_array_reference_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_numeric_conversion_producer_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_numeric_conversions;
+        fn widen(value: u8) -> u64 { return u64(value); }
+        fn to_float(value: i32) -> f64 { return f64(value); }
+        fn widen_float(value: f32) -> f64 { return f64(value); }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module(&fir.module).is_empty());
+
+    let mut changed = 0;
+    for function in fir.module.functions.values_mut() {
+        for block in &mut function.blocks {
+            for instruction in &mut block.instructions {
+                let target = match &mut instruction.kind {
+                    FirInstructionKind::LosslessIntegerConvert { target, .. }
+                    | FirInstructionKind::IntegerToFloat { target, .. }
+                    | FirInstructionKind::FloatConvert { target, .. } => target,
+                    _ => continue,
+                };
+                *target = Ty::Bool;
+                changed += 1;
+            }
+        }
+    }
+    assert_eq!(changed, 3);
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-numeric-conversion")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
+    for operation in ["LosslessIntegerConvert", "IntegerToFloat", "FloatConvert"] {
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains(operation)));
+    }
+}
+
+#[test]
 fn module_verifier_checks_function_reference_targets_and_signatures() {
     let source = r#"
         module test.boundary_function_ref;

@@ -1225,6 +1225,66 @@ fn verify_pointer_conversions(function: &fir::FirFunction, diagnostics: &mut Vec
     }
 }
 
+fn verify_numeric_conversions(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let (operation, value, target, valid_source) = match &instruction.kind {
+                FirInstructionKind::LosslessIntegerConvert { value, target } => (
+                    "LosslessIntegerConvert",
+                    value,
+                    target,
+                    matches!(
+                        function.value_types.get(value),
+                        Some(Ty::Int { .. } | Ty::Byte)
+                    ),
+                ),
+                FirInstructionKind::IntegerToFloat { value, target } => (
+                    "IntegerToFloat",
+                    value,
+                    target,
+                    matches!(
+                        function.value_types.get(value),
+                        Some(Ty::Int { .. } | Ty::Byte)
+                    ),
+                ),
+                FirInstructionKind::FloatConvert { value, target } => (
+                    "FloatConvert",
+                    value,
+                    target,
+                    matches!(function.value_types.get(value), Some(Ty::Float { .. })),
+                ),
+                _ => continue,
+            };
+            let source_type = function.value_types.get(value);
+            let valid_target = match &instruction.kind {
+                FirInstructionKind::LosslessIntegerConvert { .. } => {
+                    matches!(target, Ty::Int { .. } | Ty::Byte)
+                }
+                FirInstructionKind::IntegerToFloat { .. }
+                | FirInstructionKind::FloatConvert { .. } => matches!(target, Ty::Float { .. }),
+                _ => unreachable!(),
+            };
+            if instruction.result.is_none()
+                || !valid_source
+                || !valid_target
+                || result_type != Some(target)
+            {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-numeric-conversion",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} {operation} converts value {value:?} with type {source_type:?} to target {target:?}, producing result {:?} with type {result_type:?}; expected operation-compatible numeric endpoints and exact target/result agreement",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 fn verify_array_construction(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
     for block in &function.blocks {
         for (instruction_index, instruction) in block.instructions.iter().enumerate() {
@@ -2201,6 +2261,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_direct_raw_dereferences(&initializer.function, &mut diagnostics);
         verify_pointer_offsets(&initializer.function, &mut diagnostics);
         verify_pointer_conversions(&initializer.function, &mut diagnostics);
+        verify_numeric_conversions(&initializer.function, &mut diagnostics);
         verify_array_construction(&initializer.function, &mut diagnostics);
         verify_lengths(&initializer.function, &mut diagnostics);
         verify_indexing(&initializer.function, &mut diagnostics);
@@ -2242,6 +2303,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_direct_raw_dereferences(function, &mut diagnostics);
         verify_pointer_offsets(function, &mut diagnostics);
         verify_pointer_conversions(function, &mut diagnostics);
+        verify_numeric_conversions(function, &mut diagnostics);
         verify_array_construction(function, &mut diagnostics);
         verify_lengths(function, &mut diagnostics);
         verify_indexing(function, &mut diagnostics);
