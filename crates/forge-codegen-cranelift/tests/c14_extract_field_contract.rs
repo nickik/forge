@@ -95,7 +95,12 @@ fn assert_invalid(function: FirFunction, definitions: &TypeDefinitionTable) {
             Ok(_) => panic!("malformed extract-field FIR unexpectedly lowered"),
             Err(error) => error,
         };
-        assert_eq!(error, BackendError::InvalidFir { diagnostic_count: 1 });
+        assert_eq!(
+            error,
+            BackendError::InvalidFir {
+                diagnostic_count: 1
+            }
+        );
     }
 }
 
