@@ -3,8 +3,8 @@ use forge_frontend::{
     collect_type_definitions, dump_fir_module, lower_fir, lower_module, lower_resolved_bodies,
     parse_source, type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module,
     verify_fir_module_with_types, ConstValue, DefId, ExprId, FirBlockId, FirGlobal,
-    FirInstructionKind, FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator, IntWidth, Ty,
-    TypeDefinitionTable, UnsafeOperationKind,
+    FirInstructionKind, FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator, IntWidth,
+    OverflowMode, Ty, TypeDefinitionTable, UnsafeOperationKind,
 };
 
 fn pipeline(
@@ -1209,6 +1209,59 @@ fn module_verifier_checks_binary_operation_categories() {
         .collect::<Vec<_>>();
     assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
     for operation in ["Rem", "Add"] {
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains(operation)));
+    }
+}
+
+#[test]
+fn module_verifier_checks_binary_overflow_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_binary_overflow;
+        fn add(left: u32, right: u32) -> u32 { return left + right; }
+        @overflow(wrap)
+        fn multiply(left: u32, right: u32) -> u32 { return left * right; }
+        fn divide(left: u32, right: u32) -> u32 { return left / right; }
+        fn compare(left: u32, right: u32) -> bool { return left == right; }
+        fn bitwise(left: u32, right: u32) -> u32 { return left & right; }
+        fn add_float(left: f32, right: f32) -> f32 { return left + right; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module(&fir.module).is_empty());
+
+    let mut changed = 0;
+    for function in fir.module.functions.values_mut() {
+        for block in &mut function.blocks {
+            for instruction in &mut block.instructions {
+                let FirInstructionKind::Binary {
+                    op, overflow, left, ..
+                } = &mut instruction.kind
+                else {
+                    continue;
+                };
+                let left_type = function.value_types.get(left);
+                *overflow = match (*op, left_type) {
+                    (BinaryOp::Add | BinaryOp::Mul, Some(Ty::Int { .. })) => None,
+                    (BinaryOp::Div, Some(Ty::Int { .. })) => Some(OverflowMode::Wrapping),
+                    (BinaryOp::Eq | BinaryOp::BitAnd, Some(Ty::Int { .. }))
+                    | (BinaryOp::Add, Some(Ty::Float { .. })) => Some(OverflowMode::Checked),
+                    _ => continue,
+                };
+                changed += 1;
+            }
+        }
+    }
+    assert_eq!(changed, 6);
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-binary")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
+    for operation in ["Add", "Mul", "Div", "Eq", "BitAnd"] {
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.message.contains(operation)));

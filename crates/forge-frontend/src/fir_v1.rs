@@ -1721,7 +1721,7 @@ impl<'a> FunctionLowerer<'a> {
                 } else {
                     let left = self.lower_expr(left);
                     let right = self.lower_expr(right);
-                    let overflow = binary_overflow(*op, self.overflow);
+                    let overflow = binary_overflow(*op, &left_ty, self.overflow);
                     self.emit_value(
                         expr.span,
                         ty,
@@ -3792,7 +3792,10 @@ fn integer_width_bits(ty: &Ty) -> Option<u32> {
     }
 }
 
-fn binary_overflow(op: BinaryOp, mode: OverflowMode) -> Option<OverflowMode> {
+fn binary_overflow(op: BinaryOp, operand_type: &Ty, mode: OverflowMode) -> Option<OverflowMode> {
+    if matches!(operand_type, Ty::Float { .. }) {
+        return None;
+    }
     match op {
         BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => Some(mode),
         BinaryOp::Div | BinaryOp::Rem | BinaryOp::ShiftLeft | BinaryOp::ShiftRight => {
