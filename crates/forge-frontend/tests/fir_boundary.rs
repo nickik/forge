@@ -3378,7 +3378,7 @@ fn definition_aware_module_verifier_rejects_struct_and_tagged_comparisons() {
         .module
         .functions
         .values_mut()
-        .zip(comparison_types.into_iter())
+        .zip(comparison_types)
     {
         for instruction in function
             .blocks
