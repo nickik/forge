@@ -3068,6 +3068,16 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                             "function/closure comparisons are not defined in Forge v1: {l:?}, {r:?}"
                         ),
                     );
+                } else if matches!(&l, Ty::Str | Ty::Slice { .. } | Ty::Array { .. })
+                    || matches!(&r, Ty::Str | Ty::Slice { .. } | Ty::Array { .. })
+                {
+                    self.diagnostic(
+                        span,
+                        "type/mismatch",
+                        format!(
+                            "string/slice/array comparisons are not defined in Forge v1: {l:?}, {r:?}"
+                        ),
+                    );
                 } else if !self.compatible_binary(&l, &r) {
                     self.diagnostic(
                         span,
