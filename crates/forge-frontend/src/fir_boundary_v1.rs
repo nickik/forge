@@ -842,10 +842,7 @@ fn verify_closure_capture_places(
     }
 }
 
-fn verify_direct_local_stores(
-    function: &fir::FirFunction,
-    diagnostics: &mut Vec<FirDiagnostic>,
-) {
+fn verify_direct_local_stores(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
     for block in &function.blocks {
         for (instruction_index, instruction) in block.instructions.iter().enumerate() {
             let FirInstructionKind::Store {
