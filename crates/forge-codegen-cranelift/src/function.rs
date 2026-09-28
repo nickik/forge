@@ -1025,7 +1025,8 @@ fn lower_integer_unary(
     let value = lookup_value(values, input)?;
     Ok(match op {
         FirUnaryOp::Neg => {
-            let zero = cursor.ins().iconst(cursor.func.dfg.value_type(value), 0);
+            let value_type = cursor.func.dfg.value_type(value);
+            let zero = cursor.ins().iconst(value_type, 0);
             lower_add_sub_mul(BinaryOp::Sub, ty, overflow, zero, value, cursor)?
         }
         FirUnaryOp::BitNot => {
