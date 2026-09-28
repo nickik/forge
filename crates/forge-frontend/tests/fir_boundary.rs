@@ -1021,6 +1021,47 @@ fn definition_aware_module_verifier_checks_bitstruct_storage_conversions() {
 }
 
 #[test]
+fn definition_aware_module_verifier_checks_distinct_conversions() {
+    let (mut fir, definitions) = pipeline_with_type_definitions(
+        r#"
+        module test.boundary_distinct_conversion;
+        distinct UserId: u32;
+        fn unwrap() -> u32 {
+            val user: UserId = UserId(7u32);
+            return u32(user);
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module_with_types(&fir.module, &definitions).is_empty());
+
+    let instruction = fir
+        .module
+        .functions
+        .values_mut()
+        .flat_map(|function| function.blocks.iter_mut())
+        .flat_map(|block| block.instructions.iter_mut())
+        .find(|instruction| {
+            matches!(
+                instruction.kind,
+                FirInstructionKind::DistinctFromUnderlying { .. }
+            )
+        })
+        .expect("distinct construction");
+    let FirInstructionKind::DistinctFromUnderlying { distinct, .. } = &mut instruction.kind else {
+        unreachable!();
+    };
+    *distinct = DefId(u32::MAX);
+
+    let diagnostics = verify_fir_module_with_types(&fir.module, &definitions)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-distinct-conversion")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(diagnostics[0].message.contains("has no type definition"));
+}
+
+#[test]
 fn module_verifier_checks_function_reference_targets_and_signatures() {
     let source = r#"
         module test.boundary_function_ref;
