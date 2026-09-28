@@ -81,16 +81,9 @@ Legend:
   at the shared FIR boundary before native lowering.
 - AArch64 float negation remains supported, while handwritten float bitwise-not FIR fails at the
   shared FIR boundary; RISC-V/SIA32 float boundaries are unchanged.
-- Float literals in integer contexts are rejected during typechecking; handwritten float constants
-  with integer FIR result types are invalid producer contracts on AArch64/RISC-V.
-- Boolean literals in integer contexts are rejected during typechecking; handwritten boolean
-  constants with integer FIR result types are invalid producer contracts on AArch64/RISC-V.
-- Duration reader forms in integer contexts are rejected during typechecking; handwritten duration
-  constants with integer FIR result types are invalid producer contracts on AArch64/RISC-V.
-- Integer literals in boolean contexts are rejected during typechecking; handwritten integer
-  constants with non-integer FIR result types are invalid producer contracts on AArch64/RISC-V.
-- Character literals in integer contexts are rejected during typechecking; handwritten character
-  constants with non-character FIR result types are invalid producer contracts on AArch64/RISC-V.
+- Scalar literals are rejected in incompatible source contexts; handwritten integer, float,
+  boolean, character and duration constants must produce their exact scalar categories at the
+  shared FIR boundary before AArch64/RISC-V lowering.
 - Handwritten string constants require `str` result values at the shared FIR boundary before
   AArch64/RISC-V lowering.
 - Handwritten C-string constants require non-volatile byte-pointer results at the shared FIR
