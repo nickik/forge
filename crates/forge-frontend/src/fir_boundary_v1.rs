@@ -544,6 +544,50 @@ fn verify_slice_from_array_references(
     }
 }
 
+fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::Binary {
+                op, left, right, ..
+            } = &instruction.kind
+            else {
+                continue;
+            };
+            let left_type = function.value_types.get(left);
+            let right_type = function.value_types.get(right);
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let comparison = matches!(
+                op,
+                crate::ast::BinaryOp::Less
+                    | crate::ast::BinaryOp::LessEq
+                    | crate::ast::BinaryOp::Greater
+                    | crate::ast::BinaryOp::GreaterEq
+                    | crate::ast::BinaryOp::Eq
+                    | crate::ast::BinaryOp::NotEq
+            );
+            let valid = left_type.is_some()
+                && left_type == right_type
+                && if comparison {
+                    result_type == Some(&Ty::Bool)
+                } else {
+                    result_type == left_type
+                };
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-binary",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} binary operation {op:?} uses left {left:?} with type {left_type:?}, right {right:?} with type {right_type:?}, and produces result {:?} with type {result_type:?}; expected exact operand type identity, a boolean comparison result, or an exact operand-typed non-comparison result",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 fn verify_unary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
     for block in &function.blocks {
         for (instruction_index, instruction) in block.instructions.iter().enumerate() {
@@ -2334,6 +2378,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_slice_from_array_references(&initializer.function, &mut diagnostics);
         verify_subsequences(&initializer.function, &mut diagnostics);
         verify_unary_operations(&initializer.function, &mut diagnostics);
+        verify_binary_operations(&initializer.function, &mut diagnostics);
         verify_function_references(&initializer.function, module, &mut diagnostics);
         verify_direct_calls(&initializer.function, module, &mut diagnostics);
         verify_indirect_calls(&initializer.function, &mut diagnostics);
@@ -2378,6 +2423,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_slice_from_array_references(function, &mut diagnostics);
         verify_subsequences(function, &mut diagnostics);
         verify_unary_operations(function, &mut diagnostics);
+        verify_binary_operations(function, &mut diagnostics);
         verify_function_references(function, module, &mut diagnostics);
         verify_direct_calls(function, module, &mut diagnostics);
         verify_indirect_calls(function, &mut diagnostics);
