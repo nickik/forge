@@ -1260,12 +1260,14 @@ fn module_verifier_checks_remaining_binary_operation_domains() {
 }
 
 #[test]
-fn module_verifier_rejects_pointer_and_reference_comparisons() {
+fn module_verifier_rejects_pointer_reference_and_callable_comparisons() {
     let (_, _, mut fir) = pipeline(
         r#"
         module test.boundary_pointer_reference_comparisons;
         fn pointer_like(left: u32, right: u32) -> bool { return left == right; }
         fn reference_like(left: u32, right: u32) -> bool { return left < right; }
+        fn function_like(left: u32, right: u32) -> bool { return left != right; }
+        fn closure_like(left: u32, right: u32) -> bool { return left >= right; }
         "#,
     );
     assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
@@ -1279,6 +1281,15 @@ fn module_verifier_rejects_pointer_and_reference_comparisons() {
         Ty::Reference {
             mutable: false,
             inner: Box::new(Ty::Byte),
+        },
+        Ty::Function {
+            params: vec![Ty::Byte],
+            result: Box::new(Ty::Byte),
+            named_arguments: false,
+        },
+        Ty::Closure {
+            params: vec![Ty::Byte],
+            result: Box::new(Ty::Byte),
         },
     ];
     let mut changed = 0;
@@ -1294,7 +1305,7 @@ fn module_verifier_rejects_pointer_and_reference_comparisons() {
             }
         }
     }
-    assert_eq!(changed, 2);
+    assert_eq!(changed, 4);
 
     let diagnostics = verify_fir_module(&fir.module)
         .into_iter()
@@ -1310,6 +1321,12 @@ fn module_verifier_rejects_pointer_and_reference_comparisons() {
     assert!(diagnostics
         .iter()
         .any(|diagnostic| diagnostic.message.contains("Reference")));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("Function")));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("Closure")));
 }
 
 #[test]
