@@ -459,12 +459,8 @@ fn logical_not_on_non_bool_fir_is_an_invalid_producer_contract() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "logical-not operand FirValueId(0) has non-bool FIR type ",
-                    "Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -521,8 +517,8 @@ fn bitwise_not_on_non_integer_fir_is_an_invalid_producer_contract() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: "integer unary operand FirValueId(0) has non-integer FIR type Bool".into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -581,8 +577,8 @@ fn bitwise_not_on_float_fir_is_an_invalid_producer_contract() {
     };
     assert_eq!(
         error,
-        BackendError::InvalidFirShape {
-            message: "invalid float unary FIR operation BitNot".into(),
+        BackendError::InvalidFir {
+            diagnostic_count: 1,
         }
     );
 }
