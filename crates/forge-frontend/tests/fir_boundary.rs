@@ -2588,6 +2588,42 @@ fn definition_aware_module_verifier_checks_aggregate_construction() {
 }
 
 #[test]
+fn definition_aware_module_verifier_checks_field_extraction() {
+    let (mut fir, definitions) = pipeline_with_type_definitions(
+        r#"
+        module test.boundary_extract_field;
+        struct Packet { kind: u8; count: u32; }
+        fn count(packet: Packet) -> u32 { return packet.count; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module_with_types(&fir.module, &definitions).is_empty());
+
+    let instruction = fir
+        .module
+        .functions
+        .values_mut()
+        .flat_map(|function| function.blocks.iter_mut())
+        .flat_map(|block| block.instructions.iter_mut())
+        .find(|instruction| matches!(instruction.kind, FirInstructionKind::ExtractField { .. }))
+        .expect("field extraction");
+    let FirInstructionKind::ExtractField { field, .. } = &mut instruction.kind else {
+        unreachable!();
+    };
+    *field = "undeclared".into();
+
+    let diagnostics = verify_fir_module_with_types(&fir.module, &definitions)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-extract-field")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(diagnostics[0].message.contains("ExtractField"));
+    assert!(diagnostics[0]
+        .message
+        .contains("field `undeclared` is not declared"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"

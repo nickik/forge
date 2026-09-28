@@ -120,7 +120,7 @@ Legend:
   fields, complete declared field sets, and exact supplied payload types at the definition-aware
   shared FIR boundary before AArch64/RISC-V lowering.
 - Handwritten `ExtractField` instructions require field-bearing bases and exact declared field
-  result types on AArch64/RISC-V.
+  result types at the definition-aware shared FIR boundary before AArch64/RISC-V lowering.
 - Omitted struct and tagged field defaults are materialized in body HIR before typechecking/FIR and
   execute through the hosted native specification.
 - Dedicated bitstruct storage/rebuild/check/extract/extend FIR validates nominal storage and
