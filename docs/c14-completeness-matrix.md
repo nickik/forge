@@ -101,9 +101,9 @@ Legend:
 - `None` in integer contexts is rejected during typechecking; handwritten `MakeNone`
   instructions require optional results at the shared FIR boundary before AArch64/RISC-V lowering.
 - Option patterns require optional scrutinees; handwritten `OptionIsSome` instructions require
-  optional inputs and boolean results on AArch64/RISC-V.
+  optional inputs and boolean results at the shared FIR boundary before AArch64/RISC-V lowering.
 - Handwritten `OptionUnwrap` instructions require optional inputs and their exact payload result
-  type on AArch64/RISC-V.
+  type at the shared FIR boundary before AArch64/RISC-V lowering.
 - Handwritten `ResultIsOk` instructions require result inputs and boolean results on
   AArch64/RISC-V.
 - Handwritten `ResultUnwrapOk` and `ResultUnwrapErr` instructions require result inputs and their
@@ -111,7 +111,7 @@ Legend:
 - Handwritten `MakeResultOk` and `MakeResultErr` instructions require result outputs and their exact
   variant payload input types on AArch64/RISC-V.
 - Handwritten `MakeSome` instructions require optional outputs and their exact payload input type on
-  AArch64/RISC-V.
+  the shared FIR boundary before AArch64/RISC-V lowering.
 - Fieldless enum/tagged variants use `Variant`; payload-bearing tagged variants require
   `MakeAggregate`, and `VariantIs` produces booleans on AArch64/RISC-V.
 - Handwritten `MakeAggregate` instructions require matching declared/result types, unique supplied
