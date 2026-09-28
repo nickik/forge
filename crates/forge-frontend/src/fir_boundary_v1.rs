@@ -525,10 +525,7 @@ fn verify_slice_from_array_references(
                     Ty::Array {
                         element: source_element,
                         length: Some(_),
-                    } => {
-                        source_element == result_element
-                            && (!*result_mutable || *source_mutable)
-                    }
+                    } => source_element == result_element && (!*result_mutable || *source_mutable),
                     _ => false,
                 },
                 _ => false,
