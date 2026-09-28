@@ -122,7 +122,8 @@ available on every backend merely because the frontend accepts it.
         payload type at the definition-aware shared FIR boundary before native
         lowering on AArch64 and RISC-V.
   - [x] Require handwritten `ExtractField` instructions to use field-bearing
-        bases and produce the exact declared field type on AArch64 and RISC-V.
+        bases and produce the exact declared field type at the definition-aware
+        shared FIR boundary before native lowering on AArch64 and RISC-V.
   - [x] Materialize omitted struct/tagged field defaults in body HIR before
         typechecking and FIR, then require every declared `MakeAggregate` field;
         struct and tagged defaults execute in the hosted native specification.

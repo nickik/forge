@@ -1712,6 +1712,106 @@ fn verify_make_aggregates(
     }
 }
 
+fn declared_field_type(
+    definitions: &TypeDefinitionTable,
+    base_ty: &Ty,
+    field_name: &str,
+    visited: &mut BTreeSet<DefId>,
+) -> Result<Ty, String> {
+    if *base_ty == Ty::Str {
+        return match field_name {
+            "data" => Ok(Ty::Pointer {
+                volatile: false,
+                inner: Box::new(Ty::Int {
+                    signed: false,
+                    width: IntWidth::W8,
+                }),
+            }),
+            "len" => Ok(Ty::Int {
+                signed: false,
+                width: IntWidth::Pointer,
+            }),
+            _ => Err(format!("unknown str field `{field_name}`")),
+        };
+    }
+
+    let Ty::Nominal(owner) = base_ty else {
+        return Err(format!("base type {base_ty:?} is not field-bearing"));
+    };
+    if !visited.insert(*owner) {
+        return Err(format!("type {owner:?} contains a cyclic field alias"));
+    }
+    let Some(definition) = definitions.get(owner) else {
+        return Err(format!("base type {owner:?} has no type definition"));
+    };
+    match &definition.kind {
+        TypeDefinitionKind::Struct { fields } => fields
+            .iter()
+            .find(|field| field.name == field_name)
+            .map(|field| field.ty.clone())
+            .ok_or_else(|| format!("field `{field_name}` is not declared")),
+        TypeDefinitionKind::Alias { target }
+        | TypeDefinitionKind::Distinct { underlying: target } => {
+            declared_field_type(definitions, target, field_name, visited)
+        }
+        TypeDefinitionKind::Tagged { variants } => {
+            let mut result = None;
+            for field in variants
+                .iter()
+                .flat_map(|variant| &variant.fields)
+                .filter(|field| field.name == field_name)
+            {
+                if result.as_ref().is_some_and(|ty| ty != &field.ty) {
+                    return Err(format!("field `{field_name}` has variant-dependent types"));
+                }
+                result = Some(field.ty.clone());
+            }
+            result.ok_or_else(|| format!("field `{field_name}` is not declared"))
+        }
+        _ => Err(format!("base type {base_ty:?} is not field-bearing")),
+    }
+}
+
+fn verify_extract_fields(
+    function: &fir::FirFunction,
+    definitions: &TypeDefinitionTable,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::ExtractField { base, field } = &instruction.kind else {
+                continue;
+            };
+            let base_ty = function.value_types.get(base);
+            let result_ty = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let issue = match base_ty {
+                Some(base_ty) => {
+                    match declared_field_type(definitions, base_ty, field, &mut BTreeSet::new()) {
+                        Ok(expected) if result_ty == Some(&expected) => None,
+                        Ok(expected) => Some(format!(
+                            "result type {result_ty:?} does not match declared field type {expected:?}"
+                        )),
+                        Err(issue) => Some(issue),
+                    }
+                }
+                None => Some(format!("base value {base:?} has no type")),
+            };
+            if let Some(issue) = issue {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-extract-field",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} ExtractField `{field}` violates its type-definition contract: {issue}",
+                        function.owner, block.id
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1910,9 +2010,11 @@ pub fn verify_fir_module_with_types(
     let mut diagnostics = verify_fir_module(module);
     for initializer in module.global_initializers.values() {
         verify_make_aggregates(&initializer.function, definitions, &mut diagnostics);
+        verify_extract_fields(&initializer.function, definitions, &mut diagnostics);
     }
     for function in module.functions.values() {
         verify_make_aggregates(function, definitions, &mut diagnostics);
+        verify_extract_fields(function, definitions, &mut diagnostics);
     }
     diagnostics
 }

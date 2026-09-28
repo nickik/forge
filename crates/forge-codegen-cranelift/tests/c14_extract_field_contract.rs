@@ -86,7 +86,7 @@ fn function(base_ty: Ty, result_ty: Option<Ty>, field: &str) -> FirFunction {
     }
 }
 
-fn assert_invalid(function: FirFunction, definitions: &TypeDefinitionTable, message: &str) {
+fn assert_invalid(function: FirFunction, definitions: &TypeDefinitionTable) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
@@ -97,8 +97,8 @@ fn assert_invalid(function: FirFunction, definitions: &TypeDefinitionTable, mess
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1
             }
         );
     }
@@ -109,7 +109,6 @@ fn extract_field_requires_a_result() {
     assert_invalid(
         function(Ty::Nominal(DefId(100)), None, "count"),
         &definitions(),
-        "extract-field has no result",
     );
 }
 
@@ -118,7 +117,6 @@ fn extract_field_requires_a_field_bearing_base() {
     assert_invalid(
         function(u(IntWidth::W8), Some(u(IntWidth::W32)), "count"),
         &TypeDefinitionTable::new(),
-        "field access on non-nominal Int { signed: false, width: W8 }",
     );
 }
 
@@ -127,6 +125,5 @@ fn extract_field_requires_the_declared_result_type() {
     assert_invalid(
         function(Ty::Nominal(DefId(100)), Some(u(IntWidth::W16)), "count"),
         &definitions(),
-        "extract-field result has FIR type Int { signed: false, width: W16 }, declared field `count` has type Int { signed: false, width: W32 }",
     );
 }
