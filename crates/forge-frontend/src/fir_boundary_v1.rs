@@ -1242,9 +1242,8 @@ fn verify_lengths(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnost
                         | Ty::Str
                 )
             );
-            let valid = valid_source
-                && instruction.result.is_some()
-                && result_type == Some(&usize_type);
+            let valid =
+                valid_source && instruction.result.is_some() && result_type == Some(&usize_type);
             if !valid {
                 diagnostics.push(diagnostic(
                     instruction.span,
