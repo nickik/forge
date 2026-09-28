@@ -548,7 +548,10 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
     for block in &function.blocks {
         for (instruction_index, instruction) in block.instructions.iter().enumerate() {
             let FirInstructionKind::Binary {
-                op, left, right, ..
+                op,
+                overflow,
+                left,
+                right,
             } = &instruction.kind
             else {
                 continue;
@@ -574,9 +577,29 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
                 _ if left_type == Some(&Ty::Char) => comparison,
                 _ => true,
             };
+            let integer_operands =
+                left_type.is_some_and(|ty| matches!(ty, Ty::Byte | Ty::Int { .. }));
+            let overflow_valid = match op {
+                crate::ast::BinaryOp::Add
+                | crate::ast::BinaryOp::Sub
+                | crate::ast::BinaryOp::Mul if integer_operands => {
+                    matches!(
+                        overflow,
+                        Some(fir::OverflowMode::Checked | fir::OverflowMode::Wrapping)
+                    )
+                }
+                crate::ast::BinaryOp::Div
+                | crate::ast::BinaryOp::Rem
+                | crate::ast::BinaryOp::ShiftLeft
+                | crate::ast::BinaryOp::ShiftRight if integer_operands => {
+                    *overflow == Some(fir::OverflowMode::Checked)
+                }
+                _ => overflow.is_none(),
+            };
             let valid = left_type.is_some()
                 && left_type == right_type
                 && category_valid
+                && overflow_valid
                 && if comparison {
                     result_type == Some(&Ty::Bool)
                 } else {
@@ -587,7 +610,7 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
                     instruction.span,
                     "fir/verify-binary",
                     format!(
-                        "FIR function {:?} block {:?} instruction {instruction_index} binary operation {op:?} uses left {left:?} with type {left_type:?}, right {right:?} with type {right_type:?}, and produces result {:?} with type {result_type:?}; expected exact operand type identity, a boolean comparison result, an exact operand-typed non-comparison result, comparison-only character operations, and integer-only remainder",
+                        "FIR function {:?} block {:?} instruction {instruction_index} binary operation {op:?} with overflow mode {overflow:?} uses left {left:?} with type {left_type:?}, right {right:?} with type {right_type:?}, and produces result {:?} with type {result_type:?}; expected exact operand type identity, a boolean comparison result, an exact operand-typed non-comparison result, comparison-only character operations, integer-only remainder, explicit checked/wrapping integer add/subtract/multiply semantics, checked integer division/remainder/shift semantics, and no overflow mode on other operations",
                         function.owner, block.id, instruction.result
                     ),
                 ));
