@@ -2183,25 +2183,26 @@ fn module_verifier_checks_unchecked_index_contracts() {
 
     let function = fir.module.functions.values_mut().next().unwrap();
     let function_owner = function.owner;
-    let (base, index, result, block, instruction_index, span) = function
-        .blocks
-        .iter()
-        .find_map(|block| {
-            block.instructions.iter().enumerate().find_map(
-                |(instruction_index, instruction)| match &instruction.kind {
-                    FirInstructionKind::IndexUnchecked { base, index } => Some((
-                        *base,
-                        *index,
-                        instruction.result.expect("indexed result"),
-                        block.id,
-                        instruction_index,
-                        instruction.span,
-                    )),
-                    _ => None,
-                },
-            )
-        })
-        .expect("unchecked-index producer");
+    let (base, index, result, block, instruction_index, span) =
+        function
+            .blocks
+            .iter()
+            .find_map(|block| {
+                block.instructions.iter().enumerate().find_map(
+                    |(instruction_index, instruction)| match &instruction.kind {
+                        FirInstructionKind::IndexUnchecked { base, index } => Some((
+                            *base,
+                            *index,
+                            instruction.result.expect("indexed result"),
+                            block.id,
+                            instruction_index,
+                            instruction.span,
+                        )),
+                        _ => None,
+                    },
+                )
+            })
+            .expect("unchecked-index producer");
     let invalid_result_type = Ty::Int {
         signed: false,
         width: IntWidth::W32,

@@ -1294,7 +1294,8 @@ fn verify_indexing(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnos
                             Ty::Array {
                                 element,
                                 length: Some(_),
-                            } | Ty::Slice { element, .. },
+                            }
+                            | Ty::Slice { element, .. },
                         ) => Some(element.as_ref().clone()),
                         Some(Ty::Str) => Some(Ty::Int {
                             signed: false,
