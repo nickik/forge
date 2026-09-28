@@ -56,6 +56,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Require handwritten binary FIR to preserve exact operand identity,
         produce booleans for comparisons and preserve the operand type for
         non-comparisons at the shared boundary before native lowering.
+  - [x] Require handwritten binary FIR to keep logical operations boolean,
+        bitwise/shift/remainder operations integer-only and ordinary arithmetic
+        numeric at the shared boundary before native lowering.
   - [x] Require handwritten binary FIR to carry explicit checked or wrapping
         overflow semantics for integer add/subtract/multiply, checked semantics
         for integer division/remainder/shifts, and no overflow mode for

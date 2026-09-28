@@ -1216,6 +1216,50 @@ fn module_verifier_checks_binary_operation_categories() {
 }
 
 #[test]
+fn module_verifier_checks_remaining_binary_operation_domains() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_binary_domains;
+        fn logical(left: bool, right: bool) -> bool { return left xor right; }
+        fn bitwise(left: u32, right: u32) -> u32 { return left & right; }
+        fn arithmetic(left: f32, right: f32) -> f32 { return left + right; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module(&fir.module).is_empty());
+
+    let mut changed = 0;
+    for function in fir.module.functions.values_mut() {
+        for block in &mut function.blocks {
+            for instruction in &mut block.instructions {
+                let FirInstructionKind::Binary { op, left, .. } = &mut instruction.kind else {
+                    continue;
+                };
+                *op = match (*op, function.value_types.get(left)) {
+                    (BinaryOp::LogicalXor, Some(Ty::Bool)) => BinaryOp::BitAnd,
+                    (BinaryOp::BitAnd, Some(Ty::Int { .. })) => BinaryOp::LogicalXor,
+                    (BinaryOp::Add, Some(Ty::Float { .. })) => BinaryOp::BitAnd,
+                    _ => continue,
+                };
+                changed += 1;
+            }
+        }
+    }
+    assert_eq!(changed, 3);
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-binary")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
+    for operation in ["BitAnd", "LogicalXor"] {
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains(operation)));
+    }
+}
+
+#[test]
 fn module_verifier_checks_binary_overflow_contracts() {
     let (_, _, mut fir) = pipeline(
         r#"

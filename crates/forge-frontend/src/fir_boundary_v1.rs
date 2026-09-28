@@ -570,15 +570,25 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
                     | crate::ast::BinaryOp::Eq
                     | crate::ast::BinaryOp::NotEq
             );
-            let category_valid = match op {
-                crate::ast::BinaryOp::Rem => {
-                    left_type.is_some_and(|ty| matches!(ty, Ty::Byte | Ty::Int { .. }))
-                }
-                _ if left_type == Some(&Ty::Char) => comparison,
-                _ => true,
-            };
             let integer_operands =
                 left_type.is_some_and(|ty| matches!(ty, Ty::Byte | Ty::Int { .. }));
+            let numeric_operands = integer_operands || matches!(left_type, Some(Ty::Float { .. }));
+            let category_valid = match op {
+                crate::ast::BinaryOp::LogicalAnd
+                | crate::ast::BinaryOp::LogicalXor
+                | crate::ast::BinaryOp::LogicalOr => left_type == Some(&Ty::Bool),
+                crate::ast::BinaryOp::BitAnd
+                | crate::ast::BinaryOp::BitXor
+                | crate::ast::BinaryOp::BitOr
+                | crate::ast::BinaryOp::ShiftLeft
+                | crate::ast::BinaryOp::ShiftRight
+                | crate::ast::BinaryOp::Rem => integer_operands,
+                crate::ast::BinaryOp::Add
+                | crate::ast::BinaryOp::Sub
+                | crate::ast::BinaryOp::Mul
+                | crate::ast::BinaryOp::Div => numeric_operands,
+                _ => true,
+            };
             let overflow_valid = match op {
                 crate::ast::BinaryOp::Add
                 | crate::ast::BinaryOp::Sub
@@ -614,7 +624,7 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
                     instruction.span,
                     "fir/verify-binary",
                     format!(
-                        "FIR function {:?} block {:?} instruction {instruction_index} binary operation {op:?} with overflow mode {overflow:?} uses left {left:?} with type {left_type:?}, right {right:?} with type {right_type:?}, and produces result {:?} with type {result_type:?}; expected exact operand type identity, a boolean comparison result, an exact operand-typed non-comparison result, comparison-only character operations, integer-only remainder, explicit checked/wrapping integer add/subtract/multiply semantics, checked integer division/remainder/shift semantics, and no overflow mode on other operations",
+                        "FIR function {:?} block {:?} instruction {instruction_index} binary operation {op:?} with overflow mode {overflow:?} uses left {left:?} with type {left_type:?}, right {right:?} with type {right_type:?}, and produces result {:?} with type {result_type:?}; expected exact operand type identity, a boolean comparison result, an exact operand-typed non-comparison result, booleans for logical operations, integers for bitwise/shift/remainder operations, numeric operands for arithmetic, explicit checked/wrapping integer add/subtract/multiply semantics, checked integer division/remainder/shift semantics, and no overflow mode on other operations",
                         function.owner, block.id, instruction.result
                     ),
                 ));

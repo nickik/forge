@@ -70,6 +70,9 @@ Legend:
   boundary before native lowering.
 - Binary FIR requires exact operand identity, boolean comparison results and operand-typed
   non-comparison results at the shared boundary before native lowering.
+- Binary FIR requires booleans for logical operations, integers for bitwise/shift/remainder
+  operations and numeric operands for ordinary arithmetic at the shared boundary before native
+  lowering.
 - Binary FIR requires operation-compatible overflow metadata at the shared boundary: integer
   add/subtract/multiply is checked or wrapping, integer division/remainder/shifts are checked,
   and comparisons, logical/bitwise and floating operations carry no overflow mode.
