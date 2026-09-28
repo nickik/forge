@@ -50,9 +50,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Pin cyclic or merge value dependencies that require CLIF block
         arguments as an explicit hosted-backend boundary; Forge FIR has no
         block-argument/phi operation in C14.
-  - [x] Reject non-comparison `char` operations during typechecking and treat
-        handwritten arithmetic `char` FIR as an invalid producer contract on
-        AArch64 and RISC-V, not an unimplemented backend capability.
+  - [x] Reject non-comparison `char` operations during typechecking and reject
+        handwritten non-comparison `char` FIR at the shared boundary before
+        native lowering.
   - [x] Require handwritten binary FIR to preserve exact operand identity,
         produce booleans for comparisons and preserve the operand type for
         non-comparisons at the shared boundary before native lowering.
@@ -60,9 +60,9 @@ available on every backend merely because the frontend accepts it.
         incompatible `Subsequence` source/result FIR as an invalid producer
         contract at the shared FIR boundary before AArch64/RISC-V lowering,
         including exact slice identity and fixed-array residual length.
-  - [x] Keep `%` integer-only during typechecking and treat handwritten
-        floating-point `Rem` FIR as an invalid producer contract, without
-        weakening AArch64 float support or SIA32 float rejection.
+  - [x] Keep `%` integer-only during typechecking and require integer
+        remainder operands at the shared FIR boundary, without weakening
+        AArch64 float support or SIA32 float rejection.
   - [x] Restrict logical-not to booleans during typechecking and require exact
         boolean input/results at the shared FIR boundary before native lowering.
   - [x] Restrict bitwise-not to integers during typechecking and require exact
