@@ -592,10 +592,9 @@ fn verify_binary_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
                 | crate::ast::BinaryOp::Greater
                 | crate::ast::BinaryOp::GreaterEq
                 | crate::ast::BinaryOp::Eq
-                | crate::ast::BinaryOp::NotEq => !matches!(
-                    left_type,
-                    Some(Ty::Pointer { .. } | Ty::Reference { .. })
-                ),
+                | crate::ast::BinaryOp::NotEq => {
+                    !matches!(left_type, Some(Ty::Pointer { .. } | Ty::Reference { .. }))
+                }
                 _ => true,
             };
             let overflow_valid = match op {
