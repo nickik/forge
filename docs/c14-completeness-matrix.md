@@ -122,6 +122,8 @@ Legend:
   remains lossless-only.
 - Array-construction FIR requires fixed result arrays whose declared length and exact element type
   match every item at the shared FIR boundary before AArch64/RISC-V lowering.
+- Length FIR accepts only fixed arrays, slices or strings and produces `usize` at the shared FIR
+  boundary before AArch64/RISC-V lowering.
 - Direct safe/raw dereference `AddressOf` FIR preserves requested mutability and exact pointee
   result types at the shared FIR boundary before AArch64/RISC-V lowering.
 - Direct safe-reference loads and stores preserve exact pointee types and reject writes through

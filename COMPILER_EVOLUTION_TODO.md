@@ -124,7 +124,8 @@ available on every backend merely because the frontend accepts it.
         whose declared length and exact element type match their items at the
         shared FIR boundary before native lowering on AArch64 and RISC-V.
   - [x] Require handwritten `Len` instructions to consume fixed arrays, slices
-        or strings and produce `usize` on AArch64 and RISC-V.
+        or strings and produce `usize` at the shared FIR boundary before native
+        lowering on AArch64 and RISC-V.
   - [x] Require handwritten `BoundsCheck` operands to be `usize` and
         `IndexUnchecked` to use sequence bases, `usize` indices and exact
         element results before native lowering on AArch64 and RISC-V.

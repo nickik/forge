@@ -61,7 +61,7 @@ fn function(source_ty: Ty, result_ty: Ty) -> FirFunction {
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_invalid(function: FirFunction) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
     let definitions = TypeDefinitionTable::new();
@@ -73,8 +73,8 @@ fn assert_invalid(function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -82,22 +82,16 @@ fn assert_invalid(function: FirFunction, message: &str) {
 
 #[test]
 fn len_requires_a_sequence_input() {
-    assert_invalid(
-        function(u(IntWidth::W32), u(IntWidth::Pointer)),
-        "len instruction has unsupported FIR input type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(function(u(IntWidth::W32), u(IntWidth::Pointer)));
 }
 
 #[test]
 fn len_requires_a_usize_result() {
-    assert_invalid(
-        function(
-            Ty::Slice {
-                mutable: false,
-                element: Box::new(u(IntWidth::W16)),
-            },
-            u(IntWidth::W32),
-        ),
-        "len instruction has non-usize FIR result type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(function(
+        Ty::Slice {
+            mutable: false,
+            element: Box::new(u(IntWidth::W16)),
+        },
+        u(IntWidth::W32),
+    ));
 }
