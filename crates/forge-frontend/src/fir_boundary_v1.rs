@@ -2389,6 +2389,55 @@ fn verify_distinct_conversions(
     }
 }
 
+fn verify_distinct_comparisons(
+    function: &fir::FirFunction,
+    definitions: &TypeDefinitionTable,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::Binary {
+                op, left, right, ..
+            } = &instruction.kind
+            else {
+                continue;
+            };
+            if !matches!(
+                op,
+                crate::ast::BinaryOp::Eq
+                    | crate::ast::BinaryOp::NotEq
+                    | crate::ast::BinaryOp::Less
+                    | crate::ast::BinaryOp::LessEq
+                    | crate::ast::BinaryOp::Greater
+                    | crate::ast::BinaryOp::GreaterEq
+            ) {
+                continue;
+            }
+            let left_type = function.value_types.get(left);
+            let right_type = function.value_types.get(right);
+            let Some(Ty::Nominal(owner)) = left_type else {
+                continue;
+            };
+            if left_type != right_type
+                || !matches!(
+                    definitions.get(owner).map(|definition| &definition.kind),
+                    Some(TypeDefinitionKind::Distinct { .. })
+                )
+            {
+                continue;
+            }
+            diagnostics.push(diagnostic(
+                instruction.span,
+                "fir/verify-distinct-comparison",
+                format!(
+                    "FIR function {:?} block {:?} instruction {instruction_index} compares distinct type {left_type:?}; expected explicit conversion to its declared underlying type before comparison",
+                    function.owner, block.id
+                ),
+            ));
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -2603,6 +2652,7 @@ pub fn verify_fir_module_with_types(
         verify_named_variants(&initializer.function, definitions, &mut diagnostics);
         verify_bitstruct_storage_conversions(&initializer.function, definitions, &mut diagnostics);
         verify_distinct_conversions(&initializer.function, definitions, &mut diagnostics);
+        verify_distinct_comparisons(&initializer.function, definitions, &mut diagnostics);
     }
     for function in module.functions.values() {
         verify_make_aggregates(function, definitions, &mut diagnostics);
@@ -2610,6 +2660,7 @@ pub fn verify_fir_module_with_types(
         verify_named_variants(function, definitions, &mut diagnostics);
         verify_bitstruct_storage_conversions(function, definitions, &mut diagnostics);
         verify_distinct_conversions(function, definitions, &mut diagnostics);
+        verify_distinct_comparisons(function, definitions, &mut diagnostics);
     }
     diagnostics
 }

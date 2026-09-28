@@ -4,7 +4,7 @@ use forge_frontend::{
     parse_source, type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module,
     verify_fir_module_with_types, ConstValue, DefId, ExprId, FirBlockId, FirGlobal,
     FirInstructionKind, FirLocal, FirLocalId, FirModule, FirPlace, FirTerminator, IntWidth,
-    OverflowMode, Ty, TypeDefinitionTable, UnsafeOperationKind,
+    OverflowMode, Ty, TypeDefinitionKind, TypeDefinitionTable, UnsafeOperationKind,
 };
 
 fn pipeline(
@@ -3304,6 +3304,48 @@ fn definition_aware_module_verifier_checks_named_variants() {
     assert!(diagnostics[0]
         .message
         .contains("variant `Undeclared` is not declared"));
+}
+
+#[test]
+fn definition_aware_module_verifier_rejects_distinct_comparisons() {
+    let (mut fir, definitions) = pipeline_with_type_definitions(
+        r#"
+        module test.boundary_distinct_comparison;
+        distinct UserId: u32;
+        fn compare(left: u32, right: u32) -> bool { return left == right; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module_with_types(&fir.module, &definitions).is_empty());
+
+    let owner = definitions
+        .iter()
+        .find_map(|(owner, definition)| {
+            matches!(&definition.kind, TypeDefinitionKind::Distinct { .. }).then_some(*owner)
+        })
+        .expect("distinct definition");
+    let function = fir.module.functions.values_mut().next().expect("function");
+    let instruction = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .find(|instruction| matches!(instruction.kind, FirInstructionKind::Binary { .. }))
+        .expect("comparison");
+    let (left, right) = match &instruction.kind {
+        FirInstructionKind::Binary { left, right, .. } => (*left, *right),
+        _ => unreachable!(),
+    };
+    function.value_types.insert(left, Ty::Nominal(owner));
+    function.value_types.insert(right, Ty::Nominal(owner));
+
+    let diagnostics = verify_fir_module_with_types(&fir.module, &definitions)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-distinct-comparison")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(diagnostics[0]
+        .message
+        .contains("explicit conversion to its declared underlying type"));
 }
 
 #[test]
