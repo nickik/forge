@@ -128,7 +128,8 @@ available on every backend merely because the frontend accepts it.
         lowering on AArch64 and RISC-V.
   - [x] Require handwritten `BoundsCheck` operands to be `usize` and
         `IndexUnchecked` to use sequence bases, `usize` indices and exact
-        element results before native lowering on AArch64 and RISC-V.
+        element results at the shared FIR boundary before native lowering on
+        AArch64 and RISC-V.
   - [x] Require handwritten `PointerConvert` operation tags to match exact
         pointer-to-integer, integer-to-pointer or distinct-pointer endpoint
         types at the shared FIR boundary before native lowering on AArch64 and

@@ -1258,6 +1258,70 @@ fn verify_lengths(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnost
     }
 }
 
+fn verify_indexing(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    let usize_type = Ty::Int {
+        signed: false,
+        width: IntWidth::Pointer,
+    };
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            match &instruction.kind {
+                FirInstructionKind::BoundsCheck { index, len } => {
+                    let index_type = function.value_types.get(index);
+                    let length_type = function.value_types.get(len);
+                    let valid = instruction.result.is_none()
+                        && index_type == Some(&usize_type)
+                        && length_type == Some(&usize_type);
+                    if !valid {
+                        diagnostics.push(diagnostic(
+                            instruction.span,
+                            "fir/verify-bounds-check",
+                            format!(
+                                "FIR function {:?} block {:?} instruction {instruction_index} bounds-checks index {index:?} with type {index_type:?} against length {len:?} with type {length_type:?} and result {:?}; expected usize operands and no result",
+                                function.owner, block.id, instruction.result
+                            ),
+                        ));
+                    }
+                }
+                FirInstructionKind::IndexUnchecked { base, index } => {
+                    let base_type = function.value_types.get(base);
+                    let index_type = function.value_types.get(index);
+                    let result_type = instruction
+                        .result
+                        .and_then(|result| function.value_types.get(&result));
+                    let expected_result = match base_type {
+                        Some(
+                            Ty::Array {
+                                element,
+                                length: Some(_),
+                            } | Ty::Slice { element, .. },
+                        ) => Some(element.as_ref().clone()),
+                        Some(Ty::Str) => Some(Ty::Int {
+                            signed: false,
+                            width: IntWidth::W8,
+                        }),
+                        _ => None,
+                    };
+                    let valid = instruction.result.is_some()
+                        && index_type == Some(&usize_type)
+                        && result_type == expected_result.as_ref();
+                    if !valid {
+                        diagnostics.push(diagnostic(
+                            instruction.span,
+                            "fir/verify-index-unchecked",
+                            format!(
+                                "FIR function {:?} block {:?} instruction {instruction_index} indexes base {base:?} with type {base_type:?} using index {index:?} with type {index_type:?} into result {:?} with type {result_type:?}; expected a fixed array, slice or string base, a usize index, and exact element result type {expected_result:?}",
+                                function.owner, block.id, instruction.result
+                            ),
+                        ));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1398,6 +1462,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_pointer_conversions(&initializer.function, &mut diagnostics);
         verify_array_construction(&initializer.function, &mut diagnostics);
         verify_lengths(&initializer.function, &mut diagnostics);
+        verify_indexing(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -1432,6 +1497,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_pointer_conversions(function, &mut diagnostics);
         verify_array_construction(function, &mut diagnostics);
         verify_lengths(function, &mut diagnostics);
+        verify_indexing(function, &mut diagnostics);
     }
 
     diagnostics
