@@ -94,6 +94,26 @@ fn assert_invalid_on_host_targets(
     }
 }
 
+fn assert_invalid_fir_on_host_targets(
+    function: FirFunction,
+    defs: &TypeDefinitionTable,
+) {
+    let module = module_with(function);
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module_with_types(&module, defs) {
+            Ok(_) => panic!("malformed variant FIR unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
+            }
+        );
+    }
+}
+
 fn tagged_def() -> (DefId, TypeDefinition) {
     let owner = DefId(101);
     (
@@ -224,6 +244,36 @@ fn variant_cannot_construct_a_payload_bearing_tagged_variant() {
 }
 
 #[test]
+fn variant_requires_its_declared_result_type() {
+    let span = Span::new(0, 0);
+    let tagged_ty = Ty::Nominal(DefId(101));
+    let value = FirValueId(0);
+    let function = FirFunction {
+        owner: DefId(3),
+        params: Vec::new(),
+        return_type: tagged_ty.clone(),
+        locals: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![FirInstruction {
+                span,
+                result: Some(value),
+                kind: FirInstructionKind::Variant {
+                    ty: Ty::Nominal(DefId(102)),
+                    name: "Empty".into(),
+                },
+            }],
+            terminator: Some(FirTerminator::Return { value: Some(value) }),
+        }],
+        value_types: BTreeMap::from([(value, tagged_ty)]),
+    };
+    assert_invalid_fir_on_host_targets(function, &BTreeMap::from([tagged_def()]));
+}
+
+#[test]
 fn variant_test_requires_a_boolean_result() {
     let span = Span::new(0, 0);
     let tagged_ty = Ty::Nominal(DefId(101));
@@ -264,11 +314,7 @@ fn variant_test_requires_a_boolean_result() {
         value_types: BTreeMap::from([(value, tagged_ty), (result, u(IntWidth::W32))]),
     };
     let defs = BTreeMap::from([tagged_def()]);
-    assert_invalid_on_host_targets(
-        function,
-        &defs,
-        "variant-is instruction has non-bool FIR result type Int { signed: false, width: W32 }",
-    );
+    assert_invalid_fir_on_host_targets(function, &defs);
 }
 
 #[test]

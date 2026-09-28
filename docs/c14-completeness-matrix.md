@@ -113,7 +113,9 @@ Legend:
 - Handwritten `MakeSome` instructions require optional outputs and their exact payload input type on
   the shared FIR boundary before AArch64/RISC-V lowering.
 - Fieldless enum/tagged variants use `Variant`; payload-bearing tagged variants require
-  `MakeAggregate`, and `VariantIs` produces booleans on AArch64/RISC-V.
+  `MakeAggregate`. Shared FIR validation requires `Variant` declared/result identity and nominal
+  `VariantIs` inputs with boolean results; definition-aware fieldless/name validation remains
+  before AArch64/RISC-V lowering.
 - Handwritten `MakeAggregate` instructions require matching declared/result types, unique supplied
   fields, complete declared field sets, and exact supplied payload types on AArch64/RISC-V.
 - Handwritten `ExtractField` instructions require field-bearing bases and exact declared field

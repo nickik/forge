@@ -113,8 +113,10 @@ available on every backend merely because the frontend accepts it.
         from their exact payload type at the shared FIR boundary before native
         lowering on AArch64 and RISC-V.
   - [x] Keep fieldless enum/tagged construction distinct from payload-bearing
-        tagged construction and require `VariantIs` to produce booleans on
-        AArch64 and RISC-V.
+        tagged construction; require `Variant` declared/result identity and
+        nominal `VariantIs` inputs with boolean results at the shared FIR
+        boundary, while retaining definition-aware fieldless/name validation
+        before AArch64 and RISC-V lowering.
   - [x] Require handwritten `MakeAggregate` instructions to declare the result
         type once, name each supplied field once, and supply its exact declared
         payload type on AArch64 and RISC-V.

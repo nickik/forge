@@ -2467,6 +2467,61 @@ fn module_verifier_checks_result_operation_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_variant_operation_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_variant_operations;
+        enum Color { Red, Green }
+        fn red() -> Color { return Color::Red; }
+        fn choose(value: Color) -> u32 {
+            return match (value) {
+                Color::Red => 1u32,
+                Color::Green => 2u32,
+            };
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let invalid_result_type = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let mut changed = 0;
+    for function in fir.module.functions.values_mut() {
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                if matches!(
+                    instruction.kind,
+                    FirInstructionKind::Variant { .. } | FirInstructionKind::VariantIs { .. }
+                ) {
+                    let result = instruction.result.expect("variant-operation result");
+                    function
+                        .value_types
+                        .insert(result, invalid_result_type.clone());
+                    changed += 1;
+                }
+            }
+        }
+    }
+    assert!(changed >= 3);
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-variant-operation")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
+    for operation in ["Variant", "VariantIs"] {
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains(operation)));
+    }
+    assert!(diagnostics
+        .iter()
+        .all(|diagnostic| diagnostic.message.contains("width: W32")));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"

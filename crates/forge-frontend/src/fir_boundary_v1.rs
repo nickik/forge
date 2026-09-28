@@ -1570,6 +1570,48 @@ fn verify_result_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
     }
 }
 
+fn verify_variant_operations(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let (operation, input_type, expected_result, valid) = match &instruction.kind {
+                FirInstructionKind::Variant { ty, .. } => (
+                    "Variant",
+                    None,
+                    Some(ty),
+                    instruction.result.is_some()
+                        && matches!(ty, Ty::Nominal(_))
+                        && result_type == Some(ty),
+                ),
+                FirInstructionKind::VariantIs { value, .. } => {
+                    let input_type = function.value_types.get(value);
+                    (
+                        "VariantIs",
+                        input_type,
+                        Some(&Ty::Bool),
+                        instruction.result.is_some()
+                            && matches!(input_type, Some(Ty::Nominal(_)))
+                            && result_type == Some(&Ty::Bool),
+                    )
+                }
+                _ => continue,
+            };
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-variant-operation",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} {operation} uses input type {input_type:?} and produces result {:?} with type {result_type:?}; expected a nominal variant operation with exact result type {expected_result:?}",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1715,6 +1757,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_zero_payload_producers(&initializer.function, &mut diagnostics);
         verify_option_operations(&initializer.function, &mut diagnostics);
         verify_result_operations(&initializer.function, &mut diagnostics);
+        verify_variant_operations(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -1754,6 +1797,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_zero_payload_producers(function, &mut diagnostics);
         verify_option_operations(function, &mut diagnostics);
         verify_result_operations(function, &mut diagnostics);
+        verify_variant_operations(function, &mut diagnostics);
     }
 
     diagnostics
