@@ -63,6 +63,9 @@ available on every backend merely because the frontend accepts it.
         hosted native scalar path and execute them in the C14 specification.
   - [x] Lower all six duration comparisons as signed nanosecond comparisons
         and execute them in the hosted C14 specification.
+  - [x] Reject raw-pointer and safe-reference comparisons during typechecking
+        and at the shared FIR boundary; Forge v1 defines no address-identity or
+        address-order comparison semantics for either domain.
   - [x] Require handwritten binary FIR to carry explicit checked or wrapping
         overflow semantics for integer add/subtract/multiply, checked semantics
         for integer division/remainder/shifts, and no overflow mode for

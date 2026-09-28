@@ -140,6 +140,38 @@ fn rejects_signed_unsigned_comparison() {
 }
 
 #[test]
+fn rejects_pointer_and_reference_comparisons_before_fir() {
+    let output = check(
+        r#"
+        module test.pointer_reference_comparisons;
+        fn compare_pointers(left: *u32, right: *u32) -> bool {
+            return left == right;
+        }
+        fn compare_references(left: &u32, right: &u32) -> bool {
+            return left < right;
+        }
+        "#,
+    );
+    let diagnostics = output
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic.code == "type/mismatch"
+                && diagnostic
+                    .message
+                    .contains("pointer/reference comparisons are not defined")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 2, "{:?}", output.diagnostics);
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("Pointer")));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("Reference")));
+}
+
+#[test]
 fn rejects_bool_integer_arithmetic() {
     let output = check(
         r#"

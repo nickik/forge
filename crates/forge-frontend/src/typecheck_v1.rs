@@ -3048,7 +3048,17 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             | BinaryOp::LessEq
             | BinaryOp::Greater
             | BinaryOp::GreaterEq => {
-                if !self.compatible_binary(&l, &r) {
+                if matches!(&l, Ty::Pointer { .. } | Ty::Reference { .. })
+                    || matches!(&r, Ty::Pointer { .. } | Ty::Reference { .. })
+                {
+                    self.diagnostic(
+                        span,
+                        "type/mismatch",
+                        format!(
+                            "pointer/reference comparisons are not defined in Forge v1: {l:?}, {r:?}"
+                        ),
+                    );
+                } else if !self.compatible_binary(&l, &r) {
                     self.diagnostic(
                         span,
                         "type/mismatch",

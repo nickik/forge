@@ -478,6 +478,116 @@ fn invalid_subsequence_types_are_a_producer_contract_error() {
 }
 
 #[test]
+fn pointer_and_reference_comparisons_are_invalid_producer_contracts() {
+    let comparison_types = [
+        Ty::Pointer {
+            volatile: false,
+            inner: Box::new(Ty::Byte),
+        },
+        Ty::Reference {
+            mutable: false,
+            inner: Box::new(Ty::Byte),
+        },
+    ];
+
+    for comparison_type in comparison_types {
+        let owner = DefId(40);
+        let left_local = FirLocalId(0);
+        let right_local = FirLocalId(1);
+        let left = FirValueId(0);
+        let right = FirValueId(1);
+        let result = FirValueId(2);
+        let mut module = FirModule::default();
+        module.functions.insert(
+            owner,
+            FirFunction {
+                owner,
+                params: vec![left_local, right_local],
+                return_type: Ty::Bool,
+                locals: BTreeMap::from([
+                    (
+                        left_local,
+                        FirLocal {
+                            id: left_local,
+                            source: None,
+                            ty: comparison_type.clone(),
+                            mutable: false,
+                            parameter: true,
+                            synthetic: false,
+                        },
+                    ),
+                    (
+                        right_local,
+                        FirLocal {
+                            id: right_local,
+                            source: None,
+                            ty: comparison_type.clone(),
+                            mutable: false,
+                            parameter: true,
+                            synthetic: false,
+                        },
+                    ),
+                ]),
+                closures: BTreeMap::new(),
+                entry: FirBlockId(0),
+                blocks: vec![FirBasicBlock {
+                    id: FirBlockId(0),
+                    closure: None,
+                    instructions: vec![
+                        FirInstruction {
+                            span: Span::new(0, 3),
+                            result: Some(left),
+                            kind: FirInstructionKind::Load {
+                                place: forge_fir::FirPlace::Local { local: left_local },
+                            },
+                        },
+                        FirInstruction {
+                            span: Span::new(4, 7),
+                            result: Some(right),
+                            kind: FirInstructionKind::Load {
+                                place: forge_fir::FirPlace::Local { local: right_local },
+                            },
+                        },
+                        FirInstruction {
+                            span: Span::new(8, 10),
+                            result: Some(result),
+                            kind: FirInstructionKind::Binary {
+                                op: BinaryOp::Eq,
+                                overflow: None,
+                                left,
+                                right,
+                            },
+                        },
+                    ],
+                    terminator: Some(FirTerminator::Return {
+                        value: Some(result),
+                    }),
+                }],
+                value_types: BTreeMap::from([
+                    (left, comparison_type.clone()),
+                    (right, comparison_type),
+                    (result, Ty::Bool),
+                ]),
+            },
+        );
+
+        for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+            let backend = CraneliftBackend::new(target).expect("backend");
+            let error = match backend.prepare_module(&module) {
+                Ok(_) => panic!("pointer/reference comparison unexpectedly lowered"),
+                Err(error) => error,
+            };
+            assert_eq!(
+                error,
+                BackendError::InvalidFir {
+                    diagnostic_count: 1,
+                }
+            );
+        }
+    }
+}
+
+#[test]
 fn floating_point_remainder_fir_is_an_invalid_producer_contract() {
     let owner = DefId(5);
     let left = FirValueId(0);
