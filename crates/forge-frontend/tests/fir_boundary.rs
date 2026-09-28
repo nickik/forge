@@ -2592,8 +2592,13 @@ fn definition_aware_module_verifier_checks_field_extraction() {
     let (mut fir, definitions) = pipeline_with_type_definitions(
         r#"
         module test.boundary_extract_field;
-        struct Packet { kind: u8; count: u32; }
-        fn count(packet: Packet) -> u32 { return packet.count; }
+        tagged Packet { Count { value: u32; }, Empty }
+        fn count(packet: Packet) -> u32 {
+            return match (packet) {
+                Packet::Count{value} => value,
+                Packet::Empty => 0u32,
+            };
+        }
         "#,
     );
     assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
