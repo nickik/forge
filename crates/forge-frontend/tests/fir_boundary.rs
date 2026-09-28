@@ -1182,10 +1182,7 @@ fn module_verifier_checks_binary_operation_contracts() {
     for function in fir.module.functions.values_mut() {
         for block in &function.blocks {
             for instruction in &block.instructions {
-                let FirInstructionKind::Binary {
-                    op, right, ..
-                } = &instruction.kind
-                else {
+                let FirInstructionKind::Binary { op, right, .. } = &instruction.kind else {
                     continue;
                 };
                 match op {
