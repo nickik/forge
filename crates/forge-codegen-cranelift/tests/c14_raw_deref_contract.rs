@@ -132,7 +132,7 @@ fn raw_store(pointer_ty: Ty, value_ty: Ty, volatile: bool) -> FirFunction {
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_invalid(function: FirFunction) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
     let definitions = TypeDefinitionTable::new();
@@ -144,8 +144,8 @@ fn assert_invalid(function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -153,24 +153,15 @@ fn assert_invalid(function: FirFunction, message: &str) {
 
 #[test]
 fn raw_dereference_volatility_must_match_its_pointer() {
-    assert_invalid(
-        raw_load(pointer(u32_ty(), false), u32_ty(), true),
-        "raw FIR dereference volatility true differs from pointer volatility false",
-    );
+    assert_invalid(raw_load(pointer(u32_ty(), false), u32_ty(), true));
 }
 
 #[test]
 fn raw_load_result_must_match_its_pointee() {
-    assert_invalid(
-        raw_load(pointer(u32_ty(), false), Ty::Byte, false),
-        "raw FIR load result type Byte differs from pointee type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(raw_load(pointer(u32_ty(), false), Ty::Byte, false));
 }
 
 #[test]
 fn raw_store_value_must_match_its_pointee() {
-    assert_invalid(
-        raw_store(pointer(u32_ty(), false), Ty::Byte, false),
-        "raw FIR store value type Byte differs from pointee type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(raw_store(pointer(u32_ty(), false), Ty::Byte, false));
 }

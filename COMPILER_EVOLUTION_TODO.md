@@ -135,8 +135,8 @@ available on every backend merely because the frontend accepts it.
         concrete integer offsets and exact base-pointer results before native
         lowering on AArch64 and RISC-V.
   - [x] Require direct handwritten raw-dereference places to preserve pointer
-        volatility and exact pointee load/store types before native lowering on
-        AArch64 and RISC-V.
+        volatility and exact pointee load/store types at the shared FIR boundary
+        before native lowering on AArch64 and RISC-V.
   - [x] Require direct handwritten safe-dereference places to preserve exact
         reference-pointee load/store types at the shared FIR boundary before
         native lowering on AArch64 and RISC-V.

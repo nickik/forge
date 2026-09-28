@@ -1841,6 +1841,66 @@ fn module_verifier_checks_direct_safe_dereference_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_direct_raw_dereference_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_raw_dereference;
+        fn read(address: *u32) -> u32 { unsafe { return *address; } }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let function_owner = function.owner;
+    let (address, result, block, instruction_index, span) = function
+        .blocks
+        .iter_mut()
+        .find_map(|block| {
+            block.instructions.iter_mut().enumerate().find_map(
+                |(index, instruction)| match &mut instruction.kind {
+                    FirInstructionKind::Load {
+                        place:
+                            FirPlace::RawDeref {
+                                address, volatile, ..
+                            },
+                    } => {
+                        *volatile = true;
+                        Some((
+                            *address,
+                            instruction.result.expect("load result"),
+                            block.id,
+                            index,
+                            instruction.span,
+                        ))
+                    }
+                    _ => None,
+                },
+            )
+        })
+        .expect("direct raw dereference load");
+    function.value_types.insert(result, Ty::Byte);
+
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-raw-dereference")
+        .expect("raw-dereference diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("pointer value {address:?}")));
+    assert!(diagnostic.message.contains("place volatility=true"));
+    assert!(diagnostic.message.contains("actual value type Some(Byte)"));
+    assert!(diagnostic.message.contains("exact pointee type"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"
