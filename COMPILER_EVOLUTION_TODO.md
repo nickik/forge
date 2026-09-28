@@ -71,21 +71,10 @@ available on every backend merely because the frontend accepts it.
   - [x] Diagnose handwritten floating-point bitwise-not FIR at the shared FIR
         boundary while preserving supported AArch64 float negation and the
         existing RISC-V/SIA32 float boundaries.
-  - [x] Reject float literals in integer contexts during typechecking and treat
-        handwritten float constants with integer FIR result types as invalid
-        producer contracts on AArch64 and RISC-V.
-  - [x] Reject boolean literals in integer contexts during typechecking and
-        treat handwritten boolean constants with integer FIR result types as
-        invalid producer contracts on AArch64 and RISC-V.
-  - [x] Reject duration reader forms in integer contexts during typechecking
-        and treat handwritten duration constants with integer FIR result types
-        as invalid producer contracts on AArch64 and RISC-V.
-  - [x] Reject integer literals in boolean contexts during typechecking and
-        treat handwritten integer constants with non-integer FIR result types
-        as invalid producer contracts on AArch64 and RISC-V.
-  - [x] Reject character literals in integer contexts during typechecking and
-        treat handwritten character constants with non-character FIR result
-        types as invalid producer contracts on AArch64 and RISC-V.
+  - [x] Reject scalar literals in incompatible contexts during typechecking and
+        require integer, float, boolean, character and duration constants to
+        produce their exact scalar categories at the shared FIR boundary before
+        native lowering.
   - [x] Require handwritten string constants to produce `str` values on
         the shared FIR boundary before native lowering on AArch64 and RISC-V.
   - [x] Reject void expressions in integer contexts during typechecking and
