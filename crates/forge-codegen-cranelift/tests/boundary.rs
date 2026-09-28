@@ -248,8 +248,8 @@ fn non_comparison_char_fir_is_an_invalid_producer_contract() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: "char FIR permits comparison operations only; got Add".into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -396,8 +396,8 @@ fn floating_point_remainder_fir_is_an_invalid_producer_contract() {
     };
     assert_eq!(
         error,
-        BackendError::InvalidFirShape {
-            message: "invalid float binary FIR operation Rem".into(),
+        BackendError::InvalidFir {
+            diagnostic_count: 1,
         }
     );
 }
