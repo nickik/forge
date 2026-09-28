@@ -1399,6 +1399,72 @@ fn verify_zero_payload_producers(
     }
 }
 
+fn verify_option_operations(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let (operation, input, input_type, expected_result, valid) = match &instruction.kind {
+                FirInstructionKind::MakeSome { value } => {
+                    let input_type = function.value_types.get(value);
+                    let expected_result = input_type.map(|input| Ty::Optional {
+                        inner: Box::new(input.clone()),
+                    });
+                    (
+                        "MakeSome",
+                        *value,
+                        input_type,
+                        expected_result.clone(),
+                        instruction.result.is_some()
+                            && input_type.is_some()
+                            && result_type == expected_result.as_ref(),
+                    )
+                }
+                FirInstructionKind::OptionIsSome { value } => {
+                    let input_type = function.value_types.get(value);
+                    (
+                        "OptionIsSome",
+                        *value,
+                        input_type,
+                        Some(Ty::Bool),
+                        instruction.result.is_some()
+                            && matches!(input_type, Some(Ty::Optional { .. }))
+                            && result_type == Some(&Ty::Bool),
+                    )
+                }
+                FirInstructionKind::OptionUnwrap { value } => {
+                    let input_type = function.value_types.get(value);
+                    let expected_result = match input_type {
+                        Some(Ty::Optional { inner }) => Some(inner.as_ref().clone()),
+                        _ => None,
+                    };
+                    (
+                        "OptionUnwrap",
+                        *value,
+                        input_type,
+                        expected_result.clone(),
+                        instruction.result.is_some()
+                            && expected_result.is_some()
+                            && result_type == expected_result.as_ref(),
+                    )
+                }
+                _ => continue,
+            };
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-option-operation",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} {operation} uses value {input:?} with type {input_type:?} and produces result {:?} with type {result_type:?}; expected an optional operation with exact result type {expected_result:?}",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1542,6 +1608,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_indexing(&initializer.function, &mut diagnostics);
         verify_string_constants(&initializer.function, &mut diagnostics);
         verify_zero_payload_producers(&initializer.function, &mut diagnostics);
+        verify_option_operations(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -1579,6 +1646,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_indexing(function, &mut diagnostics);
         verify_string_constants(function, &mut diagnostics);
         verify_zero_payload_producers(function, &mut diagnostics);
+        verify_option_operations(function, &mut diagnostics);
     }
 
     diagnostics

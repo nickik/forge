@@ -1040,12 +1040,8 @@ fn make_some_requires_an_optional_result_type() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "make-some instruction has non-optional FIR result type ",
-                    "Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -1107,12 +1103,8 @@ fn make_some_requires_the_exact_optional_payload_type() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "make-some instruction has FIR payload type Bool, optional payload is ",
-                    "Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -1172,12 +1164,8 @@ fn option_is_some_requires_an_optional_input_and_boolean_result() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "option-is-some instruction has non-bool FIR result type ",
-                    "Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
 
@@ -1227,12 +1215,8 @@ fn option_is_some_requires_an_optional_input_and_boolean_result() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "option-is-some instruction has non-optional FIR input type ",
-                    "Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -1292,12 +1276,8 @@ fn option_unwrap_requires_an_optional_input_and_its_payload_result_type() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "option-unwrap instruction has FIR result type Bool, optional payload is ",
-                    "Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
 
@@ -1347,12 +1327,8 @@ fn option_unwrap_requires_an_optional_input_and_its_payload_result_type() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "option-unwrap instruction has non-optional FIR input type ",
-                    "Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }

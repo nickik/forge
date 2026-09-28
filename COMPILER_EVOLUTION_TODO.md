@@ -95,9 +95,11 @@ available on every backend merely because the frontend accepts it.
         lowering on AArch64 and RISC-V.
   - [x] Keep Option patterns restricted to optional scrutinees and require
         handwritten `OptionIsSome` instructions to consume optional values and
-        produce booleans on AArch64 and RISC-V.
+        produce booleans at the shared FIR boundary before native lowering on
+        AArch64 and RISC-V.
   - [x] Require handwritten `OptionUnwrap` instructions to consume optional
-        values and produce their exact payload type on AArch64 and RISC-V.
+        values and produce their exact payload type at the shared FIR boundary
+        before native lowering on AArch64 and RISC-V.
   - [x] Require handwritten `ResultIsOk` instructions to consume result values
         and produce booleans on AArch64 and RISC-V.
   - [x] Require handwritten `ResultUnwrapOk` and `ResultUnwrapErr` instructions
@@ -107,7 +109,8 @@ available on every backend merely because the frontend accepts it.
         produce result values from their exact variant payload types on AArch64
         and RISC-V.
   - [x] Require handwritten `MakeSome` instructions to produce optional values
-        from their exact payload type on AArch64 and RISC-V.
+        from their exact payload type at the shared FIR boundary before native
+        lowering on AArch64 and RISC-V.
   - [x] Keep fieldless enum/tagged construction distinct from payload-bearing
         tagged construction and require `VariantIs` to produce booleans on
         AArch64 and RISC-V.
