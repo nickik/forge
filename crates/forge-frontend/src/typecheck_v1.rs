@@ -1440,6 +1440,17 @@ impl ModuleTypeEnv {
                 )
         )
     }
+
+    fn is_structural_aggregate(&self, ty: &Ty) -> bool {
+        matches!(
+            ty,
+            Ty::Nominal(id)
+                if matches!(
+                    self.types.get(id).map(|info| &info.kind),
+                    Some(TypeInfoKind::Struct(_) | TypeInfoKind::Tagged(_))
+                )
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -3112,6 +3123,16 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         "type/distinct-comparison",
                         format!(
                             "distinct values require explicit underlying conversion before comparison: {l:?}, {r:?}"
+                        ),
+                    );
+                } else if self.env.is_structural_aggregate(&l)
+                    || self.env.is_structural_aggregate(&r)
+                {
+                    self.diagnostic(
+                        span,
+                        "type/aggregate-comparison",
+                        format!(
+                            "struct/tagged comparisons are not defined in Forge v1: {l:?}, {r:?}"
                         ),
                     );
                 } else if !self.compatible_binary(&l, &r) {

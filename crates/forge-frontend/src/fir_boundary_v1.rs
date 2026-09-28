@@ -2389,7 +2389,7 @@ fn verify_distinct_conversions(
     }
 }
 
-fn verify_distinct_comparisons(
+fn verify_nominal_comparisons(
     function: &fir::FirFunction,
     definitions: &TypeDefinitionTable,
     diagnostics: &mut Vec<FirDiagnostic>,
@@ -2418,20 +2418,29 @@ fn verify_distinct_comparisons(
             let Some(Ty::Nominal(owner)) = left_type else {
                 continue;
             };
-            if left_type != right_type
-                || !matches!(
-                    definitions.get(owner).map(|definition| &definition.kind),
-                    Some(TypeDefinitionKind::Distinct { .. })
-                )
-            {
+            if left_type != right_type {
                 continue;
             }
+            let (code, expectation) = match definitions
+                .get(owner)
+                .map(|definition| &definition.kind)
+            {
+                Some(TypeDefinitionKind::Distinct { .. }) => (
+                    "fir/verify-distinct-comparison",
+                    "explicit conversion to its declared underlying type before comparison",
+                ),
+                Some(TypeDefinitionKind::Struct { .. } | TypeDefinitionKind::Tagged { .. }) => (
+                    "fir/verify-aggregate-comparison",
+                    "field/variant operations instead of implicit structural comparison",
+                ),
+                _ => continue,
+            };
             diagnostics.push(diagnostic(
                 instruction.span,
-                "fir/verify-distinct-comparison",
+                code,
                 format!(
-                    "FIR function {:?} block {:?} instruction {instruction_index} compares distinct type {left_type:?}; expected explicit conversion to its declared underlying type before comparison",
-                    function.owner, block.id
+                    "FIR function {:?} block {:?} instruction {instruction_index} compares unsupported nominal type {left_type:?}; expected {expectation}",
+                    function.owner, block.id,
                 ),
             ));
         }
@@ -2652,7 +2661,7 @@ pub fn verify_fir_module_with_types(
         verify_named_variants(&initializer.function, definitions, &mut diagnostics);
         verify_bitstruct_storage_conversions(&initializer.function, definitions, &mut diagnostics);
         verify_distinct_conversions(&initializer.function, definitions, &mut diagnostics);
-        verify_distinct_comparisons(&initializer.function, definitions, &mut diagnostics);
+        verify_nominal_comparisons(&initializer.function, definitions, &mut diagnostics);
     }
     for function in module.functions.values() {
         verify_make_aggregates(function, definitions, &mut diagnostics);
@@ -2660,7 +2669,7 @@ pub fn verify_fir_module_with_types(
         verify_named_variants(function, definitions, &mut diagnostics);
         verify_bitstruct_storage_conversions(function, definitions, &mut diagnostics);
         verify_distinct_conversions(function, definitions, &mut diagnostics);
-        verify_distinct_comparisons(function, definitions, &mut diagnostics);
+        verify_nominal_comparisons(function, definitions, &mut diagnostics);
     }
     diagnostics
 }

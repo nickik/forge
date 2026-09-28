@@ -3349,6 +3349,58 @@ fn definition_aware_module_verifier_rejects_distinct_comparisons() {
 }
 
 #[test]
+fn definition_aware_module_verifier_rejects_struct_and_tagged_comparisons() {
+    let (mut fir, definitions) = pipeline_with_type_definitions(
+        r#"
+        module test.boundary_aggregate_comparison;
+        struct Point { x: u32; }
+        tagged Value { Number { value: u32; }, Empty }
+        fn struct_like(left: u32, right: u32) -> bool { return left == right; }
+        fn tagged_like(left: u32, right: u32) -> bool { return left != right; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module_with_types(&fir.module, &definitions).is_empty());
+
+    let comparison_types = definitions
+        .iter()
+        .filter_map(|(owner, definition)| {
+            matches!(
+                &definition.kind,
+                TypeDefinitionKind::Struct { .. } | TypeDefinitionKind::Tagged { .. }
+            )
+            .then_some(Ty::Nominal(*owner))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(comparison_types.len(), 2);
+    let mut changed = 0;
+    for (function, comparison_type) in fir.module.functions.values_mut().zip(comparison_types) {
+        for instruction in function
+            .blocks
+            .iter()
+            .flat_map(|block| block.instructions.iter())
+        {
+            let FirInstructionKind::Binary { left, right, .. } = &instruction.kind else {
+                continue;
+            };
+            function.value_types.insert(*left, comparison_type.clone());
+            function.value_types.insert(*right, comparison_type.clone());
+            changed += 1;
+        }
+    }
+    assert_eq!(changed, 2);
+
+    let diagnostics = verify_fir_module_with_types(&fir.module, &definitions)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-aggregate-comparison")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert!(diagnostics.iter().all(|diagnostic| diagnostic
+        .message
+        .contains("field/variant operations instead of implicit structural comparison")));
+}
+
+#[test]
 fn definition_aware_module_verifier_checks_aggregate_construction() {
     let (mut fir, definitions) = pipeline_with_type_definitions(
         r#"

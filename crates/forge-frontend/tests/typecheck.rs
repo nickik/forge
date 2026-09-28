@@ -644,6 +644,32 @@ fn distinct_values_require_explicit_conversion_before_comparison() {
 }
 
 #[test]
+fn rejects_struct_and_tagged_comparisons_before_fir() {
+    let output = check(
+        r#"
+        module test.aggregate_comparison;
+        struct Point { x: u32; }
+        tagged Value { Number { value: u32; }, Empty }
+        fn compare_points(left: Point, right: Point) -> bool {
+            return left == right;
+        }
+        fn compare_values(left: Value, right: Value) -> bool {
+            return left != right;
+        }
+        "#,
+    );
+    let diagnostics = output
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code == "type/aggregate-comparison")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 2, "{:?}", output.diagnostics);
+    assert!(diagnostics.iter().all(|diagnostic| diagnostic
+        .message
+        .contains("struct/tagged comparisons are not defined")));
+}
+
+#[test]
 fn reports_duplicate_named_argument() {
     let output = check(
         r#"
