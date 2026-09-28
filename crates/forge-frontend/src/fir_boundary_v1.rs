@@ -1538,9 +1538,7 @@ fn verify_result_operations(function: &fir::FirFunction, diagnostics: &mut Vec<F
                             FirInstructionKind::ResultUnwrapErr { .. },
                             Some(Ty::Result { error, .. }),
                         ) => ("ResultUnwrapErr", Some(error.as_ref().clone())),
-                        (FirInstructionKind::ResultUnwrapOk { .. }, _) => {
-                            ("ResultUnwrapOk", None)
-                        }
+                        (FirInstructionKind::ResultUnwrapOk { .. }, _) => ("ResultUnwrapOk", None),
                         (FirInstructionKind::ResultUnwrapErr { .. }, _) => {
                             ("ResultUnwrapErr", None)
                         }
