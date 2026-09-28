@@ -1286,7 +1286,7 @@ fn module_verifier_rejects_pointer_and_reference_comparisons() {
         .module
         .functions
         .values_mut()
-        .zip(comparison_types.into_iter())
+        .zip(comparison_types)
     {
         for block in &mut function.blocks {
             for instruction in &mut block.instructions {
