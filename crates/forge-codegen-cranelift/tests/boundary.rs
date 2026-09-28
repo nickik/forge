@@ -1403,12 +1403,8 @@ fn result_is_ok_requires_a_result_input_and_boolean_result() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "result-is-ok instruction has non-bool FIR result type ",
-                    "Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
 
@@ -1458,12 +1454,8 @@ fn result_is_ok_requires_a_result_input_and_boolean_result() {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: concat!(
-                    "result-is-ok instruction has non-result FIR input type ",
-                    "Int { signed: false, width: W32 }"
-                )
-                .into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -1484,18 +1476,9 @@ fn result_unwrap_requires_exact_variant_payload_result_types() {
         let payload = FirValueId(0);
         let input = FirValueId(1);
         let result = FirValueId(2);
-        for (kind, expected) in [
-            (
-                FirInstructionKind::ResultUnwrapOk { value: input },
-                concat!(
-                    "result-unwrap-ok instruction has FIR result type Bool, ok payload is ",
-                    "Int { signed: false, width: W32 }"
-                ),
-            ),
-            (
-                FirInstructionKind::ResultUnwrapErr { value: input },
-                "result-unwrap-err instruction has FIR result type Bool, error payload is Byte",
-            ),
+        for kind in [
+            FirInstructionKind::ResultUnwrapOk { value: input },
+            FirInstructionKind::ResultUnwrapErr { value: input },
         ] {
             let owner = DefId(23);
             let mut module = FirModule::default();
@@ -1551,8 +1534,8 @@ fn result_unwrap_requires_exact_variant_payload_result_types() {
             };
             assert_eq!(
                 error,
-                BackendError::InvalidFirShape {
-                    message: expected.into(),
+                BackendError::InvalidFir {
+                    diagnostic_count: 1,
                 }
             );
         }
@@ -1569,21 +1552,9 @@ fn result_unwrap_requires_a_result_input() {
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let input = FirValueId(0);
         let result = FirValueId(1);
-        for (kind, expected) in [
-            (
-                FirInstructionKind::ResultUnwrapOk { value: input },
-                concat!(
-                    "result-unwrap-ok instruction has non-result FIR input type ",
-                    "Int { signed: false, width: W32 }"
-                ),
-            ),
-            (
-                FirInstructionKind::ResultUnwrapErr { value: input },
-                concat!(
-                    "result-unwrap-err instruction has non-result FIR input type ",
-                    "Int { signed: false, width: W32 }"
-                ),
-            ),
+        for kind in [
+            FirInstructionKind::ResultUnwrapOk { value: input },
+            FirInstructionKind::ResultUnwrapErr { value: input },
         ] {
             let owner = DefId(24);
             let mut module = FirModule::default();
@@ -1630,8 +1601,8 @@ fn result_unwrap_requires_a_result_input() {
             };
             assert_eq!(
                 error,
-                BackendError::InvalidFirShape {
-                    message: expected.into(),
+                BackendError::InvalidFir {
+                    diagnostic_count: 1,
                 }
             );
         }
@@ -1648,21 +1619,9 @@ fn result_constructors_require_result_output_types() {
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let payload = FirValueId(0);
         let result = FirValueId(1);
-        for (kind, expected) in [
-            (
-                FirInstructionKind::MakeResultOk { value: payload },
-                concat!(
-                    "make-result-ok instruction has non-result FIR result type ",
-                    "Int { signed: false, width: W32 }"
-                ),
-            ),
-            (
-                FirInstructionKind::MakeResultErr { error: payload },
-                concat!(
-                    "make-result-err instruction has non-result FIR result type ",
-                    "Int { signed: false, width: W32 }"
-                ),
-            ),
+        for kind in [
+            FirInstructionKind::MakeResultOk { value: payload },
+            FirInstructionKind::MakeResultErr { error: payload },
         ] {
             let owner = DefId(25);
             let mut module = FirModule::default();
@@ -1712,8 +1671,8 @@ fn result_constructors_require_result_output_types() {
             };
             assert_eq!(
                 error,
-                BackendError::InvalidFirShape {
-                    message: expected.into(),
+                BackendError::InvalidFir {
+                    diagnostic_count: 1,
                 }
             );
         }
@@ -1733,18 +1692,9 @@ fn result_constructors_require_exact_variant_payload_types() {
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let payload = FirValueId(0);
         let result = FirValueId(1);
-        for (kind, expected) in [
-            (
-                FirInstructionKind::MakeResultOk { value: payload },
-                concat!(
-                    "make-result-ok instruction has FIR payload type Bool, ok payload is ",
-                    "Int { signed: false, width: W32 }"
-                ),
-            ),
-            (
-                FirInstructionKind::MakeResultErr { error: payload },
-                "make-result-err instruction has FIR payload type Bool, error payload is Byte",
-            ),
+        for kind in [
+            FirInstructionKind::MakeResultOk { value: payload },
+            FirInstructionKind::MakeResultErr { error: payload },
         ] {
             let owner = DefId(26);
             let mut module = FirModule::default();
@@ -1794,8 +1744,8 @@ fn result_constructors_require_exact_variant_payload_types() {
             };
             assert_eq!(
                 error,
-                BackendError::InvalidFirShape {
-                    message: expected.into(),
+                BackendError::InvalidFir {
+                    diagnostic_count: 1,
                 }
             );
         }
