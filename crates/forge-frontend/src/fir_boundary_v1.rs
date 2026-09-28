@@ -870,6 +870,44 @@ fn verify_direct_local_stores(function: &fir::FirFunction, diagnostics: &mut Vec
     }
 }
 
+fn verify_direct_local_addresses(
+    function: &fir::FirFunction,
+    diagnostics: &mut Vec<FirDiagnostic>,
+) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::AddressOf {
+                place: fir::FirPlace::Local { local },
+                mutable,
+            } = &instruction.kind
+            else {
+                continue;
+            };
+            let local_data = function.locals.get(local);
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let expected_type = local_data.map(|local_data| Ty::Reference {
+                mutable: *mutable,
+                inner: Box::new(local_data.ty.clone()),
+            });
+            let valid = local_data.is_some_and(|local_data| !*mutable || local_data.mutable)
+                && instruction.result.is_some()
+                && result_type == expected_type.as_ref();
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-local-address",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} takes an address of local {local:?} with requested mutable={mutable}, metadata {local_data:?}, result {:?}, and result type {result_type:?}; expected an existing local, mutable storage for a mutable address, a result, and exact reference type {expected_type:?}",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1001,6 +1039,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_make_closures(&initializer.function, &mut diagnostics);
         verify_closure_capture_places(&initializer.function, &mut diagnostics);
         verify_direct_local_stores(&initializer.function, &mut diagnostics);
+        verify_direct_local_addresses(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -1026,6 +1065,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_make_closures(function, &mut diagnostics);
         verify_closure_capture_places(function, &mut diagnostics);
         verify_direct_local_stores(function, &mut diagnostics);
+        verify_direct_local_addresses(function, &mut diagnostics);
     }
 
     diagnostics

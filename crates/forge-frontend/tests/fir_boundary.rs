@@ -1660,6 +1660,73 @@ fn module_verifier_checks_direct_local_store_types() {
 }
 
 #[test]
+fn module_verifier_checks_direct_local_address_types_and_mutability() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_local_address;
+        fn main(input: u32) -> u32 {
+            var value: u32 = input;
+            val address: &mut u32 = &mut value;
+            return *address;
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let function_owner = function.owner;
+    let (local, result, block, instruction_index, span) = function
+        .blocks
+        .iter()
+        .find_map(|block| {
+            block.instructions.iter().enumerate().find_map(
+                |(index, instruction)| match &instruction.kind {
+                    FirInstructionKind::AddressOf {
+                        place: FirPlace::Local { local },
+                        mutable: true,
+                    } => Some((
+                        *local,
+                        instruction.result.expect("address result"),
+                        block.id,
+                        index,
+                        instruction.span,
+                    )),
+                    _ => None,
+                },
+            )
+        })
+        .expect("direct mutable local address");
+    function.locals.get_mut(&local).expect("local").mutable = false;
+    function.value_types.insert(
+        result,
+        Ty::Reference {
+            mutable: false,
+            inner: Box::new(Ty::Byte),
+        },
+    );
+
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-local-address")
+        .expect("local-address diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("address of local {local:?}")));
+    assert!(diagnostic.message.contains("mutable: false"));
+    assert!(diagnostic.message.contains("result type Some(Reference"));
+    assert!(diagnostic.message.contains("mutable storage"));
+    assert!(diagnostic.message.contains("exact reference type"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"
