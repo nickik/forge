@@ -1606,6 +1606,60 @@ fn module_verifier_checks_closure_capture_places() {
 }
 
 #[test]
+fn module_verifier_checks_direct_local_store_types() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_local_store;
+        fn main(input: u32) -> u32 {
+            var output: u32 = input;
+            return output;
+        }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let function_owner = function.owner;
+    let (local, value, block, instruction_index, span) = function
+        .blocks
+        .iter()
+        .find_map(|block| {
+            block.instructions.iter().enumerate().find_map(
+                |(index, instruction)| match &instruction.kind {
+                    FirInstructionKind::Store {
+                        place: FirPlace::Local { local },
+                        value,
+                    } => Some((*local, *value, block.id, index, instruction.span)),
+                    _ => None,
+                },
+            )
+        })
+        .expect("direct local store");
+    function.locals.get_mut(&local).expect("local").ty = Ty::Byte;
+
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-local-store")
+        .expect("local-store diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("stores value {value:?} with type Some(Int")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("into local {local:?}")));
+    assert!(diagnostic.message.contains("ty: Byte"));
+    assert!(diagnostic.message.contains("exact declared local type"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"

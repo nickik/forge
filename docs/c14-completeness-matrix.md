@@ -122,6 +122,8 @@ Legend:
   remains lossless-only.
 - Direct safe/raw dereference `AddressOf` FIR preserves requested mutability and exact pointee
   result types before AArch64/RISC-V lowering.
+- Direct local stores preserve their exact declared local type at the shared FIR boundary before
+  AArch64/RISC-V lowering.
 - Global load/store/address FIR preserves the declared global type, storage mutability and
   requested reference mutability before AArch64/RISC-V lowering.
 - Named-function-reference FIR resolves to module functions and preserves exact parameter and

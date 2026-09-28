@@ -66,7 +66,7 @@ fn mismatched_local_store() -> FirFunction {
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_invalid(function: FirFunction) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
     let definitions = TypeDefinitionTable::new();
@@ -78,8 +78,8 @@ fn assert_invalid(function: FirFunction, message: &str) {
         };
         assert_eq!(
             error,
-            BackendError::InvalidFirShape {
-                message: message.into(),
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
             }
         );
     }
@@ -87,8 +87,5 @@ fn assert_invalid(function: FirFunction, message: &str) {
 
 #[test]
 fn local_store_value_must_match_the_local_type() {
-    assert_invalid(
-        mismatched_local_store(),
-        "local FIR store value type Byte differs from local type Int { signed: false, width: W32 }",
-    );
+    assert_invalid(mismatched_local_store());
 }
