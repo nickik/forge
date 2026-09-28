@@ -2656,6 +2656,57 @@ fn module_verifier_checks_unchecked_index_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_scalar_constant_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_scalar_constants;
+        fn integer_value() -> u32 { return 7u32; }
+        fn float_value() -> f32 { return 1.0f32; }
+        fn boolean_value() -> bool { return true; }
+        fn character_value() -> char { return 'a'; }
+        fn duration_value() -> duration { return #duration "1ms"; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module(&fir.module).is_empty());
+
+    let mut changed = 0;
+    for function in fir.module.functions.values_mut() {
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                if !matches!(
+                    instruction.kind,
+                    FirInstructionKind::Const {
+                        value: forge_frontend::FirConst::Integer { .. }
+                            | forge_frontend::FirConst::Float { .. }
+                            | forge_frontend::FirConst::Bool { .. }
+                            | forge_frontend::FirConst::Char { .. }
+                            | forge_frontend::FirConst::Duration { .. },
+                    }
+                ) {
+                    continue;
+                }
+                let result = instruction.result.expect("scalar constant result");
+                function.value_types.insert(result, Ty::Void);
+                changed += 1;
+            }
+        }
+    }
+    assert_eq!(changed, 5);
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-scalar-constant")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
+    for kind in ["integer", "float", "boolean", "character", "duration"] {
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains(kind)));
+    }
+}
+
+#[test]
 fn module_verifier_checks_string_constant_contracts() {
     let (_, _, mut fir) = pipeline(
         r#"
