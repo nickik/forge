@@ -66,6 +66,35 @@ fn mismatched_local_store() -> FirFunction {
     }
 }
 
+fn mismatched_local_load() -> FirFunction {
+    let source = FirLocalId(0);
+    let result = FirValueId(0);
+    let span = Span::new(0, 0);
+    FirFunction {
+        owner: DefId(1),
+        params: vec![source],
+        return_type: Ty::Byte,
+        locals: BTreeMap::from([(source, local(source, u32_ty()))]),
+        closures: BTreeMap::new(),
+        entry: FirBlockId(0),
+        blocks: vec![FirBasicBlock {
+            id: FirBlockId(0),
+            closure: None,
+            instructions: vec![FirInstruction {
+                span,
+                result: Some(result),
+                kind: FirInstructionKind::Load {
+                    place: FirPlace::Local { local: source },
+                },
+            }],
+            terminator: Some(FirTerminator::Return {
+                value: Some(result),
+            }),
+        }],
+        value_types: BTreeMap::from([(result, Ty::Byte)]),
+    }
+}
+
 fn assert_invalid(function: FirFunction) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
@@ -73,7 +102,7 @@ fn assert_invalid(function: FirFunction) {
     for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
         let backend = CraneliftBackend::new(target).expect("backend");
         let error = match backend.prepare_module_with_types(&module, &definitions) {
-            Ok(_) => panic!("malformed local-store FIR unexpectedly lowered"),
+            Ok(_) => panic!("malformed local-access FIR unexpectedly lowered"),
             Err(error) => error,
         };
         assert_eq!(
@@ -88,4 +117,9 @@ fn assert_invalid(function: FirFunction) {
 #[test]
 fn local_store_value_must_match_the_local_type() {
     assert_invalid(mismatched_local_store());
+}
+
+#[test]
+fn local_load_result_must_match_the_local_type() {
+    assert_invalid(mismatched_local_load());
 }

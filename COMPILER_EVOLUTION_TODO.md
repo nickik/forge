@@ -144,6 +144,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Require direct handwritten local `AddressOf` instructions to preserve
         requested mutability and exact local-pointee result types at the shared
         FIR boundary before native lowering on AArch64 and RISC-V.
+  - [x] Require direct handwritten local loads to preserve their declared local
+        result type at the shared FIR boundary before native lowering on
+        AArch64 and RISC-V.
   - [x] Require direct handwritten local stores to preserve their declared
         local value type at the shared FIR boundary before native lowering on
         AArch64 and RISC-V.

@@ -1606,6 +1606,61 @@ fn module_verifier_checks_closure_capture_places() {
 }
 
 #[test]
+fn module_verifier_checks_direct_local_load_types() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_local_load;
+        fn main(input: u32) -> u32 { return input; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let function_owner = function.owner;
+    let (local, result, block, instruction_index, span) = function
+        .blocks
+        .iter()
+        .find_map(|block| {
+            block.instructions.iter().enumerate().find_map(
+                |(index, instruction)| match &instruction.kind {
+                    FirInstructionKind::Load {
+                        place: FirPlace::Local { local },
+                    } => Some((
+                        *local,
+                        instruction.result.expect("load result"),
+                        block.id,
+                        index,
+                        instruction.span,
+                    )),
+                    _ => None,
+                },
+            )
+        })
+        .expect("direct local load");
+    function.value_types.insert(result, Ty::Byte);
+    function.return_type = Ty::Byte;
+
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-local-load")
+        .expect("local-load diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("loads local {local:?}")));
+    assert!(diagnostic.message.contains("ty: Int"));
+    assert!(diagnostic.message.contains("with type Some(Byte)"));
+    assert!(diagnostic.message.contains("exact declared local type"));
+}
+
+#[test]
 fn module_verifier_checks_direct_local_store_types() {
     let (_, _, mut fir) = pipeline(
         r#"

@@ -93,7 +93,9 @@ fn load_rejects_equal_width_but_different_fir_type() {
 
     assert!(matches!(
         lower_error(function),
-        BackendError::InvalidFirShape { .. }
+        BackendError::InvalidFir {
+            diagnostic_count: 1
+        }
     ));
 }
 
