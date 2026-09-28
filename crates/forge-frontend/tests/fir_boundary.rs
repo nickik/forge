@@ -1856,8 +1856,11 @@ fn module_verifier_checks_direct_raw_dereference_contracts() {
         .blocks
         .iter_mut()
         .find_map(|block| {
-            block.instructions.iter_mut().enumerate().find_map(
-                |(index, instruction)| match &mut instruction.kind {
+            block
+                .instructions
+                .iter_mut()
+                .enumerate()
+                .find_map(|(index, instruction)| match &mut instruction.kind {
                     FirInstructionKind::Load {
                         place:
                             FirPlace::RawDeref {
@@ -1874,8 +1877,7 @@ fn module_verifier_checks_direct_raw_dereference_contracts() {
                         ))
                     }
                     _ => None,
-                },
-            )
+                })
         })
         .expect("direct raw dereference load");
     function.value_types.insert(result, Ty::Byte);
