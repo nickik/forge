@@ -842,6 +842,35 @@ fn verify_closure_capture_places(
     }
 }
 
+fn verify_direct_local_loads(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::Load {
+                place: fir::FirPlace::Local { local },
+            } = &instruction.kind
+            else {
+                continue;
+            };
+            let local_data = function.locals.get(local);
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let valid = instruction.result.is_some()
+                && local_data.is_some_and(|local_data| result_type == Some(&local_data.ty));
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-local-load",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} loads local {local:?} with metadata {local_data:?} into result {:?} with type {result_type:?}; expected a result, an existing local, and the exact declared local type",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 fn verify_direct_local_stores(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
     for block in &function.blocks {
         for (instruction_index, instruction) in block.instructions.iter().enumerate() {
@@ -1279,6 +1308,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_closure_calls(&initializer.function, &mut diagnostics);
         verify_make_closures(&initializer.function, &mut diagnostics);
         verify_closure_capture_places(&initializer.function, &mut diagnostics);
+        verify_direct_local_loads(&initializer.function, &mut diagnostics);
         verify_direct_local_stores(&initializer.function, &mut diagnostics);
         verify_direct_local_addresses(&initializer.function, &mut diagnostics);
         verify_direct_dereference_addresses(&initializer.function, &mut diagnostics);
@@ -1310,6 +1340,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_closure_calls(function, &mut diagnostics);
         verify_make_closures(function, &mut diagnostics);
         verify_closure_capture_places(function, &mut diagnostics);
+        verify_direct_local_loads(function, &mut diagnostics);
         verify_direct_local_stores(function, &mut diagnostics);
         verify_direct_local_addresses(function, &mut diagnostics);
         verify_direct_dereference_addresses(function, &mut diagnostics);

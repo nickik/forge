@@ -132,6 +132,8 @@ Legend:
   integer-to-pointer or distinct-pointer endpoint types at the shared FIR boundary.
 - Direct local `AddressOf` FIR preserves requested mutability, mutable-storage requirements and
   exact local-pointee result types at the shared FIR boundary before AArch64/RISC-V lowering.
+- Direct local loads preserve their exact declared local result type at the shared FIR boundary
+  before AArch64/RISC-V lowering.
 - Direct local stores preserve their exact declared local type at the shared FIR boundary before
   AArch64/RISC-V lowering.
 - Global load/store/address FIR preserves the declared global type, storage mutability and
