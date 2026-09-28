@@ -141,8 +141,8 @@ available on every backend merely because the frontend accepts it.
         reference-pointee load/store types before native lowering on AArch64
         and RISC-V.
   - [x] Require direct handwritten local `AddressOf` instructions to preserve
-        requested mutability and exact local-pointee result types before native
-        lowering on AArch64 and RISC-V.
+        requested mutability and exact local-pointee result types at the shared
+        FIR boundary before native lowering on AArch64 and RISC-V.
   - [x] Require direct handwritten local stores to preserve their declared
         local value type at the shared FIR boundary before native lowering on
         AArch64 and RISC-V.

@@ -132,7 +132,26 @@ fn dereference_address_of(
     }
 }
 
-fn assert_invalid(function: FirFunction, message: &str) {
+fn assert_shared_invalid(function: FirFunction) {
+    let mut module = FirModule::default();
+    module.functions.insert(function.owner, function);
+    let definitions = TypeDefinitionTable::new();
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module_with_types(&module, &definitions) {
+            Ok(_) => panic!("malformed address-of FIR unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
+            }
+        );
+    }
+}
+
+fn assert_backend_invalid(function: FirFunction, message: &str) {
     let mut module = FirModule::default();
     module.functions.insert(function.owner, function);
     let definitions = TypeDefinitionTable::new();
@@ -153,31 +172,22 @@ fn assert_invalid(function: FirFunction, message: &str) {
 
 #[test]
 fn address_of_result_must_match_the_local_pointee() {
-    assert_invalid(
-        address_of(false, false, reference(Ty::Byte, false)),
-        "address-of result type Reference { mutable: false, inner: Byte } does not match expected reference type Reference { mutable: false, inner: Int { signed: false, width: W32 } }",
-    );
+    assert_shared_invalid(address_of(false, false, reference(Ty::Byte, false)));
 }
 
 #[test]
 fn address_of_result_must_preserve_requested_mutability() {
-    assert_invalid(
-        address_of(true, true, reference(u32_ty(), false)),
-        "address-of result type Reference { mutable: false, inner: Int { signed: false, width: W32 } } does not match expected reference type Reference { mutable: true, inner: Int { signed: false, width: W32 } }",
-    );
+    assert_shared_invalid(address_of(true, true, reference(u32_ty(), false)));
 }
 
 #[test]
 fn mutable_address_requires_a_mutable_local() {
-    assert_invalid(
-        address_of(false, true, reference(u32_ty(), true)),
-        "mutable address requested for immutable FIR local FirLocalId(0)",
-    );
+    assert_shared_invalid(address_of(false, true, reference(u32_ty(), true)));
 }
 
 #[test]
 fn safe_dereference_address_of_result_must_match_the_reference_pointee() {
-    assert_invalid(
+    assert_backend_invalid(
         dereference_address_of(
             false,
             reference(u32_ty(), false),
@@ -190,7 +200,7 @@ fn safe_dereference_address_of_result_must_match_the_reference_pointee() {
 
 #[test]
 fn raw_dereference_address_of_result_must_match_the_pointer_pointee() {
-    assert_invalid(
+    assert_backend_invalid(
         dereference_address_of(
             true,
             pointer(u32_ty()),
@@ -203,7 +213,7 @@ fn raw_dereference_address_of_result_must_match_the_pointer_pointee() {
 
 #[test]
 fn dereference_address_of_result_must_preserve_requested_mutability() {
-    assert_invalid(
+    assert_backend_invalid(
         dereference_address_of(
             false,
             reference(u32_ty(), true),
