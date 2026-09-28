@@ -1,3 +1,4 @@
+use forge_frontend::ast::BinaryOp;
 use forge_frontend::{
     collect_type_definitions, dump_fir_module, lower_fir, lower_module, lower_resolved_bodies,
     parse_source, type_check_module, verify_fir_boundary, verify_fir_function, verify_fir_module,
@@ -1158,6 +1159,64 @@ fn module_verifier_checks_numeric_conversion_producer_contracts() {
         .collect::<Vec<_>>();
     assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
     for operation in ["LosslessIntegerConvert", "IntegerToFloat", "FloatConvert"] {
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains(operation)));
+    }
+}
+
+#[test]
+fn module_verifier_checks_binary_operation_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_binary;
+        fn add(left: u32, right: u32) -> u32 { return left + right; }
+        fn subtract(left: u32, right: u32) -> u32 { return left - right; }
+        fn equal(left: u32, right: u32) -> bool { return left == right; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module(&fir.module).is_empty());
+
+    let mut changed = 0;
+    for function in fir.module.functions.values_mut() {
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                let FirInstructionKind::Binary { op, right, .. } = &instruction.kind else {
+                    continue;
+                };
+                match op {
+                    BinaryOp::Add => {
+                        let result = instruction.result.expect("binary result");
+                        function.value_types.insert(
+                            result,
+                            Ty::Int {
+                                signed: true,
+                                width: IntWidth::W32,
+                            },
+                        );
+                    }
+                    BinaryOp::Sub => {
+                        function.value_types.insert(*right, Ty::Char);
+                    }
+                    BinaryOp::Eq => {
+                        let result = instruction.result.expect("comparison result");
+                        function.value_types.insert(result, Ty::Char);
+                    }
+                    _ => continue,
+                }
+                changed += 1;
+            }
+        }
+    }
+    assert_eq!(changed, 3);
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-binary")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
+    for operation in ["Add", "Sub", "Eq"] {
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.message.contains(operation)));

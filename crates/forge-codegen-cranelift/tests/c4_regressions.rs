@@ -207,7 +207,9 @@ fn comparison_result_must_be_exactly_bool() {
     let function = malformed_binary(int_ty(true, IntWidth::W8), BinaryOp::Eq);
     assert!(matches!(
         lower_error(function),
-        BackendError::InvalidFirShape { .. }
+        BackendError::InvalidFir {
+            diagnostic_count: 1
+        }
     ));
 }
 
@@ -216,7 +218,9 @@ fn arithmetic_result_must_match_operand_fir_type() {
     let function = malformed_binary(int_ty(true, IntWidth::W8), BinaryOp::Add);
     assert!(matches!(
         lower_error(function),
-        BackendError::InvalidFirShape { .. }
+        BackendError::InvalidFir {
+            diagnostic_count: 1
+        }
     ));
 }
 

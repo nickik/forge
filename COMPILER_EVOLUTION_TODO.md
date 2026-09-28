@@ -53,6 +53,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Reject non-comparison `char` operations during typechecking and treat
         handwritten arithmetic `char` FIR as an invalid producer contract on
         AArch64 and RISC-V, not an unimplemented backend capability.
+  - [x] Require handwritten binary FIR to preserve exact operand identity,
+        produce booleans for comparisons and preserve the operand type for
+        non-comparisons at the shared boundary before native lowering.
   - [x] Reject sequence patterns on non-sequences during typechecking and treat
         incompatible `Subsequence` source/result FIR as an invalid producer
         contract at the shared FIR boundary before AArch64/RISC-V lowering,

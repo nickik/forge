@@ -68,6 +68,8 @@ Legend:
   production backend boundaries before CLIF lowering.
 - Non-comparison `char` operations are rejected during typechecking; handwritten arithmetic
   `char` FIR is diagnosed as an invalid producer contract rather than deferred backend support.
+- Binary FIR requires exact operand identity, boolean comparison results and operand-typed
+  non-comparison results at the shared boundary before native lowering.
 - Sequence patterns are restricted to arrays and slices during typechecking; incompatible
   `Subsequence` source/result FIR fails at the shared boundary unless slices preserve exact type or
   fixed arrays preserve element type and residual length.
