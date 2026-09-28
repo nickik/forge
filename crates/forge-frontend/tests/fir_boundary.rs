@@ -1656,7 +1656,7 @@ fn module_verifier_checks_direct_local_load_types() {
         .message
         .contains(&format!("loads local {local:?}")));
     assert!(diagnostic.message.contains("ty: Int"));
-    assert!(diagnostic.message.contains("result type Some(Byte)"));
+    assert!(diagnostic.message.contains("with type Some(Byte)"));
     assert!(diagnostic.message.contains("exact declared local type"));
 }
 
