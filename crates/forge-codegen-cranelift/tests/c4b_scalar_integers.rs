@@ -322,11 +322,13 @@ fn bitnot_and_explicit_negation_overflow_semantics_lower() {
         forge_codegen_cranelift::CraneliftTarget::Aarch64,
         forge_codegen_cranelift::CraneliftTarget::Riscv64,
     ] {
-        let error = prepare(
+        let error = match prepare(
             unary(FirUnaryOp::Neg, int_ty(true, IntWidth::W32), None),
             CraneliftBackend::new(target).expect("backend"),
-        )
-        .expect_err("integer negation without overflow semantics must fail verification");
+        ) {
+            Ok(_) => panic!("integer negation without overflow semantics unexpectedly lowered"),
+            Err(error) => error,
+        };
         assert_eq!(
             error,
             BackendError::InvalidFir {
