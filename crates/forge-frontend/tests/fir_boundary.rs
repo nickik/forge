@@ -1330,6 +1330,60 @@ fn module_verifier_rejects_pointer_reference_and_callable_comparisons() {
 }
 
 #[test]
+fn module_verifier_rejects_string_slice_and_array_comparisons() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_sequence_comparisons;
+        fn string_like(left: u32, right: u32) -> bool { return left == right; }
+        fn slice_like(left: u32, right: u32) -> bool { return left < right; }
+        fn array_like(left: u32, right: u32) -> bool { return left != right; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module(&fir.module).is_empty());
+
+    let comparison_types = [
+        Ty::Str,
+        Ty::Slice {
+            mutable: false,
+            element: Box::new(Ty::Byte),
+        },
+        Ty::Array {
+            element: Box::new(Ty::Byte),
+            length: Some(2),
+        },
+    ];
+    let mut changed = 0;
+    for (function, comparison_type) in fir.module.functions.values_mut().zip(comparison_types) {
+        for block in &mut function.blocks {
+            for instruction in &mut block.instructions {
+                let FirInstructionKind::Binary { left, right, .. } = &instruction.kind else {
+                    continue;
+                };
+                function.value_types.insert(*left, comparison_type.clone());
+                function.value_types.insert(*right, comparison_type.clone());
+                changed += 1;
+            }
+        }
+    }
+    assert_eq!(changed, 3);
+
+    let diagnostics = verify_fir_module(&fir.module)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-binary")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), changed, "{diagnostics:?}");
+    assert!(diagnostics.iter().all(|diagnostic| diagnostic
+        .message
+        .contains("no string/slice/array comparison domain")));
+    for domain in ["Str", "Slice", "Array"] {
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains(domain)));
+    }
+}
+
+#[test]
 fn module_verifier_checks_binary_overflow_contracts() {
     let (_, _, mut fir) = pipeline(
         r#"
