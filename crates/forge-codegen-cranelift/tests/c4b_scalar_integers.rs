@@ -301,11 +301,7 @@ fn bitnot_and_explicit_negation_overflow_semantics_lower() {
     assert!(not.contains("bnot"), "{not}");
 
     let checked = lower(
-        unary(
-            FirUnaryOp::Neg,
-            ty.clone(),
-            Some(OverflowMode::Checked),
-        ),
+        unary(FirUnaryOp::Neg, ty.clone(), Some(OverflowMode::Checked)),
         CraneliftBackend::aarch64().expect("AArch64"),
     );
     assert!(
