@@ -2114,6 +2114,64 @@ fn module_verifier_checks_array_construction_contracts() {
 }
 
 #[test]
+fn module_verifier_checks_length_contracts() {
+    let (_, _, mut fir) = pipeline(
+        r#"
+        module test.boundary_len;
+        fn count(values: u16[]) -> usize { return values.len; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+
+    let function = fir.module.functions.values_mut().next().unwrap();
+    let function_owner = function.owner;
+    let (value, result, block, instruction_index, span) = function
+        .blocks
+        .iter()
+        .find_map(|block| {
+            block.instructions.iter().enumerate().find_map(
+                |(index, instruction)| match &instruction.kind {
+                    FirInstructionKind::Len { value } => Some((
+                        *value,
+                        instruction.result.expect("length result"),
+                        block.id,
+                        index,
+                        instruction.span,
+                    )),
+                    _ => None,
+                },
+            )
+        })
+        .expect("length producer");
+    let invalid_result_type = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    function
+        .value_types
+        .insert(result, invalid_result_type.clone());
+    function.return_type = invalid_result_type;
+
+    let diagnostic = verify_fir_module(&fir.module)
+        .into_iter()
+        .find(|diagnostic| diagnostic.code == "fir/verify-len")
+        .expect("length diagnostic");
+    assert_eq!(diagnostic.span, span);
+    assert!(diagnostic
+        .message
+        .contains(&format!("function {function_owner:?}")));
+    assert!(diagnostic.message.contains(&format!("block {block:?}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("instruction {instruction_index}")));
+    assert!(diagnostic
+        .message
+        .contains(&format!("from value {value:?}")));
+    assert!(diagnostic.message.contains("width: W32"));
+    assert!(diagnostic.message.contains("usize result"));
+}
+
+#[test]
 fn verifier_requires_local_initialization_on_every_incoming_path() {
     let (_, _, mut fir) = pipeline(
         r#"

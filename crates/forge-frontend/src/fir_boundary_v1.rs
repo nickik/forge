@@ -1218,6 +1218,46 @@ fn verify_array_construction(function: &fir::FirFunction, diagnostics: &mut Vec<
     }
 }
 
+fn verify_lengths(function: &fir::FirFunction, diagnostics: &mut Vec<FirDiagnostic>) {
+    for block in &function.blocks {
+        for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let FirInstructionKind::Len { value } = &instruction.kind else {
+                continue;
+            };
+            let source_type = function.value_types.get(value);
+            let result_type = instruction
+                .result
+                .and_then(|result| function.value_types.get(&result));
+            let usize_type = Ty::Int {
+                signed: false,
+                width: IntWidth::Pointer,
+            };
+            let valid_source = matches!(
+                source_type,
+                Some(
+                    Ty::Array {
+                        length: Some(_),
+                        ..
+                    } | Ty::Slice { .. }
+                        | Ty::Str
+                )
+            );
+            let valid =
+                valid_source && instruction.result.is_some() && result_type == Some(&usize_type);
+            if !valid {
+                diagnostics.push(diagnostic(
+                    instruction.span,
+                    "fir/verify-len",
+                    format!(
+                        "FIR function {:?} block {:?} instruction {instruction_index} computes length from value {value:?} with type {source_type:?} into result {:?} with type {result_type:?}; expected a fixed array, slice or string input and a usize result",
+                        function.owner, block.id, instruction.result
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -1357,6 +1397,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_pointer_offsets(&initializer.function, &mut diagnostics);
         verify_pointer_conversions(&initializer.function, &mut diagnostics);
         verify_array_construction(&initializer.function, &mut diagnostics);
+        verify_lengths(&initializer.function, &mut diagnostics);
     }
 
     for (owner, function) in &module.functions {
@@ -1390,6 +1431,7 @@ pub fn verify_fir_module(module: &FirModule) -> Vec<FirDiagnostic> {
         verify_pointer_offsets(function, &mut diagnostics);
         verify_pointer_conversions(function, &mut diagnostics);
         verify_array_construction(function, &mut diagnostics);
+        verify_lengths(function, &mut diagnostics);
     }
 
     diagnostics
