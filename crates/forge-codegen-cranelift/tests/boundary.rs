@@ -337,6 +337,79 @@ fn invalid_binary_overflow_metadata_is_a_producer_contract_error() {
 }
 
 #[test]
+fn invalid_binary_operator_domain_is_a_producer_contract_error() {
+    let owner = DefId(5);
+    let left = FirValueId(0);
+    let right = FirValueId(1);
+    let result = FirValueId(2);
+    let span = Span::new(0, 3);
+    let mut module = FirModule::default();
+    module.functions.insert(
+        owner,
+        FirFunction {
+            owner,
+            params: Vec::new(),
+            return_type: Ty::Bool,
+            locals: BTreeMap::new(),
+            closures: BTreeMap::new(),
+            entry: FirBlockId(0),
+            blocks: vec![FirBasicBlock {
+                id: FirBlockId(0),
+                closure: None,
+                instructions: vec![
+                    FirInstruction {
+                        span,
+                        result: Some(left),
+                        kind: FirInstructionKind::Const {
+                            value: FirConst::Bool { value: true },
+                        },
+                    },
+                    FirInstruction {
+                        span,
+                        result: Some(right),
+                        kind: FirInstructionKind::Const {
+                            value: FirConst::Bool { value: false },
+                        },
+                    },
+                    FirInstruction {
+                        span,
+                        result: Some(result),
+                        kind: FirInstructionKind::Binary {
+                            op: BinaryOp::BitAnd,
+                            overflow: None,
+                            left,
+                            right,
+                        },
+                    },
+                ],
+                terminator: Some(FirTerminator::Return {
+                    value: Some(result),
+                }),
+            }],
+            value_types: BTreeMap::from([
+                (left, Ty::Bool),
+                (right, Ty::Bool),
+                (result, Ty::Bool),
+            ]),
+        },
+    );
+
+    for target in [CraneliftTarget::Aarch64, CraneliftTarget::Riscv64] {
+        let backend = CraneliftBackend::new(target).expect("backend");
+        let error = match backend.prepare_module(&module) {
+            Ok(_) => panic!("invalid binary operator domain unexpectedly lowered"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            BackendError::InvalidFir {
+                diagnostic_count: 1,
+            }
+        );
+    }
+}
+
+#[test]
 fn invalid_subsequence_types_are_a_producer_contract_error() {
     let owner = DefId(4);
     let local = FirLocalId(0);
