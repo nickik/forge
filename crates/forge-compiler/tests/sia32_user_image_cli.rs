@@ -83,6 +83,50 @@ pub fn answer() -> i32 {
 }
 
 #[test]
+fn cosmic_user_image_contract_rejects_float_fir_before_emission() {
+    let root = fixture_dir("float-boundary");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("create fixture directory");
+    let source = root.join("system_task.fg");
+    let image = root.join("system-task.bin");
+    std::fs::write(
+        &source,
+        r#"
+module cosmic.system_task;
+
+pub fn system_task_entry() -> i32 {
+    val left: f32 = 1.5f32;
+    val right: f32 = 2.0f32;
+    val sum: f32 = left + right;
+    if (sum > 0.0f32) { return 0i32; }
+    return 1i32;
+}
+"#,
+    )
+    .expect("write System Task fixture");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_forge-lighting-firmware"))
+        .arg(&source)
+        .args(["--entry", "system_task_entry"])
+        .arg("--user-image")
+        .args(["--text-base", "0x00200000"])
+        .arg("-o")
+        .arg(&image)
+        .output()
+        .expect("forge-lighting-firmware should start");
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("floating point on SIA32 (deferred)"),
+        "unexpected diagnostic: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!image.exists(), "rejected float image must not be emitted");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn cosmic_user_image_contract_requires_an_explicit_virtual_address() {
     let root = fixture_dir("address");
     let _ = std::fs::remove_dir_all(&root);
