@@ -53,6 +53,7 @@ jobs:
           forge check --manifest-path examples/c14-build-system/forge.fdn
           forge build --manifest-path examples/c14-build-system/forge.fdn --target app
           test -x examples/c14-build-system/build/app
+          test "$(examples/c14-build-system/build/app alpha beta)" = "run-ok"
           test "$(forge run --manifest-path examples/c14-build-system/forge.fdn --target app -- alpha beta)" = "run-ok"
           forge test --manifest-path examples/c14-build-system/forge.fdn --target smoke
           forge test --manifest-path examples/c14-build-system/forge.fdn --target lib
