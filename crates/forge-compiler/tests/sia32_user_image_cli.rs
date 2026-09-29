@@ -83,6 +83,42 @@ pub fn answer() -> i32 {
 }
 
 #[test]
+fn cosmic_user_image_contract_defaults_to_a_binary_output_name() {
+    let root = fixture_dir("default-output");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("create fixture directory");
+    let source = root.join("system_task.fg");
+    let binary = source.with_extension("bin");
+    let assembly = source.with_extension("lighting.s");
+    std::fs::write(
+        &source,
+        "module cosmic.system_task; pub fn system_task_entry() -> i32 { return 0; }",
+    )
+    .expect("write System Task fixture");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_forge-lighting-firmware"))
+        .arg(&source)
+        .args(["--entry", "system_task_entry"])
+        .arg("--user-image")
+        .args(["--text-base", "0x00200000"])
+        .output()
+        .expect("forge-lighting-firmware should start");
+
+    assert!(
+        output.status.success(),
+        "user-image compile failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(binary.exists(), "default user image was not emitted");
+    assert!(
+        !assembly.exists(),
+        "binary user image must not use an assembly filename"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn cosmic_user_image_contract_rejects_float_fir_before_emission() {
     let root = fixture_dir("float-boundary");
     let _ = std::fs::remove_dir_all(&root);
