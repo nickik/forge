@@ -1,0 +1,8 @@
+module examples.spec_examples.empty_capture_reserved;
+
+fn main() -> i32 {
+    val increment = [](value: i32) -> i32 {
+        return value + 1;
+    };
+    return increment(1);
+}
