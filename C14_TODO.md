@@ -97,7 +97,7 @@ The manifest semantics already documented by the repository must work with `forg
 - [ ] current Cosmic hosted semantic tests execute through the production Forge compiler;
 - [ ] normal Forge/Cosmic CI no longer requires Java/Clojure/CForge to run ordinary Forge code;
 - [ ] retain CForge in a bounded differential/reference lane;
-- [ ] keep CI fan-out bounded: grouped suites, not one workflow per example.
+- [x] keep CI fan-out bounded: grouped suites, not one workflow per example.
 
 ## Tests
 
