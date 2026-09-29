@@ -1,0 +1,20 @@
+module examples.spec_examples.reference_assignment;
+
+struct Counter {
+    value: i32;
+}
+
+fn advance(counter: &mut Counter, delta: i32) -> void {
+    counter.value = counter.value + delta;
+}
+
+fn main() -> i32 {
+    var counter = Counter{value: 1};
+    for (var index: i32 = 0; index < 3; index = index + 1) {
+        advance(&mut counter, 2);
+    }
+    if (counter.value == 7) {
+        return 0;
+    }
+    return 1;
+}
