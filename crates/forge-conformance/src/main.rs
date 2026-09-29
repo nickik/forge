@@ -98,7 +98,10 @@ fn main() {
 
 fn parse_args() -> Options {
     let args = env::args().skip(1).collect::<Vec<_>>();
-    if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+    if args
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "-h" | "--help"))
+    {
         usage();
     }
     parse_options(args).unwrap_or_else(|error| {
