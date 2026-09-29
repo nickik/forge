@@ -91,7 +91,7 @@ The manifest semantics already documented by the repository must work with `forg
 
 ## C14e — default-toolchain cutover
 
-- [ ] the Rust compiler is the primary conformance execution path;
+- [x] the Rust compiler is the primary conformance execution path;
 - [ ] all Forge-repository examples that are valid v1 compile with `forgec`;
 - [ ] all currently applicable CForge examples execute through `forgec` with equivalent observable behavior;
 - [ ] current Cosmic hosted semantic tests execute through the production Forge compiler;

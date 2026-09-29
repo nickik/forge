@@ -21,12 +21,23 @@ From the repository root:
 cargo run -p forge-conformance -- examples/conformance/suite.fdn
 ```
 
-The manifest has an explicit `:active-kinds` vector. Initially it contains only `:parse`. Every active parse case is passed through the same `forge_frontend::parse_source` entry point used by the `forge-parse` CLI. The harness prints inactive `:negative` and `:run` cases as `PENDING` and exits successfully when all active cases pass.
+The manifest has an explicit `:active-kinds` vector. Parse, syntax-negative and
+semantic-negative cases run through the production Rust frontend, while `run`
+cases execute through the production Rust compiler on AArch64 Linux. The
+normal CI lane requires every listed case to execute:
 
-A typical bring-up summary is:
+```sh
+cargo run -p forge-conformance -- \
+  --require-no-pending examples/conformance/suite.fdn
+```
+
+The strict flag exits unsuccessfully when any case is pending, even if all
+executed cases passed. Without it, a developer can still run a suite during
+bring-up on a host that lacks an active executor and inspect its pending cases.
+A complete current run reports:
 
 ```text
-summary: 4 passed; 0 failed; 16 pending
+summary: 131 passed; 0 failed; 0 pending
 ```
 
 The progression rule is deliberate:
@@ -35,7 +46,8 @@ The progression rule is deliberate:
 2. Add `:negative` only after HIR/type checking can classify semantic rejections by the `:expect` keyword.
 3. Add `:run` only after FIR plus a backend can build and execute programs and validate `:exit`.
 
-If a kind is placed in `:active-kinds` before its executor exists, the harness fails. This prevents the manifest from claiming compiler coverage that is not implemented.
+CI's `--require-no-pending` gate prevents the manifest from claiming compiler
+coverage that the production Rust path does not execute.
 
 ## Manifest contract
 
