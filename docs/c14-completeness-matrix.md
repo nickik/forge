@@ -182,5 +182,5 @@ Legend:
 
 ## Next acceptance slices
 
-1. Compile a separate Cosmic System Task image and prove the kernel/user crossing through LightingSimulation.
+1. Load the separate Cosmic System Task image and prove the kernel/user crossing through LightingSimulation.
 2. Validate current Cosmic through M18 or later.

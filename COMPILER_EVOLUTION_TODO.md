@@ -7,7 +7,10 @@
 - [x] SIA32 direct-call literals preserve the required 4-byte function alignment through final image layout.
 - [x] The merged Forge image is consumed by LightingSimulation's end-to-end Cosmic boot proof.
 - [x] M27 proof reaches Cosmic, installs VMCTX/page tables, enables translation, enters and returns from TRAP 0x27, and halts intentionally.
-- [ ] Next vertical target: compile the smallest System Task/userspace image and support the kernel/user crossing required to run it.
+- [x] Forge emits the checked-in M28.5 System Task as a deterministic,
+      headerless SIA32 user image linked at its explicit virtual address.
+- [ ] Next vertical target: load the separate kernel and System Task images in
+      LightingSimulation and prove the kernel/user ABI crossing required to run it.
 
 
 This is the top-level implementation order for the Forge compiler after C14.
@@ -429,7 +432,8 @@ available on every backend merely because the frontend accepts it.
   - [x] Compile the checked-in M28.5 System Task source through the production
         SIA32 user-image path, including fixed `r1` syscall exchange, traps and
         the userspace proof-word store.
-  - [ ] Extend the contract to a separate freestanding System Task/user image and kernel/user ABI crossing.
+  - [ ] Execute the separate freestanding System Task/user image through the
+        real LightingSimulation kernel/user ABI crossing.
 - [x] Keep package/module visibility and dependency ordering exercised through
       real multi-package builds.
   - [x] Production compilation accepts transitive public dependencies
