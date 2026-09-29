@@ -2433,6 +2433,10 @@ fn verify_nominal_comparisons(
                     "fir/verify-aggregate-comparison",
                     "field/variant operations instead of implicit structural comparison",
                 ),
+                Some(TypeDefinitionKind::Enum { .. }) => (
+                    "fir/verify-enum-comparison",
+                    "variant matching instead of implicit discriminant comparison",
+                ),
                 _ => continue,
             };
             diagnostics.push(diagnostic(

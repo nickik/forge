@@ -3401,6 +3401,48 @@ fn definition_aware_module_verifier_rejects_struct_and_tagged_comparisons() {
 }
 
 #[test]
+fn definition_aware_module_verifier_rejects_enum_comparisons() {
+    let (mut fir, definitions) = pipeline_with_type_definitions(
+        r#"
+        module test.boundary_enum_comparison;
+        enum Color { Red, Green, Blue }
+        fn enum_like(left: u32, right: u32) -> bool { return left == right; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module_with_types(&fir.module, &definitions).is_empty());
+
+    let owner = definitions
+        .iter()
+        .find_map(|(owner, definition)| {
+            matches!(&definition.kind, TypeDefinitionKind::Enum { .. }).then_some(*owner)
+        })
+        .expect("enum definition");
+    let function = fir.module.functions.values_mut().next().expect("function");
+    let instruction = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .find(|instruction| matches!(instruction.kind, FirInstructionKind::Binary { .. }))
+        .expect("comparison");
+    let (left, right) = match &instruction.kind {
+        FirInstructionKind::Binary { left, right, .. } => (*left, *right),
+        _ => unreachable!(),
+    };
+    function.value_types.insert(left, Ty::Nominal(owner));
+    function.value_types.insert(right, Ty::Nominal(owner));
+
+    let diagnostics = verify_fir_module_with_types(&fir.module, &definitions)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-enum-comparison")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(diagnostics[0]
+        .message
+        .contains("variant matching instead of implicit discriminant comparison"));
+}
+
+#[test]
 fn definition_aware_module_verifier_checks_aggregate_construction() {
     let (mut fir, definitions) = pipeline_with_type_definitions(
         r#"

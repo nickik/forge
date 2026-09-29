@@ -670,6 +670,31 @@ fn rejects_struct_and_tagged_comparisons_before_fir() {
 }
 
 #[test]
+fn rejects_enum_comparisons_before_fir() {
+    let output = check(
+        r#"
+        module test.enum_comparison;
+        enum Color { Red, Green, Blue }
+        fn equal(left: Color, right: Color) -> bool {
+            return left == right;
+        }
+        fn ordered(left: Color, right: Color) -> bool {
+            return left < right;
+        }
+        "#,
+    );
+    let diagnostics = output
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code == "type/enum-comparison")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 2, "{:?}", output.diagnostics);
+    assert!(diagnostics
+        .iter()
+        .all(|diagnostic| diagnostic.message.contains("use variant matching")));
+}
+
+#[test]
 fn reports_duplicate_named_argument() {
     let output = check(
         r#"

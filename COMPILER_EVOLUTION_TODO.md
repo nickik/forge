@@ -82,6 +82,9 @@ available on every backend merely because the frontend accepts it.
   - [x] Reject struct and tagged-union comparisons during typechecking and at
         the definition-aware shared FIR boundary; Forge v1 defines field and
         variant operations rather than implicit structural equality/order.
+  - [x] Reject enum comparisons during typechecking and at the definition-aware
+        shared FIR boundary; Forge v1 defines variant matching rather than
+        implicit discriminant equality or ordering.
   - [x] Require handwritten binary FIR to carry explicit checked or wrapping
         overflow semantics for integer add/subtract/multiply, checked semantics
         for integer division/remainder/shifts, and no overflow mode for
