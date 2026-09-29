@@ -233,12 +233,10 @@ mod tests {
         let middle = root.join("middle");
         let app = root.join("app");
         for package in [&leaf, &middle, &app] {
-            fs::create_dir_all(package.join("src"))
-                .expect("create package source directory");
+            fs::create_dir_all(package.join("src")).expect("create package source directory");
         }
 
-        fs::write(leaf.join("src/lib.fg"), "module leaf_lib;\n")
-            .expect("write leaf library");
+        fs::write(leaf.join("src/lib.fg"), "module leaf_lib;\n").expect("write leaf library");
         fs::write(
             leaf.join("forge.fdn"),
             r#"#forge/package {
@@ -250,8 +248,7 @@ mod tests {
         )
         .expect("write leaf manifest");
 
-        fs::write(middle.join("src/lib.fg"), "module middle_lib;\n")
-            .expect("write middle library");
+        fs::write(middle.join("src/lib.fg"), "module middle_lib;\n").expect("write middle library");
         fs::write(
             middle.join("forge.fdn"),
             r#"#forge/package {
@@ -263,8 +260,7 @@ mod tests {
         )
         .expect("write middle manifest");
 
-        fs::write(app.join("src/main.fg"), "module app;\n")
-            .expect("write application source");
+        fs::write(app.join("src/main.fg"), "module app;\n").expect("write application source");
         fs::write(
             app.join("forge.fdn"),
             r#"#forge/package {
