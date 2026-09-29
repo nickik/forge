@@ -310,6 +310,41 @@ fn cosmic_user_image_contract_requires_an_explicit_virtual_address() {
 }
 
 #[test]
+fn cosmic_user_image_contract_rejects_a_misaligned_virtual_address() {
+    let root = fixture_dir("misaligned-address");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("create fixture directory");
+    let source = root.join("system_task.fg");
+    let image = root.join("system-task.bin");
+    std::fs::write(
+        &source,
+        "module cosmic.system_task; pub fn system_task_entry() -> i32 { return 0; }",
+    )
+    .expect("write System Task fixture");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_forge-lighting-firmware"))
+        .arg(&source)
+        .args(["--entry", "system_task_entry"])
+        .arg("--user-image")
+        .args(["--text-base", "0x00200002"])
+        .arg("-o")
+        .arg(&image)
+        .output()
+        .expect("forge-lighting-firmware should start");
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("--text-base for SIA32 raw/user images must be 4-byte aligned"),
+        "unexpected diagnostic: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!image.exists(), "misaligned user image must not be emitted");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn reset_rom_contract_rejects_an_explicit_default_text_base() {
     let root = fixture_dir("reset-rom-text-base");
     let _ = std::fs::remove_dir_all(&root);
