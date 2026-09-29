@@ -552,7 +552,10 @@ mod tests {
             }],
         };
 
-        assert!(matches!(syntax_negative_outcome(&test, matching), Outcome::Pass));
+        assert!(matches!(
+            syntax_negative_outcome(&test, matching),
+            Outcome::Pass
+        ));
         assert!(matches!(
             syntax_negative_outcome(&test, mismatching),
             Outcome::Fail(_)

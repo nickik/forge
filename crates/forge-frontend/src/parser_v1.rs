@@ -72,7 +72,9 @@ fn reserved_syntax_diagnostics(tokens: &[(Token, CSpan)]) -> Vec<Diagnostic> {
                     tokens.get(index + 1),
                     Some((Token::Ident(name), _)) if name == "check"
                 ) && matches!(
-                    index.checked_sub(1).and_then(|previous| tokens.get(previous)),
+                    index
+                        .checked_sub(1)
+                        .and_then(|previous| tokens.get(previous)),
                     Some((Token::Eq | Token::Return | Token::LParen | Token::Comma, _))
                 ) =>
             {
@@ -1878,9 +1880,11 @@ pub fn parse_source(source: &str) -> ParseOutput {
             (token, span)
         });
     let (ast, parse_errors) = source_parser().parse(stream).into_output_errors();
-    diagnostics.extend(parse_errors.into_iter().map(|error| {
-        diagnostic(span(*error.span()), "syntax/parse", error.to_string())
-    }));
+    diagnostics.extend(
+        parse_errors
+            .into_iter()
+            .map(|error| diagnostic(span(*error.span()), "syntax/parse", error.to_string())),
+    );
     if let Some(file) = &ast {
         validate_source(file, &mut diagnostics);
     }
