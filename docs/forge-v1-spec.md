@@ -648,7 +648,7 @@ while (condition) {
 C-style loop retained:
 
 ```forge
-for (var i: usize = 0; i < count; i += 1) {
+for (var i: usize = 0; i < count; i = i + 1) {
     ...
 }
 ```
@@ -663,9 +663,10 @@ for (val item in items) {
 
 `break` and `continue` have ordinary lexical-loop meaning.
 
-## 28. `switch`
+## 28. `switch` (reserved beyond v1)
 
-A C-shaped `switch` exists for simple integer/enum porting:
+Forge v1 has no `switch` statement. The following example is intentionally
+invalid v1 source and must be rejected; use `match` for value-based dispatch:
 
 ```forge
 switch (opcode) {
@@ -680,9 +681,8 @@ default:
 }
 ```
 
-Fallthrough is never implicit. It requires explicit `@fallthrough;`.
-
-New data-oriented code should generally use `match`.
+The `switch`, `case`, `default`, and `@fallthrough` spellings in this example
+do not define Forge v1 semantics. They remain reserved for possible future use.
 
 ## 29. `match`
 
