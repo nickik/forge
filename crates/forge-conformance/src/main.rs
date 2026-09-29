@@ -1,7 +1,7 @@
 use std::{
     collections::HashSet,
     env, fs,
-    path::{Component, Path},
+    path::{Component, Path, PathBuf},
     process,
 };
 
@@ -21,8 +21,17 @@ enum Outcome {
     Pending(&'static str),
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct Options {
+    manifest_path: PathBuf,
+    require_no_pending: bool,
+}
+
 fn main() {
-    let manifest_path = parse_args();
+    let Options {
+        manifest_path,
+        require_no_pending,
+    } = parse_args();
     let manifest_text = fs::read_to_string(&manifest_path).unwrap_or_else(|error| {
         eprintln!(
             "forge-conformance: cannot read {}: {error}",
@@ -82,26 +91,46 @@ fn main() {
     }
     println!();
     println!("summary: {passed} passed; {failed} failed; {pending} pending");
-    if failed != 0 {
+    if failed != 0 || (require_no_pending && pending != 0) {
         process::exit(1);
     }
 }
 
-fn parse_args() -> std::path::PathBuf {
-    let mut args = env::args().skip(1);
-    let first = args.next();
-    if args.next().is_some() {
+fn parse_args() -> Options {
+    let args = env::args().skip(1).collect::<Vec<_>>();
+    if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
         usage();
     }
-    match first.as_deref() {
-        None => DEFAULT_MANIFEST.into(),
-        Some("-h" | "--help") => usage(),
-        Some(path) => path.into(),
+    parse_options(args).unwrap_or_else(|error| {
+        eprintln!("forge-conformance: {error}");
+        usage();
+    })
+}
+
+fn parse_options(args: impl IntoIterator<Item = String>) -> Result<Options, String> {
+    let mut manifest_path = None;
+    let mut require_no_pending = false;
+    for arg in args {
+        match arg.as_str() {
+            "--require-no-pending" => require_no_pending = true,
+            option if option.starts_with('-') => {
+                return Err(format!("unknown option `{option}`"));
+            }
+            path => {
+                if manifest_path.replace(PathBuf::from(path)).is_some() {
+                    return Err("only one suite manifest may be supplied".into());
+                }
+            }
+        }
     }
+    Ok(Options {
+        manifest_path: manifest_path.unwrap_or_else(|| DEFAULT_MANIFEST.into()),
+        require_no_pending,
+    })
 }
 
 fn usage() -> ! {
-    eprintln!("usage: forge-conformance [suite.fdn]");
+    eprintln!("usage: forge-conformance [--require-no-pending] [suite.fdn]");
     eprintln!("default: {DEFAULT_MANIFEST}");
     process::exit(2);
 }
@@ -325,6 +354,9 @@ fn execute_negative(test: &TestCase, path: &Path) -> Outcome {
         "call/duplicate-name",
         "call/unknown-name",
         "control/tail-call-required",
+        "type/declaration-default",
+        "match/non-exhaustive",
+        "match/unreachable-arm",
     ];
     if !IMPLEMENTED_TYPE_CODES.contains(&expected) {
         return Outcome::Pending("semantic stage for this expectation is not implemented yet");
@@ -383,4 +415,33 @@ fn format_active_kinds(suite: &Suite) -> String {
         .map(|kind| format!(":{}", kind.as_str()))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn options_default_to_the_repository_suite_and_allow_strict_pending_mode() {
+        assert_eq!(
+            parse_options(args(&[])).unwrap(),
+            Options {
+                manifest_path: DEFAULT_MANIFEST.into(),
+                require_no_pending: false,
+            }
+        );
+        assert_eq!(
+            parse_options(args(&["--require-no-pending", "custom.fdn"])).unwrap(),
+            Options {
+                manifest_path: "custom.fdn".into(),
+                require_no_pending: true,
+            }
+        );
+        assert!(parse_options(args(&["one.fdn", "two.fdn"])).is_err());
+        assert!(parse_options(args(&["--unknown"])).is_err());
+    }
 }
