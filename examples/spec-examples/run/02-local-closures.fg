@@ -1,0 +1,22 @@
+module examples.spec_examples.local_closures;
+
+fn main() -> i32 {
+    val factor: i32 = 3;
+    var count: i32 = 1;
+
+    val scale = [factor](value: i32) -> i32 {
+        return value * factor;
+    };
+    val next = [&mut count]() -> i32 {
+        count = count + 1;
+        return count;
+    };
+    val increment = (value: i32) -> i32 {
+        return value + 1;
+    };
+
+    if (scale(next()) == 6 && increment(count) == 3) {
+        return 0;
+    }
+    return 1;
+}

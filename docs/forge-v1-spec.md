@@ -922,7 +922,7 @@ Capture mutable reference explicitly:
 ```forge
 var count: u32 = 0;
 val next = [&mut count]() -> u32 {
-    count += 1;
+    count = count + 1;
     return count;
 };
 ```
@@ -930,10 +930,12 @@ val next = [&mut count]() -> u32 {
 Capture-free:
 
 ```forge
-val inc = [](x: u32) -> u32 { return x + 1; };
+val inc = (x: u32) -> u32 { return x + 1; };
 ```
 
-Capture-free closures may coerce to matching function-pointer type.
+Capture-free closures omit a capture list and may coerce to a matching
+function-pointer type. An empty `[]` capture list is reserved and rejected in
+v1.
 
 Conceptual closure representation:
 
