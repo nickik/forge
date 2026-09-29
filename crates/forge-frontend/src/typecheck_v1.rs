@@ -1462,6 +1462,10 @@ impl ModuleTypeEnv {
                 )
         )
     }
+
+    fn is_bitstruct(&self, ty: &Ty) -> bool {
+        self.bitstruct_layout(ty).is_some()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -3152,6 +3156,14 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         "type/enum-comparison",
                         format!(
                             "enum comparisons are not defined in Forge v1; use variant matching: {l:?}, {r:?}"
+                        ),
+                    );
+                } else if self.env.is_bitstruct(&l) || self.env.is_bitstruct(&r) {
+                    self.diagnostic(
+                        span,
+                        "type/bitstruct-comparison",
+                        format!(
+                            "bitstruct comparisons are not defined in Forge v1; compare extracted fields explicitly: {l:?}, {r:?}"
                         ),
                     );
                 } else if !self.compatible_binary(&l, &r) {

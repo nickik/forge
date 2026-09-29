@@ -695,6 +695,31 @@ fn rejects_enum_comparisons_before_fir() {
 }
 
 #[test]
+fn rejects_bitstruct_comparisons_before_fir() {
+    let output = check(
+        r#"
+        module test.bitstruct_comparison;
+        bitstruct Status: u16 { ready: 1; mode: 3; reserved: 12; }
+        fn equal(left: Status, right: Status) -> bool {
+            return left == right;
+        }
+        fn ordered(left: Status, right: Status) -> bool {
+            return left < right;
+        }
+        "#,
+    );
+    let diagnostics = output
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code == "type/bitstruct-comparison")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 2, "{:?}", output.diagnostics);
+    assert!(diagnostics.iter().all(|diagnostic| diagnostic
+        .message
+        .contains("compare extracted fields explicitly")));
+}
+
+#[test]
 fn reports_duplicate_named_argument() {
     let output = check(
         r#"
