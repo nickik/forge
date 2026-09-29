@@ -126,13 +126,17 @@ pub fn system_task_entry() -> i32 {
     let low_bytes = std::fs::read(&low_image).expect("read low-base user image");
     let high_bytes = std::fs::read(&high_image).expect("read high-base user image");
     assert_eq!(low_bytes.len(), high_bytes.len());
-    let relocated_words = low_bytes
-        .chunks_exact(4)
-        .zip(high_bytes.chunks_exact(4))
+    let (low_words, low_remainder) = low_bytes.as_chunks::<4>();
+    let (high_words, high_remainder) = high_bytes.as_chunks::<4>();
+    assert!(low_remainder.is_empty());
+    assert!(high_remainder.is_empty());
+    let relocated_words = low_words
+        .iter()
+        .zip(high_words)
         .enumerate()
         .filter_map(|(index, (low, high))| {
-            let low = u32::from_le_bytes(low.try_into().expect("low word"));
-            let high = u32::from_le_bytes(high.try_into().expect("high word"));
+            let low = u32::from_le_bytes(*low);
+            let high = u32::from_le_bytes(*high);
             (low.checked_add(0x0010_0000) == Some(high)).then_some(index)
         })
         .collect::<Vec<_>>();
