@@ -10,7 +10,9 @@ stage:
   production Rust compiler without requiring a source `main`;
 - `:run` for native execution with a documented exit result;
 - `:syntax-negative` for examples the specification explicitly identifies as
-  invalid or reserved v1 source.
+  invalid or reserved v1 source. Its `:expect` keyword must match the stable
+  parser diagnostic code for that rejection category; an unrelated parse
+  failure does not satisfy the case.
 
 Run the strict suite from the repository root:
 
