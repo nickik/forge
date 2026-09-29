@@ -33,6 +33,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     let source = PathBuf::from(args.next().unwrap_or_else(|| usage()));
     let mut output = source.with_extension("lighting.s");
     let mut entry = "main".to_owned();
+    let mut entry_explicit = false;
     let mut text_base: u32 = 0xffff_0014;
     let mut raw_image = false;
     let mut payload: Option<(PathBuf, u32)> = None;
@@ -42,7 +43,10 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "-o" | "--output" => output = PathBuf::from(args.next().unwrap_or_else(|| usage())),
-            "--entry" => entry = args.next().unwrap_or_else(|| usage()),
+            "--entry" => {
+                entry = args.next().unwrap_or_else(|| usage());
+                entry_explicit = true;
+            }
             "--text-base" => {
                 let value = args.next().unwrap_or_else(|| usage());
                 text_base = if let Some(hex) = value.strip_prefix("0x") {
@@ -74,6 +78,9 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
 
     if user_image && payload.is_some() {
         return Err("--user-image cannot embed a boot payload".into());
+    }
+    if user_image && !entry_explicit {
+        return Err("--user-image requires an explicit --entry function".into());
     }
     if user_image && text_base == 0xffff_0014 {
         return Err("--user-image requires an explicit --text-base user virtual address".into());
