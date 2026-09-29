@@ -101,6 +101,9 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     if user_image && text_base == 0xffff_0014 {
         return Err("--user-image requires an explicit --text-base user virtual address".into());
     }
+    if raw_image && text_base & 3 != 0 {
+        return Err("--text-base for SIA32 raw/user images must be 4-byte aligned".into());
+    }
     let output = output
         .unwrap_or_else(|| source.with_extension(if raw_image { "bin" } else { "lighting.s" }));
 
