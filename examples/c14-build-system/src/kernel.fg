@@ -1,5 +1,7 @@
 module c14_build_system.kernel;
 
+import core;
+
 fn start() -> i32 {
-    return 0;
+    return core.max_i32(0, 0);
 }

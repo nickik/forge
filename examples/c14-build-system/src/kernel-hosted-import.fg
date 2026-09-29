@@ -1,0 +1,8 @@
+module c14_build_system.kernel_hosted_import;
+
+import std.console;
+
+fn start() -> i32 {
+    console.write("hosted std must remain unavailable\n");
+    return 0;
+}

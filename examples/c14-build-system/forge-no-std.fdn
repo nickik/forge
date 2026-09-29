@@ -1,0 +1,14 @@
+#forge/package {
+  :name "c14-build-system-no-std"
+  :version "0.1.0"
+
+  :targets {
+    :kernel {
+      :kind :kernel
+      :root "src/kernel-hosted-import.fg"
+      :entry "start"
+    }
+  }
+
+  :dependencies {}
+}
