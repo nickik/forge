@@ -189,6 +189,44 @@ fn cosmic_user_image_contract_rejects_raw_image_mode_in_either_order() {
 }
 
 #[test]
+fn raw_image_contract_rejects_silently_ignored_boot_payload() {
+    let root = fixture_dir("raw-payload");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("create fixture directory");
+    let source = root.join("firmware.fg");
+    let payload = root.join("payload.bin");
+    let image = root.join("firmware.bin");
+    std::fs::write(
+        &source,
+        "module test.firmware; pub fn main() -> i32 { return 0; }",
+    )
+    .expect("write firmware fixture");
+    std::fs::write(&payload, [1u8, 2, 3, 4]).expect("write payload fixture");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_forge-lighting-firmware"))
+        .arg(&source)
+        .arg("--raw-image")
+        .arg("--embed-payload")
+        .arg(&payload)
+        .arg("0x1000")
+        .arg("-o")
+        .arg(&image)
+        .output()
+        .expect("forge-lighting-firmware should start");
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("--embed-payload requires reset-ROM output"),
+        "unexpected diagnostic: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!image.exists(), "rejected raw image must not emit output");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn cosmic_user_image_contract_rejects_boot_payload_embedding() {
     let root = fixture_dir("payload");
     let _ = std::fs::remove_dir_all(&root);
