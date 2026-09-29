@@ -121,7 +121,9 @@ jobs:
           diff -u packages/forge-collections-native/src/lib.fg /tmp/forge-collections-native.fg
       - name: Conformance suite
         timeout-minutes: 5
-        run: cargo run -p forge-conformance --locked -- --require-no-pending examples/conformance/suite.fdn
+        run: |
+          cargo run -p forge-conformance --locked -- --require-no-pending examples/conformance/suite.fdn
+          cargo run -p forge-conformance --locked -- --require-no-pending examples/spec-examples/suite.fdn
       - name: Install RV64 execution tools
         timeout-minutes: 3
         run: |

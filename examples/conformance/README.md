@@ -5,6 +5,8 @@ These programs are small, original Forge examples derived from the *kinds* of ca
 The structure mirrors useful distinctions in GCC and Clang testing:
 
 - `run/` — programs that should eventually compile, link, run, and return `0`.
+- `check/` — valid programs that must pass the production compiler's semantic
+  and code-generation check without requiring a user-defined `main`.
 - `parse/` — valid source examples primarily intended to exercise frontend syntax and AST construction.
 - `negative/` — programs that should parse far enough for semantic analysis and then be rejected.
 - `suite.fdn` — executable machine-readable metadata consumed by `forge-conformance`.
@@ -55,9 +57,14 @@ Each test entry has:
 
 ```fdn
 {:path #path "parse/example.fg" :kind :parse}
+{:path #path "check/example.fg" :kind :check}
 {:path #path "negative/example.fg" :kind :negative :expect :type/mismatch}
 {:path #path "run/example.fg" :kind :run :exit 0}
 ```
+
+The separate `examples/spec-examples/suite.fdn` uses the same runner and adds a
+required `:spec` string to each case, making its normative source mapping
+explicit and reviewable.
 
 `forge-conformance` currently implements the FDN subset needed by this manifest: maps, vectors, keywords, integers, strings, comments, optional commas, and tagged values such as `#path`. When the general FDN parser is implemented, the runner should consume that crate instead of maintaining a second parser.
 

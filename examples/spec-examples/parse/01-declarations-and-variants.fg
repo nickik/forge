@@ -1,0 +1,24 @@
+module examples.spec_examples.declarations_and_variants;
+
+@repr(c)
+struct Header {
+    sequence: u32;
+    flags: u16;
+}
+
+enum State {
+    Idle,
+    Ready,
+}
+
+tagged Packet {
+    Data { payload: u32; },
+    Empty,
+}
+
+fn classify(packet: Packet) -> u32 {
+    return match (packet) {
+        Packet::Data{payload} => payload,
+        Packet::Empty => 0u32,
+    };
+}

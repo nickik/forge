@@ -3,6 +3,7 @@ use std::{collections::HashSet, fmt, path::PathBuf};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TestKind {
     Parse,
+    Check,
     SyntaxNegative,
     Negative,
     Run,
@@ -12,6 +13,7 @@ impl TestKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Parse => "parse",
+            Self::Check => "check",
             Self::SyntaxNegative => "syntax-negative",
             Self::Negative => "negative",
             Self::Run => "run",
@@ -21,6 +23,7 @@ impl TestKind {
     fn from_keyword(value: &str) -> Result<Self, ManifestError> {
         match value {
             "parse" => Ok(Self::Parse),
+            "check" => Ok(Self::Check),
             "syntax-negative" => Ok(Self::SyntaxNegative),
             "negative" => Ok(Self::Negative),
             "run" => Ok(Self::Run),
@@ -35,6 +38,7 @@ impl TestKind {
 pub struct TestCase {
     pub path: PathBuf,
     pub kind: TestKind,
+    pub spec: Option<String>,
     pub expected: Option<String>,
     pub exit: Option<i32>,
 }
@@ -125,10 +129,17 @@ fn suite_from_value(value: Value) -> Result<Suite, ManifestError> {
 
     for value in test_values {
         let test = expect_map(value, "test entry")?;
-        validate_keyword_map_keys(test, &["path", "kind", "expect", "exit"], "test entry")?;
+        validate_keyword_map_keys(
+            test,
+            &["path", "kind", "spec", "expect", "exit"],
+            "test entry",
+        )?;
 
         let path = expect_path(required(test, "path")?, ":path")?;
         let kind = TestKind::from_keyword(expect_keyword(required(test, "kind")?, ":kind")?)?;
+        let spec = optional(test, "spec")
+            .map(|value| expect_string(value, ":spec").map(ToOwned::to_owned))
+            .transpose()?;
         let expected = optional(test, "expect")
             .map(|value| expect_keyword(value, ":expect").map(ToOwned::to_owned))
             .transpose()?;
@@ -142,6 +153,7 @@ fn suite_from_value(value: Value) -> Result<Suite, ManifestError> {
         tests.push(TestCase {
             path,
             kind,
+            spec,
             expected,
             exit,
         });
@@ -233,6 +245,15 @@ fn expect_integer(value: &Value, description: &str) -> Result<i64, ManifestError
         Value::Integer(value) => Ok(*value),
         _ => Err(ManifestError::semantic(format!(
             "{description} must be an integer"
+        ))),
+    }
+}
+
+fn expect_string<'a>(value: &'a Value, description: &str) -> Result<&'a str, ManifestError> {
+    match value {
+        Value::String(value) => Ok(value),
+        _ => Err(ManifestError::semantic(format!(
+            "{description} must be a string"
         ))),
     }
 }
@@ -491,9 +512,10 @@ mod tests {
             r#"{
                 :suite :forge/conformance
                 :version 1
-                :active-kinds [:parse :syntax-negative]
+                :active-kinds [:parse :check :syntax-negative]
                 :tests [
                     {:path #path "parse/a.fg" :kind :parse}
+                    {:path #path "check/v.fg" :kind :check :spec "§6 declarations"}
                     {:path #path "syntax-negative/s.fg" :kind :syntax-negative :expect :syntax/rejected}
                     {:path #path "negative/b.fg" :kind :negative :expect :type/mismatch}
                     {:path #path "run/c.fg" :kind :run :exit 0}
@@ -506,12 +528,13 @@ mod tests {
         assert_eq!(suite.version, 1);
         assert_eq!(
             suite.active_kinds,
-            vec![TestKind::Parse, TestKind::SyntaxNegative]
+            vec![TestKind::Parse, TestKind::Check, TestKind::SyntaxNegative]
         );
-        assert_eq!(suite.tests.len(), 4);
-        assert_eq!(suite.tests[1].expected.as_deref(), Some("syntax/rejected"));
-        assert_eq!(suite.tests[2].expected.as_deref(), Some("type/mismatch"));
-        assert_eq!(suite.tests[3].exit, Some(0));
+        assert_eq!(suite.tests.len(), 5);
+        assert_eq!(suite.tests[1].spec.as_deref(), Some("§6 declarations"));
+        assert_eq!(suite.tests[2].expected.as_deref(), Some("syntax/rejected"));
+        assert_eq!(suite.tests[3].expected.as_deref(), Some("type/mismatch"));
+        assert_eq!(suite.tests[4].exit, Some(0));
     }
 
     #[test]
