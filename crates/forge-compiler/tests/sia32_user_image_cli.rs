@@ -87,8 +87,8 @@ fn m28_system_task_fixture_emits_deterministic_headerless_user_image() {
     let root = fixture_dir("m28-system-task");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).expect("create fixture directory");
-    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/m28-5-syscall-r1.fg");
+    let source =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/m28-5-syscall-r1.fg");
     let first_image = root.join("system-task-first.bin");
     let second_image = root.join("system-task-second.bin");
 
