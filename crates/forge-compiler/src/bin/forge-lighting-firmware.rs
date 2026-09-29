@@ -358,8 +358,7 @@ pub fn answer() -> i32 {
 
     #[test]
     fn raw_m28_trap_entry_accepts_a_u32_cause() {
-        let source =
-            "module test.trap; pub fn m28_trap_entry(cause: u32) -> i32 { return 0; }";
+        let source = "module test.trap; pub fn m28_trap_entry(cause: u32) -> i32 { return 0; }";
         let ast = link_source_with_library_sources(source, &[]).expect("semantic module link");
         let image = compile_sia32_image(ast, "m28_trap_entry", true, false, 0x0008_0000)
             .expect("M28 raw trap image emission");
@@ -369,8 +368,7 @@ pub fn answer() -> i32 {
 
     #[test]
     fn raw_m28_trap_entry_rejects_an_untyped_cause_shape() {
-        let source =
-            "module test.trap; pub fn m28_trap_entry(cause: bool) -> i32 { return 0; }";
+        let source = "module test.trap; pub fn m28_trap_entry(cause: bool) -> i32 { return 0; }";
         let ast = link_source_with_library_sources(source, &[]).expect("semantic module link");
         let error = compile_sia32_image(ast, "m28_trap_entry", true, false, 0x0008_0000)
             .expect_err("non-u32 trap cause must be rejected");

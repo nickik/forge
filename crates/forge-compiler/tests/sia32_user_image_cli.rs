@@ -176,7 +176,10 @@ fn cosmic_user_image_contract_rejects_raw_trap_entry_signature() {
         "unexpected diagnostic: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(!image.exists(), "rejected user entry must not emit an image");
+    assert!(
+        !image.exists(),
+        "rejected user entry must not emit an image"
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }
