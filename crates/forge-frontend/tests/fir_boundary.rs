@@ -3443,6 +3443,48 @@ fn definition_aware_module_verifier_rejects_enum_comparisons() {
 }
 
 #[test]
+fn definition_aware_module_verifier_rejects_bitstruct_comparisons() {
+    let (mut fir, definitions) = pipeline_with_type_definitions(
+        r#"
+        module test.boundary_bitstruct_comparison;
+        bitstruct Status: u16 { ready: 1; mode: 3; reserved: 12; }
+        fn bitstruct_like(left: u16, right: u16) -> bool { return left == right; }
+        "#,
+    );
+    assert!(fir.diagnostics.is_empty(), "{:?}", fir.diagnostics);
+    assert!(verify_fir_module_with_types(&fir.module, &definitions).is_empty());
+
+    let owner = definitions
+        .iter()
+        .find_map(|(owner, definition)| {
+            matches!(&definition.kind, TypeDefinitionKind::BitStruct { .. }).then_some(*owner)
+        })
+        .expect("bitstruct definition");
+    let function = fir.module.functions.values_mut().next().expect("function");
+    let instruction = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .find(|instruction| matches!(instruction.kind, FirInstructionKind::Binary { .. }))
+        .expect("comparison");
+    let (left, right) = match &instruction.kind {
+        FirInstructionKind::Binary { left, right, .. } => (*left, *right),
+        _ => unreachable!(),
+    };
+    function.value_types.insert(left, Ty::Nominal(owner));
+    function.value_types.insert(right, Ty::Nominal(owner));
+
+    let diagnostics = verify_fir_module_with_types(&fir.module, &definitions)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == "fir/verify-bitstruct-comparison")
+        .collect::<Vec<_>>();
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(diagnostics[0]
+        .message
+        .contains("dedicated field extraction instead of implicit storage comparison"));
+}
+
+#[test]
 fn definition_aware_module_verifier_checks_aggregate_construction() {
     let (mut fir, definitions) = pipeline_with_type_definitions(
         r#"

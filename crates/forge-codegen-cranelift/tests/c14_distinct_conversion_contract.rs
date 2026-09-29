@@ -58,6 +58,15 @@ fn definitions() -> TypeDefinitionTable {
                 },
             },
         ),
+        (
+            DefId(104),
+            TypeDefinition {
+                owner: DefId(104),
+                kind: TypeDefinitionKind::BitStruct {
+                    storage: u(IntWidth::W16),
+                },
+            },
+        ),
     ])
 }
 
@@ -240,4 +249,9 @@ fn aggregate_comparisons_are_invalid_producer_contracts() {
 #[test]
 fn enum_comparisons_are_invalid_producer_contracts() {
     assert_invalid_fir(comparison_function(DefId(103)));
+}
+
+#[test]
+fn bitstruct_comparisons_are_invalid_producer_contracts() {
+    assert_invalid_fir(comparison_function(DefId(104)));
 }

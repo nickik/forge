@@ -2437,6 +2437,10 @@ fn verify_nominal_comparisons(
                     "fir/verify-enum-comparison",
                     "variant matching instead of implicit discriminant comparison",
                 ),
+                Some(TypeDefinitionKind::BitStruct { .. }) => (
+                    "fir/verify-bitstruct-comparison",
+                    "dedicated field extraction instead of implicit storage comparison",
+                ),
                 _ => continue,
             };
             diagnostics.push(diagnostic(
