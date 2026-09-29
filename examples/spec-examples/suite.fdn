@@ -11,4 +11,5 @@
     {:path #path "syntax-negative/02-switch-reserved.fg" :kind :syntax-negative :spec "§28 switch reserved beyond v1" :expect :syntax/switch-removed}
     {:path #path "syntax-negative/03-initializer-required.fg" :kind :syntax-negative :spec "§8 required initialization" :expect :syntax/initializer-required}
     {:path #path "syntax-negative/04-empty-capture-reserved.fg" :kind :syntax-negative :spec "§37 capture-free closures omit []" :expect :syntax/empty-capture-list}
+    {:path #path "syntax-negative/05-check-expression-reserved.fg" :kind :syntax-negative :spec "§24 checked arithmetic; §54 prefix-only metadata" :expect :syntax/check-metadata-removed}
   ]}
