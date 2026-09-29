@@ -1451,6 +1451,17 @@ impl ModuleTypeEnv {
                 )
         )
     }
+
+    fn is_enum(&self, ty: &Ty) -> bool {
+        matches!(
+            ty,
+            Ty::Nominal(id)
+                if matches!(
+                    self.types.get(id).map(|info| &info.kind),
+                    Some(TypeInfoKind::Enum(_))
+                )
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -3133,6 +3144,14 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
                         "type/aggregate-comparison",
                         format!(
                             "struct/tagged comparisons are not defined in Forge v1: {l:?}, {r:?}"
+                        ),
+                    );
+                } else if self.env.is_enum(&l) || self.env.is_enum(&r) {
+                    self.diagnostic(
+                        span,
+                        "type/enum-comparison",
+                        format!(
+                            "enum comparisons are not defined in Forge v1; use variant matching: {l:?}, {r:?}"
                         ),
                     );
                 } else if !self.compatible_binary(&l, &r) {

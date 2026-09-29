@@ -45,6 +45,19 @@ fn definitions() -> TypeDefinitionTable {
                 },
             },
         ),
+        (
+            DefId(103),
+            TypeDefinition {
+                owner: DefId(103),
+                kind: TypeDefinitionKind::Enum {
+                    variants: vec![TypeVariantDefinition {
+                        name: "Ready".into(),
+                        declaration_index: 0,
+                        fields: Vec::new(),
+                    }],
+                },
+            },
+        ),
     ])
 }
 
@@ -222,4 +235,9 @@ fn aggregate_comparisons_are_invalid_producer_contracts() {
     for owner in [DefId(101), DefId(102)] {
         assert_invalid_fir(comparison_function(owner));
     }
+}
+
+#[test]
+fn enum_comparisons_are_invalid_producer_contracts() {
+    assert_invalid_fir(comparison_function(DefId(103)));
 }
