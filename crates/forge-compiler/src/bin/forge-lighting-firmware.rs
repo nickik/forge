@@ -35,6 +35,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     let mut entry = "main".to_owned();
     let mut entry_explicit = false;
     let mut text_base: u32 = 0xffff_0014;
+    let mut text_base_explicit = false;
     let mut raw_image = false;
     let mut raw_image_explicit = false;
     let mut payload: Option<(PathBuf, u32)> = None;
@@ -55,6 +56,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                     value.parse()?
                 };
+                text_base_explicit = true;
             }
             "--raw-image" => {
                 raw_image = true;
@@ -118,7 +120,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     if raw_image {
         fs::write(&output, &image)?;
     } else {
-        if text_base != 0xffff_0014 {
+        if text_base_explicit {
             return Err("--text-base requires --raw-image".into());
         }
         let payload_bytes = payload

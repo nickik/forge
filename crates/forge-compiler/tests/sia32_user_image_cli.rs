@@ -112,6 +112,38 @@ fn cosmic_user_image_contract_requires_an_explicit_virtual_address() {
 }
 
 #[test]
+fn reset_rom_contract_rejects_an_explicit_default_text_base() {
+    let root = fixture_dir("reset-rom-text-base");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("create fixture directory");
+    let source = root.join("firmware.fg");
+    let image = root.join("firmware.s");
+    std::fs::write(
+        &source,
+        "module test.firmware; pub fn main() -> i32 { return 0; }",
+    )
+    .expect("write firmware fixture");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_forge-lighting-firmware"))
+        .arg(&source)
+        .args(["--text-base", "0xffff0014"])
+        .arg("-o")
+        .arg(&image)
+        .output()
+        .expect("forge-lighting-firmware should start");
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("--text-base requires --raw-image"),
+        "unexpected diagnostic: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!image.exists(), "rejected reset ROM must not emit output");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn cosmic_user_image_contract_requires_an_explicit_entry() {
     let root = fixture_dir("entry");
     let _ = std::fs::remove_dir_all(&root);
