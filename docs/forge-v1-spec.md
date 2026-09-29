@@ -378,7 +378,7 @@ Writable slice:
 
 ```forge
 fn clear(values: u32[] mut) {
-    for (var i: usize = 0; i < values.len; i += 1) {
+    for (var i: usize = 0; i < values.len; i = i + 1) {
         values[i] = 0;
     }
 }
@@ -420,8 +420,8 @@ Mutation through a reference requires `&mut`:
 
 ```forge
 fn translate(p: &mut Point, dx: f32, dy: f32) {
-    p.x += dx;
-    p.y += dy;
+    p.x = p.x + dx;
+    p.y = p.y + dy;
 }
 ```
 
@@ -1328,8 +1328,8 @@ Example:
 ```forge
 fn movement(world: &mut World, dt: f32) {
     for (val e, var p: Position, val v: Velocity in world.query()) {
-        p.x += v.x * dt;
-        p.y += v.y * dt;
+        p.x = p.x + v.x * dt;
+        p.y = p.y + v.y * dt;
     }
 }
 ```
