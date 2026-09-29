@@ -106,10 +106,7 @@ pub fn system_task_entry() -> i32 {
     )
     .expect("write linked System Task fixture");
 
-    for (text_base, image) in [
-        ("0x00200000", &low_image),
-        ("0x00300000", &high_image),
-    ] {
+    for (text_base, image) in [("0x00200000", &low_image), ("0x00300000", &high_image)] {
         let output = Command::new(env!("CARGO_BIN_EXE_forge-lighting-firmware"))
             .arg(&source)
             .args(["--entry", "system_task_entry"])
