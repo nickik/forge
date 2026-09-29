@@ -13,10 +13,10 @@ use forge_frontend::{
 
 fn usage() -> ! {
     eprintln!(
-        "usage: forge-lighting-firmware <source.fg> [-o firmware.s] [--entry NAME] [--library NAME=PATH]... [--raw-image | --user-image] [--text-base ADDR]\n\n\
+        "usage: forge-lighting-firmware <source.fg> [-o OUTPUT] [--entry NAME] [--library NAME=PATH]... [--raw-image | --user-image] [--text-base ADDR]\n\n\
          Compiles one relocation-free Forge entry function through the production\n\
-         SIA32 Cranelift backend and wraps it as Lighting reset-ROM assembly.\n\
-         The generated assembly can be turned into a ROM blob with LightingSimulation's siaasm."
+         SIA32 Cranelift backend and emits Lighting reset-ROM assembly or a linked\n\
+         raw/user binary. Reset-ROM assembly is consumed by LightingSimulation's ROM packer."
     );
     process::exit(64);
 }
@@ -31,7 +31,7 @@ fn main() {
 fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let source = PathBuf::from(args.next().unwrap_or_else(|| usage()));
-    let mut output = source.with_extension("lighting.s");
+    let mut output = None;
     let mut entry = "main".to_owned();
     let mut entry_explicit = false;
     let mut text_base: u32 = 0xffff_0014;
@@ -44,7 +44,9 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "-o" | "--output" => output = PathBuf::from(args.next().unwrap_or_else(|| usage())),
+            "-o" | "--output" => {
+                output = Some(PathBuf::from(args.next().unwrap_or_else(|| usage())))
+            }
             "--entry" => {
                 entry = args.next().unwrap_or_else(|| usage());
                 entry_explicit = true;
@@ -99,6 +101,8 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     if user_image && text_base == 0xffff_0014 {
         return Err("--user-image requires an explicit --text-base user virtual address".into());
     }
+    let output = output
+        .unwrap_or_else(|| source.with_extension(if raw_image { "bin" } else { "lighting.s" }));
 
     let libraries = library_specs
         .iter()
