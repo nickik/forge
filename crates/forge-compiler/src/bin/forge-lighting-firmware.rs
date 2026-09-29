@@ -83,6 +83,11 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     if user_image && raw_image_explicit {
         return Err("--raw-image and --user-image are mutually exclusive".into());
     }
+    if raw_image_explicit && payload.is_some() {
+        return Err(
+            "--embed-payload requires reset-ROM output; it cannot be used with --raw-image".into(),
+        );
+    }
     if user_image && payload.is_some() {
         return Err("--user-image cannot embed a boot payload".into());
     }
