@@ -1389,7 +1389,11 @@ Agents are not a replacement for ordinary functions or structs.
 
 # Part XII — Foreign interfaces and layout
 
-## 62. C ABI
+## 62. C ABI (reserved beyond v1)
+
+Forge v1 does not define a source-level C calling convention. The following
+example is intentionally invalid v1 source and must be rejected; it illustrates
+syntax reserved for a later, separately versioned FFI contract:
 
 ```forge
 extern "C" {
@@ -1397,9 +1401,10 @@ extern "C" {
 }
 ```
 
-C nullable pointers are imported as optional raw pointers where applicable. Conversion between C's null representation and Forge `None` happens at the ABI boundary.
-
-C varargs are allowed only through explicit foreign declarations, not as ordinary Forge variadic functions in v1.
+`extern "C"` blocks and declarations are reserved and rejected in v1. C
+varargs (`...`) are likewise reserved and rejected. A future FFI specification
+may define nullable-pointer conversion and other boundary semantics; Forge v1
+does not freeze those rules.
 
 ## 63. `@repr(c)`
 
