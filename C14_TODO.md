@@ -81,7 +81,7 @@ The manifest semantics already documented by the repository must work with `forg
 - [x] `forge run` executes hosted executable/test targets and forwards arguments after `--`;
 - [x] `forge test` runs runnable targets, honors byte-exact `:test {:expected ...}`, and does not try to execute libraries;
 - [x] local path dependency graphs pass all dependency library roots to the compiler deterministically;
-- [ ] shipped `core` is available to every target and shipped `std` modules are available only when `:std true`;
+- [x] shipped `core` is available to every target and shipped `std` modules are available only when `:std true`;
 - [x] kernel `:std false` behavior is enforced rather than merely recorded;
 - [x] `:entry` is honored for nonstandard/freestanding entry points;
 - [ ] `--platform` remains usable for provider selection;
