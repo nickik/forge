@@ -1,0 +1,14 @@
+module examples.spec_examples.bindings_and_control;
+
+fn bounded_sum(limit: u32) -> u32 {
+    var index: u32 = 0u32;
+    var total: u32 = 0u32;
+    while (index < limit) {
+        total = total + index;
+        index = index + 1u32;
+    }
+    if (total > 100u32) {
+        return 100u32;
+    }
+    return total;
+}

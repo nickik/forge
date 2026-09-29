@@ -1,0 +1,18 @@
+module examples.spec_examples.struct_values;
+
+struct Pair {
+    left: i32;
+    right: i32;
+}
+
+fn sum(pair: Pair) -> i32 {
+    return pair.left + pair.right;
+}
+
+fn main() -> i32 {
+    val pair: Pair = Pair{left: 19, right: 23};
+    if (sum(pair) == 42) {
+        return 0;
+    }
+    return 1;
+}

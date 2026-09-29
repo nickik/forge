@@ -37,7 +37,7 @@ C14 must mechanically reconcile the syntax clarification back into the main lang
 - [ ] reconcile every stale Forge example in `docs/forge-v1-spec.md` with `docs/forge-v1-syntax-decisions.md`;
 - [x] reconcile compatibility/build documentation that still describes deferred v1 syntax such as `extern "C"`;
 - [ ] distinguish intentionally invalid examples from valid Forge examples unambiguously;
-- [ ] add a spec-example corpus that maps valid language examples to parse/check/run acceptance cases;
+- [x] add a spec-example corpus that maps valid language examples to parse/check/run acceptance cases;
 - [ ] ensure every complete Forge program presented as valid by the v1 spec parses and checks with `forgec`;
 - [ ] ensure executable spec examples run with the documented result;
 - [ ] make documentation drift detectable in CI rather than relying on manual audits.

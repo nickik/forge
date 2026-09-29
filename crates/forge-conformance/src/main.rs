@@ -139,9 +139,12 @@ fn usage() -> ! {
 }
 
 fn validate_suite(suite: &Suite) -> Result<(), String> {
-    if suite.name != "forge/conformance" {
+    if !matches!(
+        suite.name.as_str(),
+        "forge/conformance" | "forge/spec-examples"
+    ) {
         return Err(format!(
-            "unsupported :suite :{}; expected :forge/conformance",
+            "unsupported :suite :{}; expected :forge/conformance or :forge/spec-examples",
             suite.name
         ));
     }
@@ -151,6 +154,7 @@ fn validate_suite(suite: &Suite) -> Result<(), String> {
             suite.version
         ));
     }
+    let requires_spec_mapping = suite.name == "forge/spec-examples";
     let mut paths = HashSet::new();
     for test in &suite.tests {
         if test.path.as_os_str().is_empty() {
@@ -170,11 +174,20 @@ fn validate_suite(suite: &Suite) -> Result<(), String> {
         if !paths.insert(test.path.clone()) {
             return Err(format!("duplicate test :path {}", test.path.display()));
         }
+        if requires_spec_mapping
+            && !matches!(test.spec.as_deref(), Some(section) if !section.trim().is_empty())
+        {
+            return Err(format!(
+                "spec-example test {} requires a non-empty :spec mapping",
+                test.path.display()
+            ));
+        }
         match test.kind {
-            TestKind::Parse => {
+            TestKind::Parse | TestKind::Check => {
                 if test.expected.is_some() || test.exit.is_some() {
                     return Err(format!(
-                        ":parse test {} must not specify :expect or :exit",
+                        ":{} test {} must not specify :expect or :exit",
+                        test.kind.as_str(),
                         test.path.display()
                     ));
                 }
@@ -217,9 +230,17 @@ fn execute_case(suite: &Suite, test: &TestCase, path: &Path) -> Outcome {
     }
     match test.kind {
         TestKind::Parse => execute_parse(path),
+        TestKind::Check => execute_check(path),
         TestKind::SyntaxNegative => execute_syntax_negative(path),
         TestKind::Negative => execute_negative(test, path),
         TestKind::Run => execute_run(test, path),
+    }
+}
+
+fn execute_check(path: &Path) -> Outcome {
+    match forge_compiler::check_file(path) {
+        Ok(()) => Outcome::Pass,
+        Err(error) => Outcome::Fail(format!("production compiler check failed: {error}")),
     }
 }
 
@@ -446,5 +467,26 @@ mod tests {
         );
         assert!(parse_options(args(&["one.fdn", "two.fdn"])).is_err());
         assert!(parse_options(args(&["--unknown"])).is_err());
+    }
+
+    #[test]
+    fn spec_example_suites_require_section_mappings() {
+        let mapped = parse_suite(
+            r#"{:suite :forge/spec-examples
+                :version 1
+                :active-kinds [:check]
+                :tests [{:path #path "check/value.fg" :kind :check :spec "§6 declarations"}]}"#,
+        )
+        .unwrap();
+        assert!(validate_suite(&mapped).is_ok());
+
+        let unmapped = parse_suite(
+            r#"{:suite :forge/spec-examples
+                :version 1
+                :active-kinds [:check]
+                :tests [{:path #path "check/value.fg" :kind :check}]}"#,
+        )
+        .unwrap();
+        assert!(validate_suite(&unmapped).is_err());
     }
 }
