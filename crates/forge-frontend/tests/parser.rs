@@ -334,8 +334,6 @@ fn initializer_diagnostic_ignores_fixed_array_type_separator() {
 
 #[test]
 fn reserved_words_remain_valid_fdn_names() {
-    let parsed = parse_source(
-        "module test.fdn_names; @{:switch 1 :extern 2} fn f() -> void {}",
-    );
+    let parsed = parse_source("module test.fdn_names; @{:switch 1 :extern 2} fn f() -> void {}");
     assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
 }
