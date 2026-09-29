@@ -299,8 +299,8 @@ fn lighting_rom_assembly(code: &[u8], entry: &str, payload: Option<(&[u8], u32)>
     out.push_str(".align 4\n");
     out.push_str("lit_halt: .word 0xfff02008\n");
     out.push_str("lit_stack_top: .word 0x01000000\n");
-    if payload.is_some() {
-        out.push_str("lit_os_entry: .word 0x00100000\n");
+    if let Some((_, offset)) = payload {
+        out.push_str(&format!("lit_os_entry: .word 0x{offset:08x}\n"));
     }
     out.push('\n');
     out.push_str(&format!("; Forge entry: {entry}\nforge_entry:\n"));
@@ -398,5 +398,13 @@ pub fn answer() -> i32 {
             ),
             "unexpected diagnostic: {error}"
         );
+    }
+
+    #[test]
+    fn embedded_payload_transfer_uses_requested_rom_address() {
+        let assembly = lighting_rom_assembly(&[0x00], "main", Some((&[0xaa], 0x0012_3000)));
+
+        assert!(assembly.contains("lit_os_entry: .word 0x00123000"));
+        assert!(assembly.contains(".romorg 0x123000\nforge_payload:"));
     }
 }
