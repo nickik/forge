@@ -36,6 +36,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     let mut entry_explicit = false;
     let mut text_base: u32 = 0xffff_0014;
     let mut raw_image = false;
+    let mut raw_image_explicit = false;
     let mut payload: Option<(PathBuf, u32)> = None;
     let mut user_image = false;
     let mut library_specs = Vec::new();
@@ -55,7 +56,10 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
                     value.parse()?
                 };
             }
-            "--raw-image" => raw_image = true,
+            "--raw-image" => {
+                raw_image = true;
+                raw_image_explicit = true;
+            }
             "--user-image" => {
                 user_image = true;
                 raw_image = true;
@@ -76,6 +80,9 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    if user_image && raw_image_explicit {
+        return Err("--raw-image and --user-image are mutually exclusive".into());
+    }
     if user_image && payload.is_some() {
         return Err("--user-image cannot embed a boot payload".into());
     }

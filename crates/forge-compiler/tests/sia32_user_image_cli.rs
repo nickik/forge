@@ -149,6 +149,49 @@ fn cosmic_user_image_contract_requires_an_explicit_entry() {
 }
 
 #[test]
+fn cosmic_user_image_contract_rejects_raw_image_mode_in_either_order() {
+    let root = fixture_dir("exclusive-mode");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("create fixture directory");
+    let source = root.join("system_task.fg");
+    std::fs::write(
+        &source,
+        "module cosmic.system_task; pub fn system_task_entry() -> i32 { return 0; }",
+    )
+    .expect("write System Task fixture");
+
+    for (name, modes) in [
+        ("raw-first", ["--raw-image", "--user-image"]),
+        ("user-first", ["--user-image", "--raw-image"]),
+    ] {
+        let image = root.join(format!("{name}.bin"));
+        let output = Command::new(env!("CARGO_BIN_EXE_forge-lighting-firmware"))
+            .arg(&source)
+            .args(["--entry", "system_task_entry"])
+            .args(modes)
+            .args(["--text-base", "0x00200000"])
+            .arg("-o")
+            .arg(&image)
+            .output()
+            .expect("forge-lighting-firmware should start");
+
+        assert!(!output.status.success(), "{name} unexpectedly succeeded");
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("--raw-image and --user-image are mutually exclusive"),
+            "unexpected {name} diagnostic: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !image.exists(),
+            "rejected image mode must not emit output"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn cosmic_user_image_contract_rejects_boot_payload_embedding() {
     let root = fixture_dir("payload");
     let _ = std::fs::remove_dir_all(&root);
