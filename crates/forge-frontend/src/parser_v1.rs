@@ -101,6 +101,36 @@ fn reserved_syntax_diagnostics(tokens: &[(Token, CSpan)]) -> Vec<Diagnostic> {
                     "`switch` is not part of Forge v1; use `match`",
                 ));
             }
+            Token::InternalReserved if !is_fdn_name_position(tokens, index) => {
+                diagnostics.push(diagnostic(
+                    span(*token_span),
+                    "syntax/internal-reserved",
+                    "`internal` visibility is reserved beyond Forge v1",
+                ));
+            }
+            Token::PlusEqReserved
+            | Token::MinusEqReserved
+            | Token::StarEqReserved
+            | Token::SlashEqReserved
+            | Token::PercentEqReserved
+            | Token::AmpEqReserved
+            | Token::PipeEqReserved
+            | Token::CaretEqReserved
+            | Token::ShiftLeftEqReserved
+            | Token::ShiftRightEqReserved => {
+                diagnostics.push(diagnostic(
+                    span(*token_span),
+                    "syntax/compound-assignment",
+                    "compound assignment is not part of Forge v1",
+                ));
+            }
+            Token::Ellipsis => {
+                diagnostics.push(diagnostic(
+                    span(*token_span),
+                    "syntax/varargs-deferred",
+                    "C varargs are reserved beyond Forge v1",
+                ));
+            }
             Token::At
                 if matches!(
                     tokens.get(index + 1),
@@ -116,6 +146,23 @@ fn reserved_syntax_diagnostics(tokens: &[(Token, CSpan)]) -> Vec<Diagnostic> {
                     span(*token_span),
                     "syntax/check-metadata-removed",
                     "expression-level `@check` is not part of Forge v1",
+                ));
+            }
+            Token::At
+                if matches!(
+                    tokens.get(index + 1),
+                    Some((Token::Ident(name), _)) if name == "wrap"
+                ) && matches!(
+                    index
+                        .checked_sub(1)
+                        .and_then(|previous| tokens.get(previous)),
+                    Some((Token::Eq | Token::Return | Token::LParen | Token::Comma, _))
+                ) =>
+            {
+                diagnostics.push(diagnostic(
+                    span(*token_span),
+                    "syntax/wrap-expression-removed",
+                    "expression-level `@wrap` is not part of Forge v1",
                 ));
             }
             Token::LBracket

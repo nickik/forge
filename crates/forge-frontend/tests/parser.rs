@@ -337,3 +337,35 @@ fn reserved_words_remain_valid_fdn_names() {
     let parsed = parse_source("module test.fdn_names; @{:switch 1 :extern 2} fn f() -> void {}");
     assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
 }
+
+#[test]
+fn tokenized_reserved_forms_have_stable_syntax_codes() {
+    for (source, expected) in [
+        (
+            "module test.bad_internal; internal fn f() -> void {}",
+            "syntax/internal-reserved",
+        ),
+        (
+            "module test.bad_compound; fn f() -> void { var x = 1; x += 1; }",
+            "syntax/compound-assignment",
+        ),
+        (
+            "module test.bad_varargs; fn f(args: ...) -> void {}",
+            "syntax/varargs-deferred",
+        ),
+        (
+            "module test.bad_wrap; fn f() -> u32 { return @wrap(1u32 + 2u32); }",
+            "syntax/wrap-expression-removed",
+        ),
+    ] {
+        let parsed = parse_source(source);
+        assert!(
+            parsed
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == expected),
+            "expected {expected}, found {:?}",
+            parsed.diagnostics
+        );
+    }
+}
