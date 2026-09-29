@@ -86,7 +86,7 @@ The manifest semantics already documented by the repository must work with `forg
 - [x] `:entry` is honored for nonstandard/freestanding entry points;
 - [x] `--platform` remains usable for provider selection;
 - [x] `--driver`/`--driver-arg` remain available so CForge can still serve as an alternate/reference driver;
-- [ ] build-system documentation matches the actual driver protocol and artifact behavior;
+- [x] build-system documentation matches the actual driver protocol and artifact behavior;
 - [ ] CKV and collections bootstrap manifests are end-to-end build/run acceptance projects.
 
 ## C14e — default-toolchain cutover
