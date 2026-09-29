@@ -354,8 +354,9 @@ available on every backend merely because the frontend accepts it.
 - [x] Reject malformed SIA32 privileged-operation arity at both the source
       builtin and production backend FIR boundaries before CLIF lowering.
 - [ ] Expand SIA32 support only when demanded by the next Cosmic vertical slice; the immediate requirement is a freestanding System Task/user image and syscall ABI, not floating point.
-- [ ] Retain explicit rejection for `f32`/`f64` until the C15 prerequisites in
-      `C15_TODO.md` are complete.
+- [x] Retain explicit rejection for `f32`/`f64` until the C15 prerequisites in
+      `C15_TODO.md` are complete, pinned at both the backend FIR boundary and
+      the production SIA32 user-image CLI before artifact emission.
 - [ ] Add native SIA image and Lighting execution tests for every feature that
       becomes supported; object creation alone is insufficient.
 - [ ] Keep SIA-specific ABI and lowering changes isolated from AArch64/RISC-V
