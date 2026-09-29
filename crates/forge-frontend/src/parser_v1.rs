@@ -52,6 +52,27 @@ fn closure_arrow_after_params(tokens: &[(Token, CSpan)], open_paren: usize) -> b
     false
 }
 
+fn declaration_terminator(tokens: &[(Token, CSpan)]) -> Option<usize> {
+    let mut parentheses = 0usize;
+    let mut brackets = 0usize;
+    let mut braces = 0usize;
+    for (index, (token, _)) in tokens.iter().enumerate() {
+        match token {
+            Token::LParen => parentheses += 1,
+            Token::RParen => parentheses = parentheses.saturating_sub(1),
+            Token::LBracket => brackets += 1,
+            Token::RBracket => brackets = brackets.saturating_sub(1),
+            Token::LBrace => braces += 1,
+            Token::RBrace => braces = braces.saturating_sub(1),
+            Token::Semicolon if parentheses == 0 && brackets == 0 && braces == 0 => {
+                return Some(index);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn reserved_syntax_diagnostics(tokens: &[(Token, CSpan)]) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -98,9 +119,7 @@ fn reserved_syntax_diagnostics(tokens: &[(Token, CSpan)]) -> Vec<Diagnostic> {
             }
             Token::Val | Token::Var | Token::Const => {
                 let declaration_tail = &tokens[index + 1..];
-                let terminator = declaration_tail
-                    .iter()
-                    .position(|(candidate, _)| matches!(candidate, Token::Semicolon));
+                let terminator = declaration_terminator(declaration_tail);
                 if let Some(terminator) = terminator {
                     let declaration_tail = &declaration_tail[..terminator];
                     if !declaration_tail

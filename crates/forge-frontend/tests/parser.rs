@@ -323,3 +323,11 @@ fn reserved_spec_forms_have_stable_syntax_codes() {
         );
     }
 }
+
+#[test]
+fn initializer_diagnostic_ignores_fixed_array_type_separator() {
+    let parsed = parse_source(
+        "module test.array_binding; fn f() -> void { val values: [u32; 2] = [1u32, 2u32]; }",
+    );
+    assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+}
