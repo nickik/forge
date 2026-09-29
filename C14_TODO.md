@@ -77,7 +77,7 @@ Every v1 construct with runtime semantics must lower through FIR/ABI/Cranelift a
 The manifest semantics already documented by the repository must work with `forgec` as the default driver.
 
 - [x] `forge check` performs semantic/type checking without requiring an executable `main` for library targets;
-- [ ] `forge build` emits a real artifact instead of aliasing `check`;
+- [x] `forge build` emits a real artifact instead of aliasing `check`;
 - [x] `forge run` executes hosted executable/test targets and forwards arguments after `--`;
 - [x] `forge test` runs runnable targets, honors byte-exact `:test {:expected ...}`, and does not try to execute libraries;
 - [ ] local path dependency graphs pass all dependency library roots to the compiler deterministically;

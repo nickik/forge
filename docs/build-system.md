@@ -93,10 +93,17 @@ The bootstrap compiler-driver protocol is:
 
 ```text
 <driver> [prefix args...] [--library NAME=ROOT]... --check <target-root>
-<driver> [prefix args...] [--library NAME=ROOT]... --run   <target-root>
+<driver> [prefix args...] [--library NAME=ROOT]... --build <target-root> -o <artifact>
+<driver> [prefix args...] [--library NAME=ROOT]... [--entry NAME] --emit-object <target-root> -o <artifact>
+<driver> [prefix args...] [--library NAME=ROOT]... --run <target-root>
 ```
 
-`forge build` currently performs the same semantic compilation gate as `forge check`, because the production compiler does not yet expose a final code-generation interface. This will split once native artifacts exist.
+`forge build` emits hosted executable/test targets under `build/<target>` and
+freestanding kernel objects under `build/<target>.o`. A successful driver exit
+without the requested artifact is a build failure. Library targets remain
+source compilation units during the bootstrap, so building a library performs
+the same semantic gate as `forge check`; serialized compiled-library interfaces
+remain a later package-system milestone.
 
 `forge test` runs selected targets. When a target contains:
 
