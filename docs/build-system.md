@@ -78,6 +78,10 @@ forge run
 forge test
 ```
 
+`forge graph` prints the dependency-first package order and never launches a
+driver. The other commands select every root-package target when `--target` is
+omitted; `--target NAME` selects exactly that target.
+
 Common options:
 
 ```text
@@ -96,21 +100,38 @@ driver before the action. The production `forgec` driver currently accepts
 only `host`; other provider identities remain reserved until their production
 implementations exist.
 
-The bootstrap compiler-driver protocol is:
+Forge constructs each compiler-driver command in this order:
+
+1. repeated `--driver-arg` values;
+2. shipped `core` and dependency `--library NAME=ROOT` inputs;
+3. optional `--platform NAME` and, for `forge run`, repeated
+   `--program-arg ARG` values;
+4. shipped hosted `std` library inputs when the target has `:std true`;
+5. optional `--entry NAME` for non-check actions;
+6. the action, target root and any output path.
+
+Using `<driver-options>` for steps 2 through 4, the action-specific protocol
+is:
 
 ```text
-<driver> [prefix args...] [--library NAME=ROOT]... [--platform NAME] --check <target-root>
-<driver> [prefix args...] [--library NAME=ROOT]... [--platform NAME] --build <target-root> -o <artifact>
-<driver> [prefix args...] [--library NAME=ROOT]... [--platform NAME] [--entry NAME] --emit-object <target-root> -o <artifact>
-<driver> [prefix args...] [--library NAME=ROOT]... [--platform NAME] --run <target-root>
+<driver> [prefix args...] <driver-options> --check <target-root>
+<driver> [prefix args...] <driver-options> [--entry NAME] --build <target-root> -o <artifact>
+<driver> [prefix args...] <driver-options> [--entry NAME] --emit-object <target-root> -o <artifact>
+<driver> [prefix args...] <driver-options> [--entry NAME] --run <target-root>
 ```
 
-`forge build` emits hosted executable/test targets under `build/<target>` and
+`forge check` never passes `--entry` and does not request an artifact. `forge
+build` emits hosted executable/test targets under `build/<target>` and
 freestanding kernel objects under `build/<target>.o`. A successful driver exit
 without the requested artifact is a build failure. Library targets remain
 source compilation units during the bootstrap, so building a library performs
-the same semantic gate as `forge check`; serialized compiled-library interfaces
-remain a later package-system milestone.
+the same `--check` semantic gate and creates no artifact; serialized
+compiled-library interfaces remain a later package-system milestone.
+
+`forge run -- ARGS...` selects executable/test targets, forwards each argument
+as `--program-arg ARG`, invokes the driver's `--run` action and relays its
+stdout/stderr. Program arguments are rejected for other actions. Library and
+kernel targets are not executed.
 
 `forge test` runs selected targets. When a target contains:
 
@@ -138,9 +159,12 @@ or the native CForge executable:
 forge test --driver ./target/cforge
 ```
 
-CForge currently implements the library-source side of this protocol: it validates module identity, parses `pub fn` declarations, rejects private or missing symbols and checks call arity. During the bootstrap it can execute imported functions whose bodies are a single return expression by lowering them into the root semantic tree. General cross-unit calls are the next interpreter/compiler milestone; this limitation is an implementation detail, not a source-language or build-system restriction.
-
-This separation is intentional. Manifest/dependency semantics belong to Forge; compiler and interpreter implementations conform to the driver protocol.
+CForge is maintained separately from this repository, so the concrete command
+depends on that checkout. Any selected CForge executable must implement the
+same protocol above. This separation is intentional: manifest/dependency
+semantics belong to Forge, while alternate compilers and interpreters conform
+to its driver protocol. The default path remains the production `forgec`
+driver.
 
 ## OS direction
 
