@@ -101,9 +101,8 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     if user_image && text_base == 0xffff_0014 {
         return Err("--user-image requires an explicit --text-base user virtual address".into());
     }
-    let output = output.unwrap_or_else(|| {
-        source.with_extension(if raw_image { "bin" } else { "lighting.s" })
-    });
+    let output = output
+        .unwrap_or_else(|| source.with_extension(if raw_image { "bin" } else { "lighting.s" }));
 
     let libraries = library_specs
         .iter()
