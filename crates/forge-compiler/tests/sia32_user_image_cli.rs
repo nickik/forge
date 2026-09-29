@@ -117,8 +117,7 @@ pub fn system_task_entry() -> i32 {
 
     assert!(!output.status.success());
     assert!(
-        String::from_utf8_lossy(&output.stderr)
-            .contains("floating point on SIA32 (deferred)"),
+        String::from_utf8_lossy(&output.stderr).contains("floating point on SIA32 (deferred)"),
         "unexpected diagnostic: {}",
         String::from_utf8_lossy(&output.stderr)
     );
