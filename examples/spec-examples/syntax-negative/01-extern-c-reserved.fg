@@ -1,0 +1,5 @@
+module examples.spec_examples.extern_c_reserved;
+
+extern "C" {
+    fn qsort(base: *void, n: usize, width: usize, cmp: fn(*void, *void) -> i32) -> void;
+}

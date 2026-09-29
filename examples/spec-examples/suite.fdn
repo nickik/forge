@@ -1,8 +1,9 @@
 {:suite :forge/spec-examples
  :version 1
- :active-kinds [:parse :check :run]
+ :active-kinds [:parse :check :run :syntax-negative]
  :tests [
     {:path #path "parse/01-declarations-and-variants.fg" :kind :parse :spec "§6 declarations; §10 structs; §11 enums; §12 tagged unions; §55 representation metadata"}
     {:path #path "check/01-bindings-and-control.fg" :kind :check :spec "§7 bindings; §27 if and loops"}
     {:path #path "run/01-struct-values.fg" :kind :run :spec "§10 structs; §33 positional functions" :exit 0}
+    {:path #path "syntax-negative/01-extern-c-reserved.fg" :kind :syntax-negative :spec "§62 C ABI reserved beyond v1" :expect :syntax/extern-deferred}
   ]}

@@ -8,7 +8,9 @@ stage:
 - `:parse` for source forms whose runtime semantics are outside the case;
 - `:check` for complete semantic and code-generation validation through the
   production Rust compiler without requiring a source `main`;
-- `:run` for native execution with a documented exit result.
+- `:run` for native execution with a documented exit result;
+- `:syntax-negative` for examples the specification explicitly identifies as
+  invalid or reserved v1 source.
 
 Run the strict suite from the repository root:
 
