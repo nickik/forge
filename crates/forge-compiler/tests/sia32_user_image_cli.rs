@@ -83,6 +83,79 @@ pub fn answer() -> i32 {
 }
 
 #[test]
+fn cosmic_user_image_contract_relocates_calls_for_requested_text_base() {
+    let root = fixture_dir("text-base");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("create fixture directory");
+    let source = root.join("system_task.fg");
+    let low_image = root.join("system-task-low.bin");
+    let high_image = root.join("system-task-high.bin");
+    std::fs::write(
+        &source,
+        r#"
+module cosmic.system_task;
+
+fn answer() -> i32 {
+    return 42;
+}
+
+pub fn system_task_entry() -> i32 {
+    return answer();
+}
+"#,
+    )
+    .expect("write linked System Task fixture");
+
+    for (text_base, image) in [("0x00200000", &low_image), ("0x00300000", &high_image)] {
+        let output = Command::new(env!("CARGO_BIN_EXE_forge-lighting-firmware"))
+            .arg(&source)
+            .args(["--entry", "system_task_entry"])
+            .arg("--user-image")
+            .args(["--text-base", text_base])
+            .arg("-o")
+            .arg(image)
+            .output()
+            .expect("forge-lighting-firmware should start");
+        assert!(
+            output.status.success(),
+            "user-image compile at {text_base} failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let low_bytes = std::fs::read(&low_image).expect("read low-base user image");
+    let high_bytes = std::fs::read(&high_image).expect("read high-base user image");
+    assert_eq!(low_bytes.len(), high_bytes.len());
+    let (low_words, low_remainder) = low_bytes.as_chunks::<4>();
+    let (high_words, high_remainder) = high_bytes.as_chunks::<4>();
+    assert!(low_remainder.is_empty());
+    assert!(high_remainder.is_empty());
+    let relocated_words = low_words
+        .iter()
+        .zip(high_words)
+        .enumerate()
+        .filter_map(|(index, (low, high))| {
+            let low = u32::from_le_bytes(*low);
+            let high = u32::from_le_bytes(*high);
+            (low.checked_add(0x0010_0000) == Some(high)).then_some(index)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        relocated_words.len(),
+        1,
+        "one direct-call literal must track the requested text base"
+    );
+    let relocated_range = relocated_words[0] * 4..relocated_words[0] * 4 + 4;
+    for (index, (low, high)) in low_bytes.iter().zip(&high_bytes).enumerate() {
+        if !relocated_range.contains(&index) {
+            assert_eq!(low, high, "non-relocation byte changed at offset {index}");
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn m28_system_task_fixture_emits_deterministic_headerless_user_image() {
     let root = fixture_dir("m28-system-task");
     let _ = std::fs::remove_dir_all(&root);
