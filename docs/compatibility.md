@@ -30,7 +30,13 @@ User-defined `#reader` namespaces are reserved to their owners. DEC/Forge built-
 
 ## ABI
 
-Forge does not promise a single universal ABI for all ordinary Forge types. Stable ABI is explicitly requested using representation/calling-convention metadata, especially `@repr(c)` and `extern "C"`.
+Forge does not promise a single universal ABI for all ordinary Forge types.
+Stable representation is requested explicitly with supported representation
+metadata such as `@repr(c)`.
+
+Forge v1 does not define a source-level C calling convention. `extern "C"`
+declarations and C varargs are reserved and rejected in v1; a later language
+version may add them only with a concrete, separately versioned FFI contract.
 
 ## Standard library
 
