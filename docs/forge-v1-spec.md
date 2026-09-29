@@ -1455,8 +1455,8 @@ Example shape:
 val xf = #forge/transducer {
     :input #type "u32"
     :steps [
-        #forge/map [](x: u32) -> u32 { return x * 2; }
-        #forge/filter [](x: u32) -> bool { return x > 100; }
+        #forge/map (x: u32) -> u32 { return x * 2; }
+        #forge/filter (x: u32) -> bool { return x > 100; }
         #forge/take 20
     ]
 };
@@ -1554,7 +1554,7 @@ match (node) {
         op: Op::Add,
         left: Expr::Number{value: a},
         right: Expr::Number{value: b}
-    } => Expr::Number{value: @check(a + b)},
+    } => Expr::Number{value: a + b},
 
     whole @ Expr::Neg{
         value: Expr::Number{value}
