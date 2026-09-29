@@ -1,0 +1,6 @@
+module examples.spec_examples.initializer_required;
+
+fn main() -> i32 {
+    var value: i32;
+    return 0;
+}
