@@ -196,18 +196,13 @@ val name = "Ada";
 
 Inference never authorizes otherwise-illegal implicit conversion.
 
-## 8. Definite initialization
+## 8. Required initialization
 
-Every read must be dominated by an initialization on every reachable path.
+Every `val`, `var`, and `const` binding requires an initializer at its
+declaration. Forge v1 does not have an initially uninitialized local state.
 
-Invalid:
-
-```forge
-var x: i32;
-print(x); // error: possibly uninitialized
-```
-
-Valid:
+The following is intentionally invalid v1 source and must be rejected even if
+later control flow assigns the variable before a read:
 
 ```forge
 var x: i32;
@@ -219,14 +214,8 @@ if (condition) {
 print(x);
 ```
 
-Optional variables are not automatically initialized:
-
-```forge
-var p: &File?;
-use(p); // error until assigned
-```
-
-Explicit absence:
+Optional bindings also require an initializer. Use `None` when explicit absence
+is the intended initial value:
 
 ```forge
 var p: &File? = None;
