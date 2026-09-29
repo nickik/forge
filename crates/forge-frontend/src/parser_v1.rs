@@ -13,6 +13,7 @@ type ParseExtra<'tokens> = extra::Err<Rich<'tokens, Token, CSpan>>;
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Diagnostic {
     pub span: Span,
+    pub code: String,
     pub message: String,
 }
 
@@ -24,6 +25,102 @@ pub struct ParseOutput {
 
 fn span(value: CSpan) -> Span {
     Span::new(value.start, value.end)
+}
+
+fn diagnostic(span: Span, code: &str, message: impl Into<String>) -> Diagnostic {
+    Diagnostic {
+        span,
+        code: code.into(),
+        message: message.into(),
+    }
+}
+
+fn closure_arrow_after_params(tokens: &[(Token, CSpan)], open_paren: usize) -> bool {
+    let mut depth = 0usize;
+    for (index, (token, _)) in tokens.iter().enumerate().skip(open_paren) {
+        match token {
+            Token::LParen => depth += 1,
+            Token::RParen => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return matches!(tokens.get(index + 1), Some((Token::Arrow, _)));
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+fn reserved_syntax_diagnostics(tokens: &[(Token, CSpan)]) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+
+    for (index, (token, token_span)) in tokens.iter().enumerate() {
+        match token {
+            Token::Extern => diagnostics.push(diagnostic(
+                span(*token_span),
+                "syntax/extern-deferred",
+                "`extern` declarations are reserved beyond Forge v1",
+            )),
+            Token::SwitchReserved => diagnostics.push(diagnostic(
+                span(*token_span),
+                "syntax/switch-removed",
+                "`switch` is not part of Forge v1; use `match`",
+            )),
+            Token::At
+                if matches!(
+                    tokens.get(index + 1),
+                    Some((Token::Ident(name), _)) if name == "check"
+                ) && matches!(
+                    index.checked_sub(1).and_then(|previous| tokens.get(previous)),
+                    Some((Token::Eq | Token::Return | Token::LParen | Token::Comma, _))
+                ) =>
+            {
+                diagnostics.push(diagnostic(
+                    span(*token_span),
+                    "syntax/check-metadata-removed",
+                    "expression-level `@check` is not part of Forge v1",
+                ));
+            }
+            Token::LBracket
+                if matches!(tokens.get(index + 1), Some((Token::RBracket, _)))
+                    && matches!(tokens.get(index + 2), Some((Token::LParen, _)))
+                    && closure_arrow_after_params(tokens, index + 2) =>
+            {
+                let end = tokens[index + 1].1.end;
+                diagnostics.push(diagnostic(
+                    Span::new(token_span.start, end),
+                    "syntax/empty-capture-list",
+                    "capture-free closures omit the empty `[]` capture list",
+                ));
+            }
+            Token::Val | Token::Var | Token::Const => {
+                let declaration_tail = &tokens[index + 1..];
+                let terminator = declaration_tail
+                    .iter()
+                    .position(|(candidate, _)| matches!(candidate, Token::Semicolon));
+                if let Some(terminator) = terminator {
+                    let declaration_tail = &declaration_tail[..terminator];
+                    if !declaration_tail
+                        .iter()
+                        .any(|(candidate, _)| matches!(candidate, Token::Eq))
+                        && !declaration_tail
+                            .iter()
+                            .any(|(candidate, _)| matches!(candidate, Token::In))
+                    {
+                        diagnostics.push(diagnostic(
+                            span(*token_span),
+                            "syntax/initializer-required",
+                            "Forge v1 bindings require an initializer",
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    diagnostics
 }
 
 fn ident<'tokens, I>() -> impl Parser<'tokens, I, String, ParseExtra<'tokens>> + Clone
@@ -1471,10 +1568,11 @@ fn validate_decl(declaration: &Decl, diagnostics: &mut Vec<Diagnostic>) {
         }
         DeclKind::Enum(value) => {
             if value.variants.is_empty() {
-                diagnostics.push(Diagnostic {
-                    span: declaration.span,
-                    message: "enum declarations require at least one variant".into(),
-                });
+                diagnostics.push(diagnostic(
+                    declaration.span,
+                    "syntax/enum-variant",
+                    "enum declarations require at least one variant",
+                ));
             }
             for variant in &value.variants {
                 if let Some(value) = &variant.value {
@@ -1484,10 +1582,11 @@ fn validate_decl(declaration: &Decl, diagnostics: &mut Vec<Diagnostic>) {
         }
         DeclKind::Tagged(value) => {
             if value.variants.is_empty() {
-                diagnostics.push(Diagnostic {
-                    span: declaration.span,
-                    message: "tagged declarations require at least one variant".into(),
-                });
+                diagnostics.push(diagnostic(
+                    declaration.span,
+                    "syntax/tagged-variant",
+                    "tagged declarations require at least one variant",
+                ));
             }
             for variant in &value.variants {
                 for field in &variant.fields {
@@ -1510,10 +1609,11 @@ fn validate_block(block: &Block, diagnostics: &mut Vec<Diagnostic>) {
             }
             StmtKind::Assignment { target, value } => {
                 if !is_assignable(target) {
-                    diagnostics.push(Diagnostic {
-                        span: target.span,
-                        message: "left side of assignment is not assignable".into(),
-                    });
+                    diagnostics.push(diagnostic(
+                        target.span,
+                        "syntax/assignment-target",
+                        "left side of assignment is not assignable",
+                    ));
                 }
                 validate_expr(target, diagnostics);
                 validate_expr(value, diagnostics);
@@ -1533,10 +1633,11 @@ fn validate_block(block: &Block, diagnostics: &mut Vec<Diagnostic>) {
                 validate_block(then_block, diagnostics);
                 if let Some(branch) = else_branch {
                     if !matches!(branch.kind, StmtKind::If { .. } | StmtKind::Block { .. }) {
-                        diagnostics.push(Diagnostic {
-                            span: branch.span,
-                            message: "`else` must be followed by a block or `if`".into(),
-                        });
+                        diagnostics.push(diagnostic(
+                            branch.span,
+                            "syntax/else-block",
+                            "`else` must be followed by a block or `if`",
+                        ));
                     }
                     validate_statement(branch, diagnostics);
                 }
@@ -1556,10 +1657,11 @@ fn validate_block(block: &Block, diagnostics: &mut Vec<Diagnostic>) {
                         ForInit::Value(value) => validate_expr(&value.value, diagnostics),
                         ForInit::Assignment { target, value } => {
                             if !is_assignable(target) {
-                                diagnostics.push(Diagnostic {
-                                    span: target.span,
-                                    message: "left side of assignment is not assignable".into(),
-                                });
+                                diagnostics.push(diagnostic(
+                                    target.span,
+                                    "syntax/assignment-target",
+                                    "left side of assignment is not assignable",
+                                ));
                             }
                             validate_expr(target, diagnostics);
                             validate_expr(value, diagnostics);
@@ -1574,10 +1676,11 @@ fn validate_block(block: &Block, diagnostics: &mut Vec<Diagnostic>) {
                     match step {
                         ForStep::Assignment { target, value } => {
                             if !is_assignable(target) {
-                                diagnostics.push(Diagnostic {
-                                    span: target.span,
-                                    message: "left side of assignment is not assignable".into(),
-                                });
+                                diagnostics.push(diagnostic(
+                                    target.span,
+                                    "syntax/assignment-target",
+                                    "left side of assignment is not assignable",
+                                ));
                             }
                             validate_expr(target, diagnostics);
                             validate_expr(value, diagnostics);
@@ -1758,24 +1861,25 @@ pub fn parse_source(source: &str) -> ParseOutput {
             let token = match token {
                 Ok(token) => token,
                 Err(()) => {
-                    diagnostics.push(Diagnostic {
-                        span: Span::new(range.start, range.end),
-                        message: format!("invalid token `{}`", &source[range.clone()]),
-                    });
+                    diagnostics.push(diagnostic(
+                        Span::new(range.start, range.end),
+                        "syntax/invalid-token",
+                        format!("invalid token `{}`", &source[range.clone()]),
+                    ));
                     Token::Error
                 }
             };
             (token, CSpan::from(range))
         })
         .collect::<Vec<_>>();
+    diagnostics.extend(reserved_syntax_diagnostics(&tokens));
     let stream = Stream::from_iter(tokens)
         .map((0..source.len()).into(), |(token, span): (_, _)| {
             (token, span)
         });
     let (ast, parse_errors) = source_parser().parse(stream).into_output_errors();
-    diagnostics.extend(parse_errors.into_iter().map(|error| Diagnostic {
-        span: span(*error.span()),
-        message: error.to_string(),
+    diagnostics.extend(parse_errors.into_iter().map(|error| {
+        diagnostic(span(*error.span()), "syntax/parse", error.to_string())
     }));
     if let Some(file) = &ast {
         validate_source(file, &mut diagnostics);

@@ -287,3 +287,39 @@ fn rejects_expression_and_type_metadata_forms() {
         );
     }
 }
+
+#[test]
+fn reserved_spec_forms_have_stable_syntax_codes() {
+    for (source, expected) in [
+        (
+            "module test.bad_extern; extern \"C\" { fn f() -> void; }",
+            "syntax/extern-deferred",
+        ),
+        (
+            "module test.bad_switch; fn f() -> void { switch (1) {} }",
+            "syntax/switch-removed",
+        ),
+        (
+            "module test.bad_initializer; fn f() -> void { var x: i32; }",
+            "syntax/initializer-required",
+        ),
+        (
+            "module test.bad_capture; fn f() -> void { val g = []() -> void {}; }",
+            "syntax/empty-capture-list",
+        ),
+        (
+            "module test.bad_check; fn f() -> i32 { return @check(1 + 2); }",
+            "syntax/check-metadata-removed",
+        ),
+    ] {
+        let parsed = parse_source(source);
+        assert!(
+            parsed
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == expected),
+            "expected {expected}, found {:?}",
+            parsed.diagnostics
+        );
+    }
+}

@@ -231,7 +231,7 @@ fn execute_case(suite: &Suite, test: &TestCase, path: &Path) -> Outcome {
     match test.kind {
         TestKind::Parse => execute_parse(path),
         TestKind::Check => execute_check(path),
-        TestKind::SyntaxNegative => execute_syntax_negative(path),
+        TestKind::SyntaxNegative => execute_syntax_negative(test, path),
         TestKind::Negative => execute_negative(test, path),
         TestKind::Run => execute_run(test, path),
     }
@@ -294,16 +294,52 @@ fn execute_parse(path: &Path) -> Outcome {
     }
 }
 
-fn execute_syntax_negative(path: &Path) -> Outcome {
+fn execute_syntax_negative(test: &TestCase, path: &Path) -> Outcome {
     let source = match read_source(path) {
         Ok(source) => source,
         Err(outcome) => return outcome,
     };
     let output = parse_source(&source);
-    if output.ast.is_none() || !output.diagnostics.is_empty() {
+    syntax_negative_outcome(test, output)
+}
+
+fn syntax_negative_outcome(test: &TestCase, output: forge_frontend::ParseOutput) -> Outcome {
+    if output.ast.is_some() && output.diagnostics.is_empty() {
+        return Outcome::Fail(
+            "source was expected to be rejected syntactically, but parsed cleanly".into(),
+        );
+    }
+
+    let expected = test.expected.as_deref().unwrap_or("unspecified");
+    const CODED_EXPECTATIONS: &[&str] = &[
+        "syntax/extern-deferred",
+        "syntax/switch-removed",
+        "syntax/initializer-required",
+        "syntax/empty-capture-list",
+        "syntax/check-metadata-removed",
+        "syntax/assignment-target",
+        "syntax/enum-variant",
+        "syntax/tagged-variant",
+    ];
+    if !CODED_EXPECTATIONS.contains(&expected) {
+        return Outcome::Pass;
+    }
+    if output
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == expected)
+    {
         Outcome::Pass
     } else {
-        Outcome::Fail("source was expected to be rejected syntactically, but parsed cleanly".into())
+        let found = output
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        Outcome::Fail(format!(
+            "expected syntax diagnostic `{expected}`, found [{found}]"
+        ))
     }
 }
 
@@ -425,8 +461,8 @@ fn format_parse_failure(has_ast: bool, diagnostics: Vec<forge_frontend::Diagnost
             reason.push('\n');
         }
         reason.push_str(&format!(
-            "{}..{}: {}",
-            diagnostic.span.start, diagnostic.span.end, diagnostic.message
+            "{}..{}: {}: {}",
+            diagnostic.span.start, diagnostic.span.end, diagnostic.code, diagnostic.message
         ));
     }
     reason
@@ -488,5 +524,38 @@ mod tests {
         )
         .unwrap();
         assert!(validate_suite(&unmapped).is_err());
+    }
+
+    #[test]
+    fn coded_syntax_expectations_require_the_exact_parser_category() {
+        let test = TestCase {
+            path: "unused.fg".into(),
+            kind: TestKind::SyntaxNegative,
+            spec: None,
+            expected: Some("syntax/switch-removed".into()),
+            exit: None,
+        };
+        let matching = forge_frontend::ParseOutput {
+            ast: None,
+            diagnostics: vec![forge_frontend::Diagnostic {
+                span: forge_frontend::ast::Span::new(0, 6),
+                code: "syntax/switch-removed".into(),
+                message: "reserved".into(),
+            }],
+        };
+        let mismatching = forge_frontend::ParseOutput {
+            ast: None,
+            diagnostics: vec![forge_frontend::Diagnostic {
+                span: forge_frontend::ast::Span::new(0, 6),
+                code: "syntax/parse".into(),
+                message: "generic parse failure".into(),
+            }],
+        };
+
+        assert!(matches!(syntax_negative_outcome(&test, matching), Outcome::Pass));
+        assert!(matches!(
+            syntax_negative_outcome(&test, mismatching),
+            Outcome::Fail(_)
+        ));
     }
 }
