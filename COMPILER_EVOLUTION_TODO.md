@@ -439,6 +439,8 @@ available on every backend merely because the frontend accepts it.
   - [x] Pin semantic library mappings, the explicit SIA32 user entry/base,
         deterministic headerless output and the boundary between image emission
         and Lighting execution with CLI acceptance tests.
+  - [x] Keep the zero-argument SIA32 user-entry contract isolated from the raw
+        M28 trap entry's optional typed `u32` cause parameter.
 - [ ] Validate each claimed Forge backend against one representative Cosmic
       component only after its ordinary compiler gate is green.
 

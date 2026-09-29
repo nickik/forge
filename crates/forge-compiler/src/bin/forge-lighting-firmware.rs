@@ -94,7 +94,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect::<Result<Vec<_>, _>>()?;
     let ast = link_source_with_library_sources(&source_text, &library_sources)?;
-    let image = compile_sia32_image(ast, &entry, raw_image, text_base)?;
+    let image = compile_sia32_image(ast, &entry, raw_image, user_image, text_base)?;
 
     if raw_image {
         fs::write(&output, &image)?;
@@ -132,6 +132,7 @@ fn compile_sia32_image(
     ast: SourceFile,
     entry: &str,
     raw_image: bool,
+    user_image: bool,
     text_base: u32,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let hir = lower_module(&ast);
@@ -172,10 +173,22 @@ fn compile_sia32_image(
         signed: true,
         width: IntWidth::W32,
     };
-    let valid_entry_params = function.params.is_empty()
-        || (raw_image && entry == "m28_trap_entry" && function.params.len() == 1);
+    let u32_type = Ty::Int {
+        signed: false,
+        width: IntWidth::W32,
+    };
+    let valid_trap_cause = raw_image
+        && !user_image
+        && entry == "m28_trap_entry"
+        && function.params.len() == 1
+        && function
+            .params
+            .first()
+            .and_then(|param| function.locals.get(param))
+            .is_some_and(|local| local.ty == u32_type);
+    let valid_entry_params = function.params.is_empty() || valid_trap_cause;
     if !valid_entry_params || function.return_type != expected_return {
-        let expected = if raw_image && entry == "m28_trap_entry" {
+        let expected = if raw_image && !user_image && entry == "m28_trap_entry" {
             format!("fn {entry}() -> i32 or fn {entry}(u32) -> i32")
         } else {
             format!("fn {entry}() -> i32")
@@ -327,7 +340,7 @@ pub fn answer() -> i32 {
             &[("support.math".to_owned(), library.to_owned())],
         )
         .expect("semantic module link");
-        let image = compile_sia32_image(ast, "system_task_entry", true, 0x0020_0000)
+        let image = compile_sia32_image(ast, "system_task_entry", true, false, 0x0020_0000)
             .expect("SIA32 image emission");
 
         assert!(!image.is_empty());
@@ -337,9 +350,34 @@ pub fn answer() -> i32 {
     fn m28_5_system_task_source_emits_a_freestanding_user_image() {
         let source = include_str!("../../../../examples/m28-5-syscall-r1.fg");
         let ast = link_source_with_library_sources(source, &[]).expect("semantic module link");
-        let image = compile_sia32_image(ast, "system_task_entry", true, 0x0020_0000)
+        let image = compile_sia32_image(ast, "system_task_entry", true, true, 0x0020_0000)
             .expect("M28.5 System Task SIA32 image emission");
 
         assert!(!image.is_empty());
+    }
+
+    #[test]
+    fn raw_m28_trap_entry_accepts_a_u32_cause() {
+        let source = "module test.trap; pub fn m28_trap_entry(cause: u32) -> i32 { return 0; }";
+        let ast = link_source_with_library_sources(source, &[]).expect("semantic module link");
+        let image = compile_sia32_image(ast, "m28_trap_entry", true, false, 0x0008_0000)
+            .expect("M28 raw trap image emission");
+
+        assert!(!image.is_empty());
+    }
+
+    #[test]
+    fn raw_m28_trap_entry_rejects_an_untyped_cause_shape() {
+        let source = "module test.trap; pub fn m28_trap_entry(cause: bool) -> i32 { return 0; }";
+        let ast = link_source_with_library_sources(source, &[]).expect("semantic module link");
+        let error = compile_sia32_image(ast, "m28_trap_entry", true, false, 0x0008_0000)
+            .expect_err("non-u32 trap cause must be rejected");
+
+        assert!(
+            error.to_string().contains(
+                "must have signature fn m28_trap_entry() -> i32 or fn m28_trap_entry(u32) -> i32"
+            ),
+            "unexpected diagnostic: {error}"
+        );
     }
 }

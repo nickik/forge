@@ -146,3 +146,40 @@ fn cosmic_user_image_contract_rejects_boot_payload_embedding() {
 
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn cosmic_user_image_contract_rejects_raw_trap_entry_signature() {
+    let root = fixture_dir("trap-entry");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("create fixture directory");
+    let source = root.join("system_task.fg");
+    let image = root.join("system-task.bin");
+    std::fs::write(
+        &source,
+        "module cosmic.system_task; pub fn m28_trap_entry(cause: u32) -> i32 { return 0; }",
+    )
+    .expect("write System Task fixture");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_forge-lighting-firmware"))
+        .arg(&source)
+        .args(["--entry", "m28_trap_entry", "--user-image"])
+        .args(["--text-base", "0x00200000"])
+        .arg("-o")
+        .arg(&image)
+        .output()
+        .expect("forge-lighting-firmware should start");
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("must have signature fn m28_trap_entry() -> i32"),
+        "unexpected diagnostic: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !image.exists(),
+        "rejected user entry must not emit an image"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
