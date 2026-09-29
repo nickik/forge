@@ -210,3 +210,98 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     execute(&graph, &driver, action.unwrap(), target.as_deref())?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock after Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("forge-cli-{name}-{unique}"));
+        fs::create_dir_all(&path).expect("create temporary package graph");
+        path
+    }
+
+    #[test]
+    fn transitive_dependency_libraries_follow_graph_order() {
+        let root = temp_dir("dependency-driver-order");
+        let leaf = root.join("leaf");
+        let middle = root.join("middle");
+        let app = root.join("app");
+        for package in [&leaf, &middle, &app] {
+            fs::create_dir_all(package.join("src"))
+                .expect("create package source directory");
+        }
+
+        fs::write(leaf.join("src/lib.fg"), "module leaf_lib;\n")
+            .expect("write leaf library");
+        fs::write(
+            leaf.join("forge.fdn"),
+            r#"#forge/package {
+              :name "leaf-lib"
+              :version "0.1.0"
+              :targets { :lib { :kind :library :root "src/lib.fg" } }
+              :dependencies {}
+            }"#,
+        )
+        .expect("write leaf manifest");
+
+        fs::write(middle.join("src/lib.fg"), "module middle_lib;\n")
+            .expect("write middle library");
+        fs::write(
+            middle.join("forge.fdn"),
+            r#"#forge/package {
+              :name "middle-lib"
+              :version "0.1.0"
+              :targets { :lib { :kind :library :root "src/lib.fg" } }
+              :dependencies { :leaf-lib { :path "../leaf" } }
+            }"#,
+        )
+        .expect("write middle manifest");
+
+        fs::write(app.join("src/main.fg"), "module app;\n")
+            .expect("write application source");
+        fs::write(
+            app.join("forge.fdn"),
+            r#"#forge/package {
+              :name "app"
+              :version "0.1.0"
+              :targets { :main { :kind :executable :root "src/main.fg" } }
+              :dependencies { :middle-lib { :path "../middle" } }
+            }"#,
+        )
+        .expect("write application manifest");
+
+        let graph = load_graph(&app.join("forge.fdn")).expect("load transitive package graph");
+        assert_eq!(
+            graph.order,
+            vec![
+                "leaf-lib".to_owned(),
+                "middle-lib".to_owned(),
+                "app".to_owned(),
+            ]
+        );
+
+        let leaf_root = fs::canonicalize(&leaf)
+            .expect("canonical leaf package")
+            .join("src/lib.fg");
+        let middle_root = fs::canonicalize(&middle)
+            .expect("canonical middle package")
+            .join("src/lib.fg");
+        assert_eq!(
+            library_driver_args(&graph).expect("construct dependency driver arguments"),
+            vec![
+                "--library".to_owned(),
+                format!("leaf_lib={}", leaf_root.display()),
+                "--library".to_owned(),
+                format!("middle_lib={}", middle_root.display()),
+            ]
+        );
+
+        fs::remove_dir_all(root).expect("remove temporary package graph");
+    }
+}
