@@ -73,21 +73,34 @@ fn declaration_terminator(tokens: &[(Token, CSpan)]) -> Option<usize> {
     None
 }
 
+fn is_fdn_name_position(tokens: &[(Token, CSpan)], index: usize) -> bool {
+    matches!(
+        index
+            .checked_sub(1)
+            .and_then(|previous| tokens.get(previous)),
+        Some((Token::Colon | Token::Slash | Token::Hash, _))
+    )
+}
+
 fn reserved_syntax_diagnostics(tokens: &[(Token, CSpan)]) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
 
     for (index, (token, token_span)) in tokens.iter().enumerate() {
         match token {
-            Token::Extern => diagnostics.push(diagnostic(
-                span(*token_span),
-                "syntax/extern-deferred",
-                "`extern` declarations are reserved beyond Forge v1",
-            )),
-            Token::SwitchReserved => diagnostics.push(diagnostic(
-                span(*token_span),
-                "syntax/switch-removed",
-                "`switch` is not part of Forge v1; use `match`",
-            )),
+            Token::Extern if !is_fdn_name_position(tokens, index) => {
+                diagnostics.push(diagnostic(
+                    span(*token_span),
+                    "syntax/extern-deferred",
+                    "`extern` declarations are reserved beyond Forge v1",
+                ));
+            }
+            Token::SwitchReserved if !is_fdn_name_position(tokens, index) => {
+                diagnostics.push(diagnostic(
+                    span(*token_span),
+                    "syntax/switch-removed",
+                    "`switch` is not part of Forge v1; use `match`",
+                ));
+            }
             Token::At
                 if matches!(
                     tokens.get(index + 1),
