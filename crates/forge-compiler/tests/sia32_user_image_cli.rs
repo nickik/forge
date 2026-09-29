@@ -258,3 +258,5 @@ fn cosmic_user_image_contract_rejects_raw_trap_entry_signature() {
         "rejected user entry must not emit an image"
     );
 
+    let _ = std::fs::remove_dir_all(root);
+}
