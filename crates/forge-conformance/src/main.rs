@@ -320,6 +320,10 @@ fn syntax_negative_outcome(test: &TestCase, output: forge_frontend::ParseOutput)
         "syntax/assignment-target",
         "syntax/enum-variant",
         "syntax/tagged-variant",
+        "syntax/internal-reserved",
+        "syntax/compound-assignment",
+        "syntax/varargs-deferred",
+        "syntax/wrap-expression-removed",
     ];
     if !CODED_EXPECTATIONS.contains(&expected) {
         return Outcome::Pass;
