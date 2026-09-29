@@ -65,7 +65,7 @@ jobs:
             echo "kernel unexpectedly imported hosted std" >&2
             exit 1
           fi
-          grep -q 'imports unknown library' /tmp/forge-c14-no-std.err
+          grep -q 'no --library' /tmp/forge-c14-no-std.err
           grep -q 'std.console' /tmp/forge-c14-no-std.err
       - name: C14 native executable specification
         timeout-minutes: 5
