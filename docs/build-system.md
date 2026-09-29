@@ -83,19 +83,24 @@ Common options:
 ```text
 --manifest-path PATH
 --target NAME
+--platform NAME
 --driver PROGRAM
 --driver-arg ARG
 ```
 
 `FORGE_DRIVER` may supply the driver executable when `--driver` is omitted.
+When `--platform` is present, Forge forwards it unchanged to the selected
+driver before the action. The production `forgec` driver currently accepts
+only `host`; other provider identities remain reserved until their production
+implementations exist.
 
 The bootstrap compiler-driver protocol is:
 
 ```text
-<driver> [prefix args...] [--library NAME=ROOT]... --check <target-root>
-<driver> [prefix args...] [--library NAME=ROOT]... --build <target-root> -o <artifact>
-<driver> [prefix args...] [--library NAME=ROOT]... [--entry NAME] --emit-object <target-root> -o <artifact>
-<driver> [prefix args...] [--library NAME=ROOT]... --run <target-root>
+<driver> [prefix args...] [--library NAME=ROOT]... [--platform NAME] --check <target-root>
+<driver> [prefix args...] [--library NAME=ROOT]... [--platform NAME] --build <target-root> -o <artifact>
+<driver> [prefix args...] [--library NAME=ROOT]... [--platform NAME] [--entry NAME] --emit-object <target-root> -o <artifact>
+<driver> [prefix args...] [--library NAME=ROOT]... [--platform NAME] --run <target-root>
 ```
 
 `forge build` emits hosted executable/test targets under `build/<target>` and

@@ -60,6 +60,14 @@ jobs:
           forge build --manifest-path examples/c14-build-system/forge.fdn --target kernel
           test -s examples/c14-build-system/build/kernel.o
           forge check --manifest-path examples/c14-build-system/forge.fdn --target lib
+          forge check --manifest-path examples/c14-build-system/forge.fdn --target lib --platform host
+          if forge check --manifest-path examples/c14-build-system/forge.fdn --target lib \
+            --platform lighting-sim 2>/tmp/forge-c14-platform.err; then
+            echo "unsupported platform unexpectedly accepted" >&2
+            exit 1
+          fi
+          grep -q 'C14 supports only --platform host' /tmp/forge-c14-platform.err
+          grep -q 'lighting-sim' /tmp/forge-c14-platform.err
           if forge check --manifest-path examples/c14-build-system/forge-no-std.fdn \
             2>/tmp/forge-c14-no-std.err; then
             echo "kernel unexpectedly imported hosted std" >&2
