@@ -89,6 +89,8 @@ Common options:
 ```
 
 `FORGE_DRIVER` may supply the driver executable when `--driver` is omitted.
+Each repeated `--driver-arg` is passed to that executable in command-line
+order, before Forge's library, platform, action and target arguments.
 When `--platform` is present, Forge forwards it unchanged to the selected
 driver before the action. The production `forgec` driver currently accepts
 only `host`; other provider identities remain reserved until their production

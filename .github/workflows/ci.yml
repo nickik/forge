@@ -61,6 +61,9 @@ jobs:
           test -s examples/c14-build-system/build/kernel.o
           forge check --manifest-path examples/c14-build-system/forge.fdn --target lib
           forge check --manifest-path examples/c14-build-system/forge.fdn --target lib --platform host
+          forge check --manifest-path examples/c14-build-system/forge.fdn --target lib \
+            --driver "$PWD/target/debug/forgec" \
+            --driver-arg --platform --driver-arg host
           if forge check --manifest-path examples/c14-build-system/forge.fdn --target lib \
             --platform lighting-sim 2>/tmp/forge-c14-platform.err; then
             echo "unsupported platform unexpectedly accepted" >&2
