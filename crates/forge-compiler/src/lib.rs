@@ -127,6 +127,24 @@ pub fn compile_source(source: &str) -> Result<CompiledProgram, CompilerError> {
     compile_source_with_library_sources(source, &[])
 }
 
+/// Resolve explicitly supplied source modules without selecting a hosted runtime.
+/// Firmware and hosted compilation share exactly the same semantic linker.
+pub fn link_source_modules(
+    source: &str,
+    libraries: &[(String, String)],
+) -> Result<SourceFile, CompilerError> {
+    let root = parse_ast("root source", source)?;
+    let mut parsed = Vec::new();
+    for (name, source) in libraries {
+        parsed.push(ParsedLibrary {
+            name: name.clone(),
+            ast: parse_ast(&format!("library `{name}`"), source)?,
+        });
+    }
+    link_modules(root, parsed)
+        .map_err(|error| CompilerError::message(format!("module linking failed: {error}")))
+}
+
 pub fn compile_source_with_library_sources(
     source: &str,
     libraries: &[(String, String)],

@@ -1146,6 +1146,17 @@ fn lower_scalar_binary(
 ) -> Result<Value, BackendError> {
     let lt = fir.value_types.get(&left).ok_or_else(|| shape("missing left operand"))?;
     let rt = fir.value_types.get(&right).ok_or_else(|| shape("missing right operand"))?;
+    if *lt == Ty::Bool || *rt == Ty::Bool {
+        if lt != rt || *lt != Ty::Bool || overflow.is_some() {
+            return Err(shape("boolean comparison requires matching bool operands and no overflow mode"));
+        }
+        let condition = match op {
+            BinaryOp::Eq => IntCC::Equal,
+            BinaryOp::NotEq => IntCC::NotEqual,
+            _ => return Err(BackendError::UnsupportedInstruction { kind: "ordered boolean comparison" }),
+        };
+        return Ok(cursor.ins().icmp(condition, lookup_value(values, left)?, lookup_value(values, right)?));
+    }
     if matches!(lt, Ty::Float { .. }) || matches!(rt, Ty::Float { .. }) {
         if lt != rt { return Err(shape("float operands have different types")); }
         let l = lookup_value(values, left)?; let r = lookup_value(values, right)?;
@@ -1184,12 +1195,70 @@ fn lower_add_sub_mul(
         Some(OverflowMode::Checked) => {
             let signed = integer_signed(ty)?;
             let (result, did_overflow) = match (op, signed) {
-                (BinaryOp::Add, true) => cursor.ins().sadd_overflow(left, right),
+                (BinaryOp::Add, true) => {
+                    let result = cursor.ins().iadd(left, right);
+                    let l = cursor.ins().bxor(left, result);
+                    let r = cursor.ins().bxor(right, result);
+                    let sign = cursor.ins().band(l, r);
+                    let overflow = cursor.ins().icmp_imm(IntCC::SignedLessThan, sign, 0);
+                    (result, overflow)
+                },
                 (BinaryOp::Add, false) => cursor.ins().uadd_overflow(left, right),
-                (BinaryOp::Sub, true) => cursor.ins().ssub_overflow(left, right),
-                (BinaryOp::Sub, false) => cursor.ins().usub_overflow(left, right),
-                (BinaryOp::Mul, true) => cursor.ins().smul_overflow(left, right),
-                (BinaryOp::Mul, false) => cursor.ins().umul_overflow(left, right),
+                (BinaryOp::Sub, true) => {
+                    let result = cursor.ins().isub(left, right);
+                    let operands = cursor.ins().bxor(left, right);
+                    let changed = cursor.ins().bxor(left, result);
+                    let sign = cursor.ins().band(operands, changed);
+                    let overflow = cursor.ins().icmp_imm(IntCC::SignedLessThan, sign, 0);
+                    (result, overflow)
+                },
+                (BinaryOp::Sub, false) => {
+                    let result = cursor.ins().isub(left, right);
+                    let overflow = cursor.ins().icmp(IntCC::UnsignedLessThan, left, right);
+                    (result, overflow)
+                }
+                (BinaryOp::Mul, true) => {
+                    let word = cursor.func.dfg.value_type(left);
+                    let shift = i64::from(word.bits() - 1);
+                    let lsign = cursor.ins().sshr_imm(left, shift);
+                    let rsign = cursor.ins().sshr_imm(right, shift);
+                    let lxor = cursor.ins().bxor(left, lsign);
+                    let rxor = cursor.ins().bxor(right, rsign);
+                    let lmag = cursor.ins().isub(lxor, lsign);
+                    let rmag = cursor.ins().isub(rxor, rsign);
+                    let signs = cursor.ins().bxor(left, right);
+                    let negative = cursor.ins().icmp_imm(IntCC::SignedLessThan, signs, 0);
+                    let negative_bit = cursor.ins().uextend(word, negative);
+                    let maximum = cursor.ins().iconst(word, if word.bits() == 64 { i64::MAX } else { (1i64 << shift) - 1 });
+                    let limit = cursor.ins().iadd(maximum, negative_bit);
+                    let is_zero = cursor.ins().icmp_imm(IntCC::Equal, rmag, 0);
+                    let zero_bit = cursor.ins().uextend(word, is_zero);
+                    let divisor = cursor.ins().bor(rmag, zero_bit);
+                    let quotient = cursor.ins().udiv(limit, divisor);
+                    let too_large = cursor.ins().icmp(IntCC::UnsignedGreaterThan, lmag, quotient);
+                    let nonzero = cursor.ins().icmp_imm(IntCC::NotEqual, rmag, 0);
+                    let overflow = cursor.ins().band(nonzero, too_large);
+                    let result = cursor.ins().imul(left, right);
+                    (result, overflow)
+                },
+                (BinaryOp::Mul, false) => {
+                    // Equivalent checked multiplication using baseline integer
+                    // operations, including targets without umul_overflow.
+                    // Select a nonzero divisor before udiv; multiplying by zero
+                    // never overflows, even for MAX * 0.
+                    let word = cursor.func.dfg.value_type(left);
+                    let zero = cursor.ins().iconst(word, 0);
+                    let maximum = cursor.ins().iconst(word, -1);
+                    let nonzero = cursor.ins().icmp(IntCC::NotEqual, right, zero);
+                    let is_zero = cursor.ins().icmp(IntCC::Equal, right, zero);
+                    let zero_bit = cursor.ins().uextend(word, is_zero);
+                    let divisor = cursor.ins().bor(right, zero_bit);
+                    let limit = cursor.ins().udiv(maximum, divisor);
+                    let too_large = cursor.ins().icmp(IntCC::UnsignedGreaterThan, left, limit);
+                    let overflow = cursor.ins().band(nonzero, too_large);
+                    let result = cursor.ins().imul(left, right);
+                    (result, overflow)
+                }
                 _ => unreachable!(),
             };
             cursor
@@ -1236,6 +1305,7 @@ fn lower_integer_convert(
         });
     }
 
+    check_integer_conversion_range(source, target, lookup_value(values, input)?, types, cursor)?;
     normalize_integer_to_type(
         source,
         lookup_value(values, input)?,
@@ -1243,6 +1313,89 @@ fn lower_integer_convert(
         types,
         cursor,
     )
+}
+
+fn check_integer_conversion_range(
+    source: &Ty,
+    target: &Ty,
+    value: Value,
+    types: &TypeLowering<'_>,
+    cursor: &mut FuncCursor<'_>,
+) -> Result<(), BackendError> {
+    let Some((source_signed, source_bits)) = integer_shape(source, types) else {
+        return Err(BackendError::UnsupportedInstruction {
+            kind: "non-integer scalar conversion",
+        });
+    };
+    let Some((target_signed, target_bits)) = integer_shape(target, types) else {
+        return Err(BackendError::UnsupportedInstruction {
+            kind: "non-integer scalar conversion",
+        });
+    };
+    if source == target {
+        return Ok(());
+    }
+
+    let mut checks = Vec::new();
+
+    match (source_signed, target_signed) {
+        (true, true) if target_bits < source_bits => {
+            let min = (-(1i128 << (target_bits - 1))) as i64;
+            let max = ((1i128 << (target_bits - 1)) - 1) as i64;
+            let below_min = cursor.ins().icmp_imm_s(IntCC::SignedLessThan, value, min);
+            let above_max = cursor.ins().icmp_imm_s(IntCC::SignedGreaterThan, value, max);
+            checks.extend([below_min, above_max]);
+        }
+        (true, false) => {
+            let negative = cursor.ins().icmp_imm_s(IntCC::SignedLessThan, value, 0);
+            checks.push(negative);
+            if target_bits < source_bits {
+                let max = ((1i128 << target_bits) - 1) as i64;
+                let above_max = cursor.ins().icmp_imm_s(IntCC::SignedGreaterThan, value, max);
+                checks.push(above_max);
+            }
+        }
+        (false, true) if target_bits <= source_bits => {
+            let max = ((1i128 << (target_bits - 1)) - 1) as i64;
+            let above_max = cursor.ins().icmp_imm_u(IntCC::UnsignedGreaterThan, value, max as i64);
+            checks.push(above_max);
+        }
+        (false, false) if target_bits < source_bits => {
+            let max = ((1i128 << target_bits) - 1) as i64;
+            let above_max = cursor.ins().icmp_imm_u(IntCC::UnsignedGreaterThan, value, max);
+            checks.push(above_max);
+        }
+        _ => {}
+    }
+
+    let mut out_of_range = None;
+    for condition in checks {
+        out_of_range = Some(match out_of_range {
+            Some(previous) => cursor.ins().bor(previous, condition),
+            None => condition,
+        });
+    }
+    if let Some(out_of_range) = out_of_range {
+        cursor.ins().trapnz(out_of_range, TrapCode::INTEGER_OVERFLOW);
+    }
+    Ok(())
+}
+
+fn integer_shape(ty: &Ty, types: &TypeLowering<'_>) -> Option<(bool, u16)> {
+    match ty {
+        Ty::Byte => Some((false, 8)),
+        Ty::Int { signed, width } => Some((
+            *signed,
+            match width {
+                IntWidth::W8 => 8,
+                IntWidth::W16 => 16,
+                IntWidth::W32 => 32,
+                IntWidth::W64 => 64,
+                IntWidth::Pointer => types.target().pointer_bits,
+            },
+        )),
+        _ => None,
+    }
 }
 
 fn lower_scalar_convert(

@@ -6,14 +6,14 @@ use forge_codegen_cranelift::{
     build_sia32_flat_image, CraneliftBackend, CraneliftTarget, Sia32Object,
 };
 use forge_frontend::{
-    ast::SourceFile, collect_type_definitions, lower_fir, lower_module, lower_resolved_bodies,
-    parse_source, type_check_module, IntWidth, Ty,
+    collect_type_definitions, lower_fir, lower_module, lower_resolved_bodies,
+    type_check_module, IntWidth, Ty,
 };
 
 fn usage() -> ! {
     eprintln!(
         "usage: forge-lighting-firmware <source.fg> [-o firmware.s] [--entry NAME] [--raw-image | --user-image] [--text-base ADDR]\n\n\
-         Compiles one relocation-free Forge entry function through the production\n\
+         Compiles a Forge entry with explicit --library NAME=PATH bindings through the production\n\
          SIA32 Cranelift backend and wraps it as Lighting reset-ROM assembly.\n\
          The generated assembly can be turned into a ROM blob with LightingSimulation's siaasm."
     );
@@ -36,9 +36,17 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     let mut raw_image = false;
     let mut payload: Option<(PathBuf, u32)> = None;
     let mut user_image = false;
+    let mut libraries = Vec::new();
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--library" => {
+                let binding = args.next().unwrap_or_else(|| usage());
+                let (name, path) = binding
+                    .split_once('=')
+                    .ok_or("--library requires NAME=PATH")?;
+                libraries.push((name.to_owned(), fs::read_to_string(path)?));
+            }
             "-o" | "--output" => output = PathBuf::from(args.next().unwrap_or_else(|| usage())),
             "--entry" => entry = args.next().unwrap_or_else(|| usage()),
             "--text-base" => {
@@ -77,7 +85,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let source_text = fs::read_to_string(&source)?;
-    let ast = parse_clean(&source_text)?;
+    let ast = forge_compiler::link_source_modules(&source_text, &libraries)?;
     let hir = lower_module(&ast);
     if !hir.diagnostics.is_empty() {
         return Err(format!("HIR lowering failed: {:?}", hir.diagnostics).into());
@@ -97,7 +105,7 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("type checking failed: {:?}", typed.diagnostics).into());
     }
     let definitions = collect_type_definitions(&ast, &hir.module, &bodies, &typed);
-    let fir = lower_fir(&bodies, &typed);
+    let mut fir = lower_fir(&bodies, &typed);
     if !fir.diagnostics.is_empty() {
         return Err(format!("FIR lowering failed: {:?}", fir.diagnostics).into());
     }
@@ -117,20 +125,65 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         signed: true,
         width: IntWidth::W32,
     };
+    let word = Ty::Int { signed: false, width: IntWidth::W32 };
     let valid_entry_params = function.params.is_empty()
-        || (raw_image && entry == "m28_trap_entry" && function.params.len() == 1);
-    if !valid_entry_params || function.return_type != expected_return {
-        let expected = if raw_image && entry == "m28_trap_entry" {
-            format!("fn {entry}() -> i32 or fn {entry}(u32) -> i32")
+        || (raw_image && !user_image && function.params.len() <= 2
+            && function.params.iter().all(|id| function.locals.get(id).is_some_and(|local| local.ty == word)))
+        || (user_image && function.params.len() <= 4
+            && function.params.iter().all(|id| function.locals.get(id).is_some_and(|local| local.ty == word)));
+    let valid_return = function.return_type == expected_return
+        || (raw_image && !user_image && function.return_type == word);
+    if !valid_entry_params || !valid_return {
+        let expected = if raw_image && !user_image {
+            format!("fn {entry}(zero to two u32 arguments) -> i32 or u32")
+        } else if user_image {
+            format!("fn {entry}(zero to four u32 startup arguments) -> i32")
         } else {
             format!("fn {entry}() -> i32")
         };
         return Err(format!("firmware entry '{entry}' must have signature {expected}").into());
     }
 
+    // Native images contain only the entry's call graph. In particular, unused
+    // semantic test hooks must not pull hosted provider functions into firmware.
+    let mut pending = vec![owner];
+    let mut reachable = std::collections::BTreeSet::new();
+    while let Some(next) = pending.pop() {
+        if !reachable.insert(next) {
+            continue;
+        }
+        let function = fir
+            .module
+            .functions
+            .get(&next)
+            .ok_or_else(|| format!("native image requires missing function {next:?}"))?;
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                if let forge_fir::FirInstructionKind::Call { target, .. } = instruction.kind {
+                    pending.push(target);
+                }
+            }
+        }
+    }
+    for declaration in &ast.declarations {
+        if let forge_frontend::ast::DeclKind::Function(function) = &declaration.kind.kind {
+            if function.name.contains("__forge_raw_") {
+                if let Some(id) = hir.module.symbols.get(&function.name).and_then(|s| s.value_def) {
+                    if reachable.contains(&id) {
+                        return Err(format!("native image requires an explicit storage provider for {}", function.name).into());
+                    }
+                }
+            }
+        }
+    }
+    fir.module.functions.retain(|id, _| reachable.contains(id));
+
     let backend = CraneliftBackend::sia32()?;
     let prepared = backend.prepare_module_with_types(&fir.module, &definitions)?;
-    let image = emit_linked_image(&backend, &prepared, &fir.module, owner, &entry, text_base)?;
+    // The embedded-payload wrapper adds a kernel CALLR and its address literal
+    // before forge_entry. Internal relocations must use the actual ROM address.
+    let linked_base = if !raw_image && payload.is_some() { text_base + 8 } else { text_base };
+    let image = emit_linked_image(&backend, &prepared, &fir.module, owner, &entry, linked_base)?;
     if raw_image {
         fs::write(&output, &image)?;
     } else {
@@ -161,14 +214,6 @@ fn real_main() -> Result<(), Box<dyn std::error::Error>> {
         output.display()
     );
     Ok(())
-}
-
-fn parse_clean(source: &str) -> Result<SourceFile, Box<dyn std::error::Error>> {
-    let parsed = parse_source(source);
-    if parsed.ast.is_none() || !parsed.diagnostics.is_empty() {
-        return Err(format!("parse failed: {:?}", parsed.diagnostics).into());
-    }
-    Ok(parsed.ast.expect("checked above"))
 }
 
 fn emit_linked_image(
