@@ -204,3 +204,5 @@ This bring-up path should grow in small, testable steps:
 9. boot Cosmic through the full Lighting hardware composition.
 
 The rule is that each step must execute on Lighting with observable behavior. Producing a SIA object or image without executing it is not sufficient acceptance evidence.
+
+Native `--user-image` entries may take zero to four explicit `u32` startup arguments and must return `i32`. These use the existing SIA32 SystemV register argument ABI; they are not language syntax or implicit conversions. OS Task entry code should receive capability words as typed parameters rather than reading live argument registers sequentially through machine intrinsics, whose intermediate code can clobber uncaptured registers. Reset-ROM entries remain zero-argument `i32`; `--raw-image` retains its separate zero-to-two-word trap-entry contract.

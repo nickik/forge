@@ -637,6 +637,15 @@ fn rewrite_expr(
             rewrite_expr(right, context, scopes)?;
         }
         ExprKind::Call { callee, args } => {
+            // Pointer/type-alias casts use the type namespace in expression
+            // position. Rename them with their declaration when linking.
+            if let ExprKind::Path { path } = &mut callee.kind {
+                if path.segments.len() == 1 && !scopes.contains(&path.segments[0])
+                    && !context.values.contains_key(&path.segments[0])
+                    && context.types.contains_key(&path.segments[0]) {
+                    rewrite_type_path(path, context)?;
+                }
+            }
             rewrite_expr(callee, context, scopes)?;
             for arg in args {
                 match arg {
@@ -975,6 +984,18 @@ mod tests {
         let parsed = parse_source(source);
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         parsed.ast.expect("ast")
+    }
+
+    #[test]
+    fn linked_pointer_alias_cast_resolves_in_type_namespace() {
+        let root = parse("module app; import memory; fn main() -> i32 { return memory.read(); }");
+        let library = parse("module memory; type Word = *volatile u32; pub fn read() -> i32 { unsafe { val p: Word = Word(4096u32); return i32(*p); } }");
+        let linked = link_modules(root, vec![ParsedLibrary { name: "memory".into(), ast: library }]).unwrap();
+        let hir = lower_module(&linked);
+        let bodies = forge_frontend::lower_resolved_bodies(&linked, &hir.module);
+        assert!(bodies.diagnostics.is_empty(), "{:?}", bodies.diagnostics);
+        let typed = forge_frontend::type_check_module(&linked, &hir.module, &bodies);
+        assert!(typed.diagnostics.is_empty(), "{:?}", typed.diagnostics);
     }
 
     #[test]
