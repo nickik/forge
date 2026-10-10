@@ -235,6 +235,34 @@ fn bitwise_ops_lower_directly() {
 }
 
 #[test]
+fn boolean_equality_uses_boolean_comparison_lowering() {
+    for (op, condition) in [(BinaryOp::Eq, "icmp eq"), (BinaryOp::NotEq, "icmp ne")] {
+        let clif = lower(
+            binary(op, Ty::Bool, None),
+            CraneliftBackend::aarch64().expect("AArch64"),
+        );
+        assert!(clif.contains(condition), "{clif}");
+    }
+}
+
+#[test]
+fn ordered_boolean_comparisons_remain_a_hard_backend_error() {
+    let error = match prepare(
+        binary(BinaryOp::Less, Ty::Bool, None),
+        CraneliftBackend::aarch64().expect("AArch64"),
+    ) {
+        Ok(_) => panic!("ordered bool comparison is invalid FIR"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error,
+        BackendError::UnsupportedInstruction {
+            kind: "ordered boolean comparison"
+        }
+    );
+}
+
+#[test]
 fn shifts_check_count_and_select_signed_right_shift() {
     let signed = int_ty(true, IntWidth::W32);
     let unsigned = int_ty(false, IntWidth::W32);
@@ -278,7 +306,9 @@ fn checked_add_sub_mul_emit_overflow_traps_for_signed_and_unsigned() {
                 binary(op, ty.clone(), Some(OverflowMode::Checked)),
                 CraneliftBackend::riscv64().expect("RV64"),
             );
-            assert!(clif.contains(stem), "{clif}");
+            if !signed && op == BinaryOp::Add {
+                assert!(clif.contains(stem), "{clif}");
+            }
             assert!(
                 clif.contains("trapnz") && clif.contains("int_ovf"),
                 "{clif}"
@@ -340,27 +370,112 @@ fn lossless_integer_widening_uses_sign_or_zero_extension() {
 }
 
 #[test]
-fn lossy_integer_conversions_are_rejected_until_fir_defines_their_policy() {
+fn explicit_integer_conversions_range_check_when_the_source_domain_does_not_fit() {
     let cases = [
         (int_ty(false, IntWidth::W64), int_ty(false, IntWidth::W16)),
         (int_ty(false, IntWidth::W8), int_ty(true, IntWidth::W8)),
         (int_ty(true, IntWidth::W8), int_ty(false, IntWidth::W64)),
+        (int_ty(false, IntWidth::W32), int_ty(true, IntWidth::W32)),
+        (int_ty(true, IntWidth::W64), int_ty(true, IntWidth::W16)),
     ];
 
-    for (source, target) in cases {
-        let error = match prepare(
-            conversion(source, target),
-            CraneliftBackend::riscv64().expect("RV64"),
-        ) {
-            Ok(_) => panic!("lossy conversion unexpectedly lowered"),
-            Err(error) => error,
-        };
-        assert_eq!(
-            error,
-            BackendError::UnsupportedInstruction {
-                kind: "lossy integer conversion requires explicit FIR conversion semantics"
-            }
+    for backend in [
+        CraneliftBackend::aarch64().expect("AArch64"),
+        CraneliftBackend::riscv64().expect("RV64"),
+    ] {
+        for (source, target) in cases.clone() {
+            let clif = lower(conversion(source, target), rebuild(&backend));
+            assert!(clif.contains("icmp"), "missing range comparison:\n{clif}");
+            assert!(
+                clif.contains("trapnz") && clif.contains("int_ovf"),
+                "missing conversion trap:\n{clif}"
+            );
+        }
+    }
+}
+
+#[test]
+fn explicit_lossless_widening_does_not_add_a_range_trap() {
+    for backend in [
+        CraneliftBackend::aarch64().expect("AArch64"),
+        CraneliftBackend::riscv64().expect("RV64"),
+    ] {
+        let clif = lower(
+            conversion(int_ty(false, IntWidth::W8), int_ty(true, IntWidth::W64)),
+            rebuild(&backend),
         );
+        assert!(clif.contains("uextend"), "{clif}");
+        assert!(!clif.contains("trapnz"), "unexpected range trap:\n{clif}");
+    }
+}
+
+#[test]
+fn integer_conversion_range_checks_cover_each_source_and_target_domain() {
+    let types = [
+        Ty::Byte,
+        int_ty(false, IntWidth::W8),
+        int_ty(true, IntWidth::W8),
+        int_ty(false, IntWidth::W16),
+        int_ty(true, IntWidth::W16),
+        int_ty(false, IntWidth::W32),
+        int_ty(true, IntWidth::W32),
+        int_ty(false, IntWidth::W64),
+        int_ty(true, IntWidth::W64),
+        int_ty(false, IntWidth::Pointer),
+        int_ty(true, IntWidth::Pointer),
+    ];
+    let width = |ty: &Ty| match ty {
+        Ty::Byte => 8,
+        Ty::Int {
+            width: IntWidth::W8,
+            ..
+        } => 8,
+        Ty::Int {
+            width: IntWidth::W16,
+            ..
+        } => 16,
+        Ty::Int {
+            width: IntWidth::W32,
+            ..
+        } => 32,
+        Ty::Int {
+            width: IntWidth::W64,
+            ..
+        } => 64,
+        Ty::Int {
+            width: IntWidth::Pointer,
+            ..
+        } => 64,
+        _ => unreachable!("test only uses integer types"),
+    };
+    let signed = |ty: &Ty| matches!(ty, Ty::Int { signed: true, .. });
+
+    for backend in [
+        CraneliftBackend::aarch64().expect("AArch64"),
+        CraneliftBackend::riscv64().expect("RV64"),
+    ] {
+        for source in types.iter().cloned() {
+            for target in types.iter().cloned() {
+                let needs_check = if source == target {
+                    false
+                } else if signed(&source) {
+                    signed(&target) && width(&target) < width(&source) || !signed(&target)
+                } else if signed(&target) {
+                    width(&target) <= width(&source)
+                } else {
+                    width(&target) < width(&source)
+                };
+                let clif = lower(
+                    conversion(source.clone(), target.clone()),
+                    rebuild(&backend),
+                );
+                assert_eq!(
+                    clif.contains("trapnz"),
+                    needs_check,
+                    "wrong conversion range policy for {source:?} -> {target:?}:\n{clif}"
+                );
+            }
+        }
     }
 }
 

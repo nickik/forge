@@ -556,6 +556,8 @@ Rules:
 - no pointer/integer conversion in safe code;
 - no implicit narrowing/widening between concrete numeric types.
 
+An explicit conversion between integer types preserves the mathematical value. If that value is not representable in the target type, execution performs a defined arithmetic trap/panic path. An explicit cast never silently truncates or reinterprets the source bits. Code that intends to extract low bits must mask or shift the value explicitly before converting it.
+
 Contextual typing of a literal is not an implicit runtime conversion:
 
 ```forge
@@ -587,6 +589,8 @@ x >> n
 ```
 
 The C punctuation is retained, but logical and bitwise domains do not coerce into each other.
+
+Equality and inequality may compare two `bool` values. Ordered comparisons are defined for compatible numeric operands, not booleans.
 
 ## 24. Overflow
 

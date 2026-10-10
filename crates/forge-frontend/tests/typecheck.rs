@@ -163,6 +163,39 @@ fn explicit_numeric_conversion_is_valid() {
 }
 
 #[test]
+fn boolean_values_support_equality_but_not_ordering() {
+    let equality = check(
+        r#"
+        module test.bool_equality;
+        fn main() -> i32 {
+            val same: bool = true == false;
+            return 0;
+        }
+    "#,
+    );
+    assert!(
+        equality.diagnostics.is_empty(),
+        "{:?}",
+        equality.diagnostics
+    );
+
+    let ordering = check(
+        r#"
+        module test.bool_ordering;
+        fn main() -> i32 {
+            val invalid: bool = true < false;
+            return 0;
+        }
+    "#,
+    );
+    assert!(
+        has(&ordering, "type/mismatch"),
+        "{:?}",
+        ordering.diagnostics
+    );
+}
+
+#[test]
 fn explicit_array_reference_slice_views_preserve_mutability() {
     let output = check(
         r#"

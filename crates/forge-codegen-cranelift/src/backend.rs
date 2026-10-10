@@ -133,7 +133,7 @@ impl CraneliftBackend {
 
 fn validate_c4_scalar_contract(
     fir: &FirFunction,
-    layout: &TargetLayout,
+    _layout: &TargetLayout,
     definitions: &TypeDefinitionTable,
 ) -> Result<(), BackendError> {
     for block in &fir.blocks {
@@ -209,9 +209,9 @@ fn validate_c4_scalar_contract(
                         )));
                     }
                     let source = value_type(fir, *value, "conversion input")?;
-                    if !lossless_integer_conversion(source, target, layout)? {
+                    if !is_integer_type(source) || !is_integer_type(target) {
                         return Err(BackendError::UnsupportedInstruction {
-                            kind: "lossy integer conversion requires explicit FIR conversion semantics",
+                            kind: "non-integer scalar conversion",
                         });
                     }
                 }
@@ -308,29 +308,8 @@ fn validate_c4_scalar_contract(
     Ok(())
 }
 
-fn lossless_integer_conversion(
-    source: &Ty,
-    target: &Ty,
-    layout: &TargetLayout,
-) -> Result<bool, BackendError> {
-    if source == target {
-        return Ok(true);
-    }
-    let Some((source_signed, source_bits)) = integer_shape(source, layout) else {
-        return Ok(false);
-    };
-    let Some((target_signed, target_bits)) = integer_shape(target, layout) else {
-        return Ok(false);
-    };
-
-    if target_bits <= source_bits {
-        return Ok(false);
-    }
-
-    Ok(match (source_signed, target_signed) {
-        (true, true) | (false, false) | (false, true) => true,
-        (true, false) => false,
-    })
+fn is_integer_type(ty: &Ty) -> bool {
+    matches!(ty, Ty::Byte | Ty::Int { .. })
 }
 
 fn integer_shape(ty: &Ty, layout: &TargetLayout) -> Option<(bool, u16)> {

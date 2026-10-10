@@ -3025,7 +3025,15 @@ impl<'a, 'd> BodyChecker<'a, 'd> {
             | BinaryOp::LessEq
             | BinaryOp::Greater
             | BinaryOp::GreaterEq => {
-                if !self.compatible_binary(&l, &r) {
+                if l == Ty::Bool
+                    && !matches!(op, BinaryOp::Eq | BinaryOp::NotEq)
+                {
+                    self.diagnostic(
+                        span,
+                        "type/mismatch",
+                        "ordered comparisons are not defined for bool operands",
+                    );
+                } else if !self.compatible_binary(&l, &r) {
                     self.diagnostic(
                         span,
                         "type/mismatch",

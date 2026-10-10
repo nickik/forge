@@ -41,7 +41,7 @@ Legend:
 | Local captured closures | 1 | Explicit capture lists and local calls execute. Escaping/cross-function closure ABI is intentionally not part of C14. |
 | `defer` | 1 | Normal/direct return and `?` cleanup, break/continue exits, nested LIFO ordering, and cleanup-body control-flow rejection are covered. |
 | Globals | 1 | Static data, function/global pointer relocations, ordered runtime initialization, mutable scalar/whole-aggregate stores, shared/mutable addresses, direct global-rooted field reads/stores/addresses, and static aggregate pointers execute. AArch64 native and RISC-V/QEMU object tests cover the relocation paths. |
-| Overflow and traps | 1 | Checked/wrapping add/sub/mul, div/rem, shifts and divide-by-zero coverage exists. Narrowing policy needs matrix documentation. |
+| Overflow and traps | 1 | Checked/wrapping add/sub/mul, div/rem, shifts, divide-by-zero, and checked explicit integer-conversion coverage exists. |
 | FDN readers and metadata | 4 | Parse/preservation and duration boundary tests exist; executable behavior is provider/tool-specific. |
 | Hosted providers/build system | 4 | Build/check/run/test, entries and hosted providers exist. Full current Cosmic/CKV acceptance remains. |
 | Freestanding `:kernel`, `:std false` | 4 | AArch64 object emission exports the manifest-selected entry under its exact platform symbol and verifies ELF sections, call relocations, and no undefined hosted/runtime imports. A representative Cosmic object and SIA32/Lighting execution remain. |
